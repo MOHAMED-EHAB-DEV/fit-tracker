@@ -29,6 +29,37 @@ interface MealTimelineProps {
   meals: MealItem[];
 }
 
+function MealImageThumbnail({
+  src,
+  alt,
+}: {
+  src?: string | null;
+  alt: string;
+}) {
+  const [hasError, setHasError] = useState(false);
+
+  if (!src || hasError) {
+    return (
+      <div className="w-14 h-14 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500 shrink-0">
+        <UtensilsCrossed className="w-5 h-5 text-zinc-600" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-14 h-14 rounded-xl overflow-hidden relative shrink-0 border border-zinc-800 bg-zinc-950">
+      <Image
+        src={src}
+        alt={alt || "Meal photo"}
+        fill
+        sizes="56px"
+        onError={() => setHasError(true)}
+        className="object-cover group-hover:scale-105 transition-transform duration-300"
+      />
+    </div>
+  );
+}
+
 export function MealTimeline({ meals }: MealTimelineProps) {
   const router = useRouter();
   const [editingMeal, setEditingMeal] = useState<MealData | null>(null);
@@ -105,20 +136,10 @@ export function MealTimeline({ meals }: MealTimelineProps) {
                 key={meal._id}
                 className="flex items-center gap-4 p-3.5 rounded-xl bg-zinc-950/60 border border-zinc-800/60 hover:border-zinc-700/60 transition group"
               >
-                {meal.cloudinary?.secureUrl ? (
-                  <div className="w-14 h-14 rounded-xl overflow-hidden relative shrink-0 border border-zinc-800">
-                    <Image
-                      src={meal.cloudinary.secureUrl}
-                      alt={meal.description || "Meal photo"}
-                      fill
-                      className="object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                  </div>
-                ) : (
-                  <div className="w-14 h-14 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500 shrink-0">
-                    <UtensilsCrossed className="w-5 h-5 text-zinc-600" />
-                  </div>
-                )}
+                <MealImageThumbnail
+                  src={meal.cloudinary?.secureUrl}
+                  alt={meal.description || "Meal photo"}
+                />
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">

@@ -11,11 +11,13 @@ export default function fitImageLoader({
   if (
     src.startsWith("/fit-tracker/images/") ||
     src.startsWith("data:") ||
-    src.startsWith("blob:")
+    src.startsWith("blob:") ||
+    (src.startsWith("/") && !src.startsWith("//"))
   ) {
     return src;
   }
   const encoded = encodeURIComponent(src);
   return `/fit-tracker/images/${encoded}?w=${width}&q=${quality ?? 80}`;
 }
+
 

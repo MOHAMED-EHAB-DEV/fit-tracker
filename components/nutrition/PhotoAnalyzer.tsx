@@ -123,6 +123,10 @@ export function PhotoAnalyzer() {
                 src={previewUrl}
                 alt="Meal preview"
                 fill
+                onError={() => {
+                  setPreviewUrl(null);
+                  setSelectedBlob(null);
+                }}
                 className="object-cover"
               />
               <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-3 text-white font-semibold text-sm transition">

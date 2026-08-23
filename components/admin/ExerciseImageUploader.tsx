@@ -33,6 +33,160 @@ export interface ExerciseImageUploaderProps {
   maxImages?: number;
 }
 
+function ExerciseGridImageItem({
+  item,
+  index,
+  isPrimary,
+  isLocalFile,
+  totalImages,
+  onSetPrimary,
+  onRemove,
+  onMoveLeft,
+  onMoveRight,
+  onPreview,
+}: {
+  item: ExerciseImageItem;
+  index: number;
+  isPrimary: boolean;
+  isLocalFile: boolean;
+  totalImages: number;
+  onSetPrimary: (idx: number) => void;
+  onRemove: (idx: number) => void;
+  onMoveLeft: (idx: number) => void;
+  onMoveRight: (idx: number) => void;
+  onPreview: (url: string) => void;
+}) {
+  const [hasError, setHasError] = useState(false);
+
+  return (
+    <div
+      className={cn(
+        "group relative aspect-4/3 rounded-2xl overflow-hidden bg-zinc-950 border transition-all duration-200 shadow-md",
+        isPrimary
+          ? "border-violet-500 ring-2 ring-violet-500/30"
+          : "border-white/10 hover:border-white/20"
+      )}
+    >
+      {/* Image or Error Fallback */}
+      {!hasError ? (
+        <Image
+          src={item.previewUrl}
+          alt={`Exercise media ${index + 1}`}
+          fill
+          unoptimized
+          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+          onError={() => setHasError(true)}
+          className="object-cover group-hover:scale-105 transition-transform duration-300"
+        />
+      ) : (
+        <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-900/90 p-2 text-center text-zinc-500 space-y-1.5">
+          <AlertCircle className="w-6 h-6 text-amber-400/80" />
+          <span className="text-[10px] text-zinc-400 font-bold leading-tight">Image load error</span>
+        </div>
+      )}
+
+      {/* Badges */}
+      <div className="absolute top-2 left-2 flex flex-col gap-1 z-10">
+        {isPrimary && (
+          <div className="px-2 py-0.5 rounded-lg bg-violet-600/90 backdrop-blur-md text-white text-[10px] font-extrabold flex items-center gap-1 shadow-md border border-violet-400/30">
+            <Star className="w-3 h-3 fill-current text-amber-300" />
+            <span>Primary Cover</span>
+          </div>
+        )}
+        {isLocalFile && (
+          <div className="px-2 py-0.5 rounded-lg bg-amber-500/80 backdrop-blur-md text-zinc-950 text-[9px] font-extrabold flex items-center gap-1 shadow-sm">
+            <FileImage className="w-2.5 h-2.5" />
+            <span>New (Pending Save)</span>
+          </div>
+        )}
+      </div>
+
+      {/* Hover Overlay with Action Buttons */}
+      <div className="absolute inset-0 bg-zinc-950/80 backdrop-blur-xs opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-2.5 z-20">
+        {/* Top Action Row */}
+        <div className="flex items-center justify-between gap-1">
+          {!isPrimary ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSetPrimary(index);
+              }}
+              className="px-2 py-1 rounded-lg bg-zinc-900/90 hover:bg-violet-600 text-zinc-300 hover:text-white text-[11px] font-bold transition flex items-center gap-1 border border-white/10 cursor-pointer shadow-xs"
+              title="Set as primary cover"
+            >
+              <Star className="w-3 h-3 text-amber-400" />
+              <span>Make Cover</span>
+            </button>
+          ) : (
+            <div />
+          )}
+
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove(index);
+            }}
+            className="p-1.5 rounded-lg bg-red-500/20 hover:bg-red-500 text-red-400 hover:text-white transition border border-red-500/30 cursor-pointer"
+            title="Remove image"
+            aria-label="Remove image"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Bottom Action Row: Reorder & Preview */}
+        <div className="flex items-center justify-between gap-1 pt-1 border-t border-white/10">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              disabled={index === 0}
+              onClick={(e) => {
+                e.stopPropagation();
+                onMoveLeft(index);
+              }}
+              className="p-1 rounded-lg bg-zinc-900/90 text-zinc-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-zinc-800 transition border border-white/10 cursor-pointer"
+              title="Move Left"
+              aria-label="Move image left"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              disabled={index === totalImages - 1}
+              onClick={(e) => {
+                e.stopPropagation();
+                onMoveRight(index);
+              }}
+              className="p-1 rounded-lg bg-zinc-900/90 text-zinc-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-zinc-800 transition border border-white/10 cursor-pointer"
+              title="Move Right"
+              aria-label="Move image right"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {!hasError && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPreview(item.previewUrl);
+              }}
+              className="p-1.5 rounded-lg bg-zinc-900/90 hover:bg-zinc-800 text-zinc-300 hover:text-white transition border border-white/10 cursor-pointer flex items-center gap-1 text-[11px] font-semibold"
+              title="Full View"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>View</span>
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ExerciseImageUploader({
   images = [],
   onChange,
@@ -42,6 +196,7 @@ export function ExerciseImageUploader({
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState(false);
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlInputValue, setUrlInputValue] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -115,10 +270,6 @@ export function ExerciseImageUploader({
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
-
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      handleFiles(e.dataTransfer.files);
-    }
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -301,129 +452,24 @@ export function ExerciseImageUploader({
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5">
-            {images.map((item, index) => {
-              const isPrimary = index === 0;
-              const isLocalFile = !!item.file;
-
-              return (
-                <div
-                  key={item.id || item.previewUrl || index}
-                  className={cn(
-                    "group relative aspect-4/3 rounded-2xl overflow-hidden bg-zinc-950 border transition-all duration-200 shadow-md",
-                    isPrimary
-                      ? "border-violet-500 ring-2 ring-violet-500/30"
-                      : "border-white/10 hover:border-white/20"
-                  )}
-                >
-                  {/* Image Element */}
-                  <Image
-                    src={item.previewUrl}
-                    alt={`Exercise media ${index + 1}`}
-                    fill
-                    unoptimized
-                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                    className="object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-
-                  {/* Badges */}
-                  <div className="absolute top-2 left-2 flex flex-col gap-1 z-10">
-                    {isPrimary && (
-                      <div className="px-2 py-0.5 rounded-lg bg-violet-600/90 backdrop-blur-md text-white text-[10px] font-extrabold flex items-center gap-1 shadow-md border border-violet-400/30">
-                        <Star className="w-3 h-3 fill-current text-amber-300" />
-                        <span>Primary Cover</span>
-                      </div>
-                    )}
-                    {isLocalFile && (
-                      <div className="px-2 py-0.5 rounded-lg bg-amber-500/80 backdrop-blur-md text-zinc-950 text-[9px] font-extrabold flex items-center gap-1 shadow-sm">
-                        <FileImage className="w-2.5 h-2.5" />
-                        <span>New (Pending Save)</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Hover Overlay with Action Buttons */}
-                  <div className="absolute inset-0 bg-zinc-950/80 backdrop-blur-xs opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-2.5 z-20">
-                    {/* Top Action Row */}
-                    <div className="flex items-center justify-between gap-1">
-                      {!isPrimary ? (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleSetPrimary(index);
-                          }}
-                          className="px-2 py-1 rounded-lg bg-zinc-900/90 hover:bg-violet-600 text-zinc-300 hover:text-white text-[11px] font-bold transition flex items-center gap-1 border border-white/10 cursor-pointer shadow-xs"
-                          title="Set as primary cover"
-                        >
-                          <Star className="w-3 h-3 text-amber-400" />
-                          <span>Make Cover</span>
-                        </button>
-                      ) : (
-                        <div />
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRemoveImage(index);
-                        }}
-                        className="p-1.5 rounded-lg bg-red-500/20 hover:bg-red-500 text-red-400 hover:text-white transition border border-red-500/30 cursor-pointer"
-                        title="Remove image"
-                        aria-label="Remove image"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-
-                    {/* Bottom Action Row: Reorder & Preview */}
-                    <div className="flex items-center justify-between gap-1 pt-1 border-t border-white/10">
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          disabled={index === 0}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleMove(index, "left");
-                          }}
-                          className="p-1 rounded-lg bg-zinc-900/90 text-zinc-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-zinc-800 transition border border-white/10 cursor-pointer"
-                          title="Move Left"
-                          aria-label="Move image left"
-                        >
-                          <ChevronLeft className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          disabled={index === images.length - 1}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleMove(index, "right");
-                          }}
-                          className="p-1 rounded-lg bg-zinc-900/90 text-zinc-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-zinc-800 transition border border-white/10 cursor-pointer"
-                          title="Move Right"
-                          aria-label="Move image right"
-                        >
-                          <ChevronRight className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setPreviewUrl(item.previewUrl);
-                        }}
-                        className="p-1.5 rounded-lg bg-zinc-900/90 hover:bg-zinc-800 text-zinc-300 hover:text-white transition border border-white/10 cursor-pointer flex items-center gap-1 text-[11px] font-semibold"
-                        title="Full View"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>View</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            {images.map((item, index) => (
+              <ExerciseGridImageItem
+                key={item.id || item.previewUrl || index}
+                item={item}
+                index={index}
+                isPrimary={index === 0}
+                isLocalFile={!!item.file}
+                totalImages={images.length}
+                onSetPrimary={handleSetPrimary}
+                onRemove={handleRemoveImage}
+                onMoveLeft={(idx) => handleMove(idx, "left")}
+                onMoveRight={(idx) => handleMove(idx, "right")}
+                onPreview={(url) => {
+                  setPreviewError(false);
+                  setPreviewUrl(url);
+                }}
+              />
+            ))}
           </div>
         </div>
       )}
@@ -432,7 +478,10 @@ export function ExerciseImageUploader({
       {previewUrl && (
         <Modal
           isOpen={!!previewUrl}
-          onClose={() => setPreviewUrl(null)}
+          onClose={() => {
+            setPreviewUrl(null);
+            setPreviewError(false);
+          }}
           size="lg"
           title={
             <div className="flex items-center gap-2">
@@ -443,14 +492,23 @@ export function ExerciseImageUploader({
         >
           <div className="space-y-4">
             <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-zinc-950 border border-white/10 flex items-center justify-center">
-              <Image
-                src={previewUrl}
-                alt="Exercise preview full"
-                fill
-                unoptimized
-                sizes="(max-width: 768px) 100vw, 800px"
-                className="object-contain rounded-xl"
-              />
+              {!previewError ? (
+                <Image
+                  src={previewUrl}
+                  alt="Exercise preview full"
+                  fill
+                  unoptimized
+                  sizes="(max-width: 768px) 100vw, 800px"
+                  onError={() => setPreviewError(true)}
+                  className="object-contain rounded-xl"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center text-center p-6 space-y-2 text-zinc-400">
+                  <AlertCircle className="w-8 h-8 text-amber-400" />
+                  <p className="text-sm font-bold text-zinc-200">Unable to load image preview</p>
+                  <p className="text-xs text-zinc-500 max-w-sm">The image file or URL is unavailable or blocked.</p>
+                </div>
+              )}
             </div>
             <div className="flex items-center justify-between text-xs text-zinc-400">
               <span className="truncate max-w-md font-mono">{previewUrl}</span>
@@ -458,7 +516,10 @@ export function ExerciseImageUploader({
                 type="button"
                 variant="ghost"
                 size="sm"
-                onClick={() => setPreviewUrl(null)}
+                onClick={() => {
+                  setPreviewUrl(null);
+                  setPreviewError(false);
+                }}
               >
                 Close Preview
               </Button>
@@ -471,4 +532,5 @@ export function ExerciseImageUploader({
 }
 
 export default ExerciseImageUploader;
+
 

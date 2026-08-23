@@ -16,7 +16,14 @@ export async function GET(
   try {
     const { src: srcParam } = await context.params;
     const rawSrc = srcParam.join("/");
-    const decodedSrc = decodeURIComponent(rawSrc);
+    let decodedSrc = decodeURIComponent(rawSrc);
+
+    // Normalize protocol slashes (e.g., https:/ or https:/// -> https://)
+    if (/^https?:\/{1,}/i.test(decodedSrc)) {
+      decodedSrc = decodedSrc.replace(/^(https?):\/+/i, "$1://");
+    } else if (decodedSrc.startsWith("//")) {
+      decodedSrc = `https:${decodedSrc}`;
+    }
 
     const { searchParams } = new URL(request.url);
     const widthParam = searchParams.get("w");
@@ -26,10 +33,25 @@ export async function GET(
     const quality = qualityParam ? parseInt(qualityParam, 10) : 80;
 
     // Security check: only allow approved hosts
-    const allowedHosts = (process.env.IMAGE_PROXY_ALLOWED_HOSTS || "res.cloudinary.com").split(",");
+    const envHosts = (process.env.IMAGE_PROXY_ALLOWED_HOSTS || "")
+      .split(",")
+      .map((h) => h.trim().toLowerCase())
+      .filter(Boolean);
+    const defaultHosts = [
+      "res.cloudinary.com",
+      "cloudinary.com",
+      "raw.githubusercontent.com",
+      "github.com",
+      "images.unsplash.com",
+      "googleusercontent.com",
+    ];
+    const allowedHosts = Array.from(new Set([...defaultHosts, ...envHosts]));
+
+    let parsedUrl: URL;
     try {
-      const parsedUrl = new URL(decodedSrc);
-      const isAllowed = allowedHosts.some((h) => parsedUrl.hostname.includes(h.trim()));
+      parsedUrl = new URL(decodedSrc);
+      const hostname = parsedUrl.hostname.toLowerCase();
+      const isAllowed = allowedHosts.some((h) => hostname.includes(h) || h === "*");
       if (!isAllowed) {
         return new NextResponse("Forbidden image source host", { status: 403 });
       }
@@ -37,7 +59,7 @@ export async function GET(
       return new NextResponse("Invalid image source URL", { status: 400 });
     }
 
-    const cacheKey = getImageCacheKey(decodedSrc, width, quality);
+    const cacheKey = getImageCacheKey(parsedUrl.href, width, quality);
 
     // Layer 1 & 2: Local disk cache + ETag check
     const localHit = getCachedImage(cacheKey);
@@ -79,7 +101,7 @@ export async function GET(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-    const originRes = await fetch(decodedSrc, { signal: controller.signal });
+    const originRes = await fetch(parsedUrl.href, { signal: controller.signal });
     clearTimeout(timeoutId);
 
     if (!originRes.ok) {
@@ -96,11 +118,15 @@ export async function GET(
     const arrayBuffer = await originRes.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Save to caches in the background
-    setCachedImage(cacheKey, buffer);
-    setSupabaseCachedImage(cacheKey, buffer).catch((e) =>
-      console.error("Supabase async save error:", e)
-    );
+    // Save to caches in the background safely
+    try {
+      setCachedImage(cacheKey, buffer);
+      setSupabaseCachedImage(cacheKey, buffer).catch((e) =>
+        console.error("Supabase async save error:", e)
+      );
+    } catch (cacheErr) {
+      console.error("Image cache write error:", cacheErr);
+    }
 
     const etag = `"${cacheKey.slice(0, 32)}"`;
 

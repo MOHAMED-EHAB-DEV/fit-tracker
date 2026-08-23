@@ -1,6 +1,5 @@
 import React, { Suspense } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { Camera, Plus, UtensilsCrossed, Clock, Flame, Target, Loader2 } from "lucide-react";
 import { getFullUser } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/mongoose";

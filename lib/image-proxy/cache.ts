@@ -4,10 +4,17 @@ import crypto from "crypto";
 
 const CACHE_DIR = path.join(process.cwd(), ".cache", "images");
 
-// Ensure cache directory exists
-if (!fs.existsSync(CACHE_DIR)) {
-  fs.mkdirSync(CACHE_DIR, { recursive: true });
+function ensureCacheDir() {
+  try {
+    if (!fs.existsSync(CACHE_DIR)) {
+      fs.mkdirSync(CACHE_DIR, { recursive: true });
+    }
+    return true;
+  } catch (err) {
+    return false;
+  }
 }
+
 
 export function getImageCacheKey(src: string, width?: number, quality?: number): string {
   const hash = crypto
@@ -43,7 +50,8 @@ export function getCachedImage(key: string): { buffer: Buffer; etag: string } | 
 
 export function setCachedImage(key: string, buffer: Buffer): void {
   try {
-    const tempPath = path.join(CACHE_DIR, `${key}.${Date.now()}.tmp`);
+    if (!ensureCacheDir()) return;
+    const tempPath = path.join(CACHE_DIR, `${key}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`);
     const finalPath = path.join(CACHE_DIR, `${key}.webp`);
     fs.writeFileSync(tempPath, buffer);
     fs.renameSync(tempPath, finalPath); // Atomic write

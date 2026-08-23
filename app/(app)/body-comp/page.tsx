@@ -185,7 +185,16 @@ export function BodyCompPage() {
 
           {previewUrl ? (
             <div className="relative w-36 h-48 rounded-xl overflow-hidden border border-zinc-700 bg-zinc-950 group">
-              <Image src={previewUrl} alt="Physique preview" fill className="object-cover" />
+              <Image
+                src={previewUrl}
+                alt="Physique preview"
+                fill
+                onError={() => {
+                  setPreviewUrl(null);
+                  setSelectedPhoto(null);
+                }}
+                className="object-cover"
+              />
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}

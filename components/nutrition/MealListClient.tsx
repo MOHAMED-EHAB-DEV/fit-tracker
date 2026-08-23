@@ -19,6 +19,37 @@ interface MealListClientProps {
   initialMeals: MealData[];
 }
 
+function MealImageThumbnail({
+  src,
+  alt,
+}: {
+  src?: string | null;
+  alt: string;
+}) {
+  const [hasError, setHasError] = useState(false);
+
+  if (!src || hasError) {
+    return (
+      <div className="w-16 h-16 rounded-2xl bg-zinc-900 border border-white/10 flex items-center justify-center text-zinc-500 shrink-0">
+        <UtensilsCrossed className="w-6 h-6 text-zinc-600" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-16 h-16 rounded-2xl overflow-hidden relative shrink-0 border border-white/10 shadow-sm bg-zinc-950">
+      <Image
+        src={src}
+        alt={alt || "Meal photo"}
+        fill
+        sizes="64px"
+        onError={() => setHasError(true)}
+        className="object-cover group-hover:scale-105 transition-transform duration-300"
+      />
+    </div>
+  );
+}
+
 export function MealListClient({ initialMeals }: MealListClientProps) {
   const router = useRouter();
   const [meals, setMeals] = useState<MealData[]>(initialMeals);
@@ -89,20 +120,10 @@ export function MealListClient({ initialMeals }: MealListClientProps) {
                 key={m._id}
                 className="flex items-center gap-4 p-4 rounded-2xl bg-zinc-950/60 border border-white/6 hover:border-white/15 transition group"
               >
-                {m.cloudinary?.secureUrl ? (
-                  <div className="w-16 h-16 rounded-2xl overflow-hidden relative shrink-0 border border-white/10 shadow-sm">
-                    <Image
-                      src={m.cloudinary.secureUrl}
-                      alt={m.description || "Meal"}
-                      fill
-                      className="object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                  </div>
-                ) : (
-                  <div className="w-16 h-16 rounded-2xl bg-zinc-900 border border-white/10 flex items-center justify-center text-zinc-500 shrink-0">
-                    <UtensilsCrossed className="w-6 h-6 text-zinc-600" />
-                  </div>
-                )}
+                <MealImageThumbnail
+                  src={m.cloudinary?.secureUrl}
+                  alt={m.description || "Meal"}
+                />
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
