@@ -49,7 +49,8 @@ class AppUpdateManager(private val context: Context) {
     }
 
     data class ReleaseInfo(
-        val tagName: String,
+        val versionName: String,
+        val versionCode: Int,
         val releaseNotes: String,
         val apkDownloadUrl: String
     )
@@ -64,14 +65,31 @@ class AppUpdateManager(private val context: Context) {
     ) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                Log.d(TAG, "Checking for updates at $RELEASES_API_URL... Current local version: v${BuildConfig.VERSION_NAME} (code: ${BuildConfig.VERSION_CODE})")
                 val release = fetchLatestRelease()
+
                 withContext(Dispatchers.Main) {
                     if (activity.isFinishing || activity.isDestroyed) return@withContext
 
-                    if (release != null && isNewerVersion(release.tagName)) {
-                        onChecked?.invoke(true, release.tagName)
-                        showCustomUpdateDialog(activity, release)
+                    if (release != null) {
+                        val hasUpdate = isNewerVersion(release.versionName, release.versionCode)
+                        Log.d(TAG, "Fetched release v${release.versionName} (code: ${release.versionCode}). Update available: $hasUpdate")
+
+                        if (hasUpdate) {
+                            onChecked?.invoke(true, release.versionName)
+                            showCustomUpdateDialog(activity, release)
+                        } else {
+                            onChecked?.invoke(false, BuildConfig.VERSION_NAME)
+                            if (!silent) {
+                                Toast.makeText(
+                                    activity,
+                                    "FitTracker is up to date (v${BuildConfig.VERSION_NAME})",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
                     } else {
+                        Log.w(TAG, "No release info could be parsed from GitHub.")
                         onChecked?.invoke(false, BuildConfig.VERSION_NAME)
                         if (!silent) {
                             Toast.makeText(
@@ -83,12 +101,12 @@ class AppUpdateManager(private val context: Context) {
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to check for updates: ${e.localizedMessage}")
+                Log.e(TAG, "Failed to check for updates: ${e.localizedMessage}", e)
                 withContext(Dispatchers.Main) {
                     if (!silent && !activity.isFinishing && !activity.isDestroyed) {
                         Toast.makeText(
                             activity,
-                            "Could not check for updates. Please try again later.",
+                            "Could not check for updates: ${e.localizedMessage}",
                             Toast.LENGTH_SHORT
                         ).show()
                     }
@@ -99,7 +117,7 @@ class AppUpdateManager(private val context: Context) {
     }
 
     /**
-     * Fetches the latest release metadata from GitHub Releases API.
+     * Fetches the latest release metadata from GitHub Releases API and resolves version.json.
      */
     private fun fetchLatestRelease(): ReleaseInfo? {
         val url = URL(RELEASES_API_URL)
@@ -118,44 +136,98 @@ class AppUpdateManager(private val context: Context) {
         val root = JSONObject(jsonStr)
 
         val tagName = root.optString("tag_name", "").trim()
+        val releaseTitle = root.optString("name", "").trim()
         val body = root.optString("body", "### What's New\n- Bug fixes and performance improvements.")
         val assets = root.optJSONArray("assets") ?: return null
 
         var apkUrl: String? = null
+        var versionJsonUrl: String? = null
+
         for (i in 0 until assets.length()) {
             val asset = assets.getJSONObject(i)
             val name = asset.optString("name", "")
             if (name.endsWith(".apk", ignoreCase = true)) {
-                apkUrl = asset.optString("browser_download_url")
-                break
+                // Prefer specific version APK or default FitTracker.apk
+                if (apkUrl == null || name.startsWith("FitTracker-v", ignoreCase = true)) {
+                    apkUrl = asset.optString("browser_download_url")
+                }
+            } else if (name.equals("version.json", ignoreCase = true)) {
+                versionJsonUrl = asset.optString("browser_download_url")
             }
         }
 
-        return if (!apkUrl.isNullOrBlank()) {
-            ReleaseInfo(
-                tagName = tagName,
-                releaseNotes = body,
-                apkDownloadUrl = apkUrl
-            )
-        } else {
-            null
+        if (apkUrl.isNullOrBlank()) {
+            Log.w(TAG, "No .apk asset found in release.")
+            return null
         }
+
+        // 1. Try to fetch metadata directly from version.json asset if available
+        var resolvedVersionName: String? = null
+        var resolvedVersionCode = 0
+        var resolvedNotes: String = body
+
+        if (!versionJsonUrl.isNullOrBlank()) {
+            try {
+                val vConn = URL(versionJsonUrl).openConnection() as HttpURLConnection
+                vConn.setRequestProperty("User-Agent", "FitTracker-Android-App")
+                vConn.connectTimeout = 5000
+                vConn.readTimeout = 5000
+                if (vConn.responseCode == 200) {
+                    val vText = vConn.inputStream.bufferedReader().use { it.readText() }
+                    val vJson = JSONObject(vText)
+                    resolvedVersionName = vJson.optString("versionName", "")
+                    resolvedVersionCode = vJson.optInt("versionCode", 0)
+                    val customNotes = vJson.optString("releaseNotes", "")
+                    if (customNotes.isNotBlank()) {
+                        resolvedNotes = customNotes
+                    }
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "version.json download failed: ${e.localizedMessage}")
+            }
+        }
+
+        // 2. Fallback: Extract SemVer from release title (e.g. "FitTracker Android App v1.0.2")
+        if (resolvedVersionName.isNullOrBlank()) {
+            val semverRegex = Regex("""\bv?(\d+\.\d+\.\d+)\b""")
+            val matchInTitle = semverRegex.find(releaseTitle)
+            val matchInTag = semverRegex.find(tagName)
+            resolvedVersionName = matchInTitle?.groupValues?.get(1)
+                ?: matchInTag?.groupValues?.get(1)
+                ?: tagName.removePrefix("v").trim()
+        }
+
+        return ReleaseInfo(
+            versionName = resolvedVersionName.removePrefix("v").trim(),
+            versionCode = resolvedVersionCode,
+            releaseNotes = resolvedNotes,
+            apkDownloadUrl = apkUrl
+        )
     }
 
     /**
-     * Compares incoming tag/version string with local BuildConfig.VERSION_NAME.
+     * Compares incoming version with local BuildConfig.VERSION_NAME and BuildConfig.VERSION_CODE.
      */
-    private fun isNewerVersion(remoteTag: String): Boolean {
+    private fun isNewerVersion(remoteVersion: String, remoteCode: Int): Boolean {
         val currentVersion = BuildConfig.VERSION_NAME.removePrefix("v").trim()
-        val remoteVersion = remoteTag.removePrefix("v").trim()
+        val cleanRemote = remoteVersion.removePrefix("v").trim()
 
-        if (remoteVersion.isBlank() || currentVersion == remoteVersion) {
+        Log.d(TAG, "Comparing local: [name=$currentVersion, code=${BuildConfig.VERSION_CODE}] vs remote: [name=$cleanRemote, code=$remoteCode]")
+
+        // 1. If remote versionCode is valid (> 0), integer comparison is 100% accurate
+        if (remoteCode > 0 && BuildConfig.VERSION_CODE > 0) {
+            if (remoteCode > BuildConfig.VERSION_CODE) return true
+            if (remoteCode < BuildConfig.VERSION_CODE) return false
+        }
+
+        // 2. SemVer comparison: major.minor.patch
+        if (cleanRemote.isBlank() || cleanRemote.equals("latest", ignoreCase = true) || currentVersion == cleanRemote) {
             return false
         }
 
         return try {
             val currentParts = currentVersion.split(".").map { it.toIntOrNull() ?: 0 }
-            val remoteParts = remoteVersion.split(".").map { it.toIntOrNull() ?: 0 }
+            val remoteParts = cleanRemote.split(".").map { it.toIntOrNull() ?: 0 }
             val maxLen = maxOf(currentParts.size, remoteParts.size)
 
             for (i in 0 until maxLen) {
@@ -166,7 +238,7 @@ class AppUpdateManager(private val context: Context) {
             }
             false
         } catch (e: Exception) {
-            remoteTag != "v$currentVersion" && remoteTag != currentVersion
+            cleanRemote != currentVersion
         }
     }
 
@@ -251,7 +323,7 @@ class AppUpdateManager(private val context: Context) {
         val btnLater = view.findViewById<Button>(R.id.btnLater)
         val btnUpdateNow = view.findViewById<Button>(R.id.btnUpdateNow)
 
-        tvVersionBadge.text = release.tagName
+        tvVersionBadge.text = "v${release.versionName}"
         tvReleaseNotes.text = formatMarkdownToSpanned(release.releaseNotes)
         tvReleaseNotes.movementMethod = LinkMovementMethod.getInstance()
 

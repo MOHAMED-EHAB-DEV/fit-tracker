@@ -241,6 +241,9 @@ class MainActivity : AppCompatActivity() {
         if (hasActivityRecognitionPermission()) {
             jsBridge.requestStepSync()
         }
+        if (::updateManager.isInitialized) {
+            updateManager.checkForUpdates(this, silent = true)
+        }
     }
 
     private fun hasActivityRecognitionPermission(): Boolean {
