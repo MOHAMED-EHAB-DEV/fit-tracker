@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build & Release Android APK
 
 on:
   push:
@@ -6,11 +6,14 @@ on:
     paths:
       - 'FitTrackerAndroid/**'
       - '.github/workflows/build-apk.yml'
-  workflow_dispatch: # Allows manual trigger from GitHub web UI
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
-  build:
-    name: Build Debug APK
+  build-and-release:
+    name: Build & Publish Release
     runs-on: ubuntu-latest
 
     steps:
@@ -32,9 +35,46 @@ jobs:
         working-directory: FitTrackerAndroid
         run: gradle assembleDebug --stacktrace
 
-      - name: Upload Debug APK Artifact
+      - name: Prepare Release Artifacts
+        id: prep
+        run: |
+          mkdir -p release-output
+          cp FitTrackerAndroid/app/build/outputs/apk/debug/app-debug.apk release-output/FitTracker.apk
+          
+          # Generate version metadata JSON
+          cat <<EOF > release-output/version.json
+          {
+            "versionCode": ${{ github.run_number }},
+            "versionName": "1.0.${{ github.run_number }}",
+            "commit": "${{ github.sha }}",
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+
+      - name: Upload Build Artifacts to Actions
         uses: actions/upload-artifact@v4
         with:
-          name: FitTracker-debug-apk
-          path: FitTrackerAndroid/app/build/outputs/apk/debug/app-debug.apk
+          name: FitTracker-APK
+          path: release-output/FitTracker.apk
           retention-days: 14
+
+      # Create/Update the 'latest' rolling release for automatic in-app updates
+      - name: Publish to GitHub Releases (Latest)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "FitTracker Android App (Latest)"
+          body: |
+            ## Automated Build #${{ github.run_number }}
+            - **Commit**: `${{ github.sha }}`
+            - **Branch**: `${{ github.ref_name }}`
+            - **Built at**: $(date -u)
+            
+            Download `FitTracker.apk` below or let your installed app auto-update.
+          draft: false
+          prerelease: false
+          files: |
+            release-output/FitTracker.apk
+            release-output/version.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

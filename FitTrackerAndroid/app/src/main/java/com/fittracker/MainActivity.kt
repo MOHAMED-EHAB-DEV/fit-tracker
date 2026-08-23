@@ -24,6 +24,7 @@ import androidx.core.content.FileProvider
 import com.fittracker.steps.StepRepository
 import com.fittracker.steps.StepStore
 import com.fittracker.steps.StepSyncScheduler
+import com.fittracker.update.AppUpdateManager
 import com.fittracker.webview.JSBridge
 import java.io.File
 import java.io.IOException
@@ -39,6 +40,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
     private lateinit var jsBridge: JSBridge
+    private lateinit var updateManager: AppUpdateManager
 
     // Configurable endpoint (local emulator default or production domain)
     private val appUrl = "https://fit-tracker-ai-prod.vercel.app/"
@@ -155,6 +157,9 @@ class MainActivity : AppCompatActivity() {
 
         checkAndRequestPermissions()
         StepSyncScheduler.schedulePeriodicSync(this)
+
+        updateManager = AppUpdateManager(this)
+        updateManager.checkForUpdates(this, silent = true)
 
         webView.loadUrl(appUrl)
     }

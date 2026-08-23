@@ -100,6 +100,26 @@ class JSBridge(
     }
 
     /**
+     * Returns JSON metadata about the installed native app version.
+     */
+    @JavascriptInterface
+    fun getAppVersion(): String {
+        return """{"versionName":"${com.fittracker.BuildConfig.VERSION_NAME}","versionCode":${com.fittracker.BuildConfig.VERSION_CODE}}"""
+    }
+
+    /**
+     * Manually triggers an OTA update check from JavaScript (e.g. Settings page).
+     */
+    @JavascriptInterface
+    fun checkForUpdate() {
+        mainHandler.post {
+            (context as? android.app.Activity)?.let { activity ->
+                com.fittracker.update.AppUpdateManager(context).checkForUpdates(activity, silent = false)
+            }
+        }
+    }
+
+    /**
      * Updates the server base URL (useful when switching environments).
      */
     @JavascriptInterface
