@@ -1,8 +1,15 @@
-### 🚀 What's New in v1.0.2
-- **AI Food Photo Scanner**: Fixed camera capture and gallery upload directly from your phone.
-- **OTA In-App Updates**: Seamless automated updates with rich markdown changelogs.
-- **Step Counting & Telemetry**: Background sync improvements with native Android pedometer.
+### 🚀 What's New in v1.0.3
 
-### ⚡ Performance & Fixes
-- Added high-speed client-side image compression (WebP 800×800).
-- Fixed Android WebView file chooser delegation.
+#### 📸 AI Food Scanner & Camera Fixes
+- **Camera & Gallery Upload**: Resolved Android WebView file chooser delegation so tapping the photo area triggers your camera and image picker seamlessly.
+- **Dedicated Capture Triggers**: Added separate **"Take Photo"** and **"Choose from Gallery"** buttons for quick meal logging.
+- **Client-Side Optimization**: Automatic downscaling and WebP compression (800×800) for instant AI meal analysis with Gemini.
+
+#### 🔄 In-App Auto-Updates & Markdown Changelogs
+- **OTA Updates**: Your app now automatically detects new builds on startup and on resume.
+- **Compiled Markdown Renderer**: Release notes are compiled and rendered natively with headings, lists, bold text, and code formatting.
+- **1-Tap Installation**: Seamless download and package installation prompt.
+
+#### ⚡ Performance & Telemetry
+- Improved native pedometer hardware step tracking with background sync.
+- Added live version display in Settings with manual update check.

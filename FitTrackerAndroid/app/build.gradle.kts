@@ -70,4 +70,7 @@ dependencies {
 
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.9.0")
+
+    // Markdown Parser & Renderer
+    implementation("io.noties.markwon:core:4.6.2")
 }

@@ -324,8 +324,16 @@ class AppUpdateManager(private val context: Context) {
         val btnUpdateNow = view.findViewById<Button>(R.id.btnUpdateNow)
 
         tvVersionBadge.text = "v${release.versionName}"
-        tvReleaseNotes.text = formatMarkdownToSpanned(release.releaseNotes)
-        tvReleaseNotes.movementMethod = LinkMovementMethod.getInstance()
+
+        // Compile and render full Markdown using Markwon
+        try {
+            val markwon = io.noties.markwon.Markwon.create(activity)
+            markwon.setMarkdown(tvReleaseNotes, release.releaseNotes)
+        } catch (e: Exception) {
+            // Safe fallback if Markwon encountered an issue
+            tvReleaseNotes.text = formatMarkdownToSpanned(release.releaseNotes)
+            tvReleaseNotes.movementMethod = LinkMovementMethod.getInstance()
+        }
 
         btnLater.setOnClickListener {
             dialog.dismiss()
