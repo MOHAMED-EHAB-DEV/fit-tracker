@@ -3,14 +3,15 @@
 import React, { useState, useRef } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Camera, Upload, Sparkles, Check, AlertCircle, Loader2, RefreshCw } from "lucide-react";
+import { Camera, Upload, Sparkles, Check, AlertCircle, Loader2, RefreshCw, ImageIcon } from "lucide-react";
 import { useClientResize } from "@/hooks/useClientResize";
 import { MealType } from "@/types/fitness";
 import { MEAL_TYPE_OPTIONS } from "@/constants/nutrition";
 
 export function PhotoAnalyzer() {
   const router = useRouter();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const { resizeImage, isResizing } = useClientResize();
 
   const [selectedBlob, setSelectedBlob] = useState<Blob | null>(null);
@@ -23,6 +24,8 @@ export function PhotoAnalyzer() {
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    // Clear input value so selecting the same file consecutively triggers onChange
+    e.target.value = "";
     if (!file) return;
 
     setError(null);
@@ -84,7 +87,7 @@ export function PhotoAnalyzer() {
             <span>AI Food Photo Analyzer</span>
           </h2>
           <p className="text-xs text-zinc-400 mt-1">
-            Snap a picture of your plate to automatically estimate calories & macros
+            Snap a picture of your plate or upload an image to automatically estimate calories & macros
           </p>
         </div>
 
@@ -95,17 +98,25 @@ export function PhotoAnalyzer() {
           </div>
         )}
 
+        {/* Hidden Inputs for General File Chooser and Direct Camera */}
+        <input
+          type="file"
+          ref={galleryInputRef}
+          onChange={handleFileChange}
+          accept="image/*"
+          className="hidden"
+        />
+        <input
+          type="file"
+          ref={cameraInputRef}
+          onChange={handleFileChange}
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+        />
+
         {/* Photo Upload / Camera Area */}
         <div className="space-y-3">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-          />
-
           {previewUrl ? (
             <div className="relative rounded-2xl overflow-hidden border border-zinc-700 bg-zinc-950 aspect-video max-h-72 flex items-center justify-center group">
               <Image
@@ -114,25 +125,55 @@ export function PhotoAnalyzer() {
                 fill
                 className="object-cover"
               />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 text-white font-semibold text-sm transition"
-              >
-                <Camera className="w-5 h-5 text-emerald-400" />
-                <span>Retake Photo</span>
-              </button>
+              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-3 text-white font-semibold text-sm transition">
+                <button
+                  type="button"
+                  onClick={() => cameraInputRef.current?.click()}
+                  className="px-3 py-2 bg-zinc-800/90 hover:bg-zinc-700 rounded-lg flex items-center gap-1.5 text-xs transition"
+                >
+                  <Camera className="w-4 h-4 text-emerald-400" />
+                  <span>Camera</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => galleryInputRef.current?.click()}
+                  className="px-3 py-2 bg-zinc-800/90 hover:bg-zinc-700 rounded-lg flex items-center gap-1.5 text-xs transition"
+                >
+                  <ImageIcon className="w-4 h-4 text-emerald-400" />
+                  <span>Gallery</span>
+                </button>
+              </div>
             </div>
           ) : (
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-zinc-800 hover:border-emerald-500/50 rounded-2xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition bg-zinc-950/40 group"
-            >
-              <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+            <div className="border-2 border-dashed border-zinc-800 hover:border-emerald-500/50 rounded-2xl p-6 sm:p-8 flex flex-col items-center justify-center text-center transition bg-zinc-950/40 group">
+              <div
+                onClick={() => galleryInputRef.current?.click()}
+                className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform cursor-pointer"
+              >
                 <Camera className="w-7 h-7" />
               </div>
-              <p className="font-bold text-sm text-zinc-200">Tap to Take Photo or Upload</p>
-              <p className="text-xs text-zinc-500 mt-1">Automatic client-side optimization (800×800 WebP)</p>
+              <p className="font-bold text-sm text-zinc-200">Take Photo or Upload Meal Image</p>
+              <p className="text-xs text-zinc-500 mt-1 mb-4">Automatic client-side optimization (800×800 WebP)</p>
+
+              {/* Action Buttons for explicit mobile choice */}
+              <div className="flex flex-wrap items-center justify-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => cameraInputRef.current?.click()}
+                  className="px-4 py-2 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 font-semibold rounded-xl text-xs flex items-center gap-2 transition"
+                >
+                  <Camera className="w-4 h-4 text-emerald-400" />
+                  <span>Take Photo</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => galleryInputRef.current?.click()}
+                  className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/60 text-zinc-200 font-semibold rounded-xl text-xs flex items-center gap-2 transition"
+                >
+                  <Upload className="w-4 h-4 text-zinc-400" />
+                  <span>Choose from Gallery</span>
+                </button>
+              </div>
             </div>
           )}
         </div>
