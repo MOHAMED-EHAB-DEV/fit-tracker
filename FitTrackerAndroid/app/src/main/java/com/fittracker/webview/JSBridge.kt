@@ -100,11 +100,14 @@ class JSBridge(
     }
 
     /**
-     * Returns JSON metadata about the installed native app version.
+     * Returns JSON metadata about the installed native app version from PackageManager.
      */
     @JavascriptInterface
     fun getAppVersion(): String {
-        return """{"versionName":"${com.fittracker.BuildConfig.VERSION_NAME}","versionCode":${com.fittracker.BuildConfig.VERSION_CODE}}"""
+        val updateMgr = com.fittracker.update.AppUpdateManager(context)
+        val vName = updateMgr.getInstalledVersionName()
+        val vCode = updateMgr.getInstalledVersionCode()
+        return """{"versionName":"$vName","versionCode":$vCode}"""
     }
 
     /**

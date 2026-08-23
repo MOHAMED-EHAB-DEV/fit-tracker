@@ -2,16 +2,13 @@ package com.fittracker.update
 
 import android.app.Activity
 import android.app.Dialog
-import android.app.DownloadManager
-import android.content.BroadcastReceiver
+import android.app.ProgressDialog
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.os.Build
-import android.os.Environment
 import android.provider.Settings
 import android.text.Spanned
 import android.text.method.LinkMovementMethod
@@ -32,11 +29,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Handles Over-The-Air (OTA) APK updates directly from GitHub Releases with Markdown changelog rendering.
+ * Handles Over-The-Air (OTA) APK updates directly from GitHub Releases with streaming progress and Markdown rendering.
  */
 class AppUpdateManager(private val context: Context) {
 
@@ -60,6 +58,35 @@ class AppUpdateManager(private val context: Context) {
     )
 
     /**
+     * Gets the real installed package version name from Android PackageManager.
+     */
+    fun getInstalledVersionName(): String {
+        return try {
+            val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+            pInfo.versionName?.removePrefix("v")?.trim() ?: BuildConfig.VERSION_NAME.removePrefix("v").trim()
+        } catch (e: Exception) {
+            BuildConfig.VERSION_NAME.removePrefix("v").trim()
+        }
+    }
+
+    /**
+     * Gets the real installed package version code from Android PackageManager.
+     */
+    fun getInstalledVersionCode(): Long {
+        return try {
+            val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                pInfo.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                pInfo.versionCode.toLong()
+            }
+        } catch (e: Exception) {
+            BuildConfig.VERSION_CODE.toLong()
+        }
+    }
+
+    /**
      * Checks if a new release is available on GitHub and prompts user with styled changelog.
      */
     fun checkForUpdates(
@@ -74,7 +101,10 @@ class AppUpdateManager(private val context: Context) {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                Log.d(TAG, "Checking for updates at $RELEASES_API_URL... Local: v${BuildConfig.VERSION_NAME} (code: ${BuildConfig.VERSION_CODE})")
+                val localName = getInstalledVersionName()
+                val localCode = getInstalledVersionCode()
+                Log.d(TAG, "Checking for updates at $RELEASES_API_URL... Local: v$localName (code: $localCode)")
+
                 val release = fetchLatestRelease()
 
                 withContext(Dispatchers.Main) {
@@ -82,28 +112,28 @@ class AppUpdateManager(private val context: Context) {
 
                     if (release != null) {
                         val hasUpdate = isNewerVersion(release.versionName, release.versionCode)
-                        Log.d(TAG, "Fetched release v${release.versionName} (code: ${release.versionCode}). Update available: $hasUpdate")
+                        Log.d(TAG, "Fetched remote release v${release.versionName} (code: ${release.versionCode}). Update available: $hasUpdate")
 
                         if (hasUpdate) {
                             onChecked?.invoke(true, release.versionName)
                             showCustomUpdateDialog(activity, release)
                         } else {
-                            onChecked?.invoke(false, BuildConfig.VERSION_NAME)
+                            onChecked?.invoke(false, localName)
                             if (!silent) {
                                 Toast.makeText(
                                     activity,
-                                    "FitTracker is up to date (v${BuildConfig.VERSION_NAME})",
+                                    "FitTracker is up to date (v$localName)",
                                     Toast.LENGTH_SHORT
                                 ).show()
                             }
                         }
                     } else {
                         Log.w(TAG, "No release info could be parsed from GitHub.")
-                        onChecked?.invoke(false, BuildConfig.VERSION_NAME)
+                        onChecked?.invoke(false, localName)
                         if (!silent) {
                             Toast.makeText(
                                 activity,
-                                "FitTracker is up to date (v${BuildConfig.VERSION_NAME})",
+                                "FitTracker is up to date (v$localName)",
                                 Toast.LENGTH_SHORT
                             ).show()
                         }
@@ -126,23 +156,39 @@ class AppUpdateManager(private val context: Context) {
     }
 
     /**
+     * Fetches text content from URL following HTTP 301/302/307 redirects.
+     */
+    private fun fetchTextWithRedirects(urlString: String): String? {
+        var currentUrl = urlString
+        var redirects = 0
+        while (redirects < 5) {
+            val conn = URL(currentUrl).openConnection() as HttpURLConnection
+            conn.instanceFollowRedirects = true
+            conn.setRequestProperty("User-Agent", "FitTracker-Android-App")
+            conn.connectTimeout = 8000
+            conn.readTimeout = 8000
+
+            val status = conn.responseCode
+            if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
+                val location = conn.getHeaderField("Location") ?: break
+                currentUrl = location
+                redirects++
+                continue
+            }
+            if (status == 200) {
+                return conn.inputStream.bufferedReader().use { it.readText() }
+            }
+            break
+        }
+        return null
+    }
+
+    /**
      * Fetches the latest release metadata from GitHub Releases API and resolves version.json.
      */
     private fun fetchLatestRelease(): ReleaseInfo? {
-        val url = URL(RELEASES_API_URL)
-        val conn = url.openConnection() as HttpURLConnection
-        conn.setRequestProperty("User-Agent", "FitTracker-Android-App")
-        conn.setRequestProperty("Accept", "application/vnd.github.v3+json")
-        conn.connectTimeout = 8000
-        conn.readTimeout = 8000
-
-        if (conn.responseCode != 200) {
-            Log.w(TAG, "GitHub API returned HTTP ${conn.responseCode}")
-            return null
-        }
-
-        val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
-        val root = JSONObject(jsonStr)
+        val rootJsonStr = fetchTextWithRedirects(RELEASES_API_URL) ?: return null
+        val root = JSONObject(rootJsonStr)
 
         val tagName = root.optString("tag_name", "").trim()
         val releaseTitle = root.optString("name", "").trim()
@@ -169,19 +215,15 @@ class AppUpdateManager(private val context: Context) {
             return null
         }
 
-        // 1. Try to fetch metadata directly from version.json asset if available
+        // 1. Try to fetch metadata directly from version.json asset following redirects
         var resolvedVersionName: String? = null
         var resolvedVersionCode = 0
         var resolvedNotes: String = body
 
         if (!versionJsonUrl.isNullOrBlank()) {
             try {
-                val vConn = URL(versionJsonUrl).openConnection() as HttpURLConnection
-                vConn.setRequestProperty("User-Agent", "FitTracker-Android-App")
-                vConn.connectTimeout = 5000
-                vConn.readTimeout = 5000
-                if (vConn.responseCode == 200) {
-                    val vText = vConn.inputStream.bufferedReader().use { it.readText() }
+                val vText = fetchTextWithRedirects(versionJsonUrl)
+                if (!vText.isNullOrBlank()) {
                     val vJson = JSONObject(vText)
                     resolvedVersionName = vJson.optString("versionName", "")
                     resolvedVersionCode = vJson.optInt("versionCode", 0)
@@ -189,13 +231,14 @@ class AppUpdateManager(private val context: Context) {
                     if (customNotes.isNotBlank()) {
                         resolvedNotes = customNotes
                     }
+                    Log.d(TAG, "Successfully resolved version.json asset: v$resolvedVersionName (code: $resolvedVersionCode)")
                 }
             } catch (e: Exception) {
                 Log.d(TAG, "version.json download failed: ${e.localizedMessage}")
             }
         }
 
-        // 2. Fallback: Extract SemVer from release title (e.g. "FitTracker Android App v1.0.3")
+        // 2. Fallback: Extract SemVer from release title (e.g. "FitTracker Android App v1.0.4")
         if (resolvedVersionName.isNullOrBlank()) {
             val semverRegex = Regex("""\bv?(\d+\.\d+\.\d+)\b""")
             val matchInTitle = semverRegex.find(releaseTitle)
@@ -214,26 +257,27 @@ class AppUpdateManager(private val context: Context) {
     }
 
     /**
-     * Compares incoming version with local BuildConfig.VERSION_NAME and BuildConfig.VERSION_CODE.
+     * Compares incoming version with local installed version and version code.
      */
     private fun isNewerVersion(remoteVersion: String, remoteCode: Int): Boolean {
-        val currentVersion = BuildConfig.VERSION_NAME.removePrefix("v").trim()
+        val localName = getInstalledVersionName()
+        val localCode = getInstalledVersionCode()
         val cleanRemote = remoteVersion.removePrefix("v").trim()
 
-        Log.d(TAG, "Comparing local: [name=$currentVersion, code=${BuildConfig.VERSION_CODE}] vs remote: [name=$cleanRemote, code=$remoteCode]")
+        Log.d(TAG, "Comparing local: [name=$localName, code=$localCode] vs remote: [name=$cleanRemote, code=$remoteCode]")
 
-        // 1. If remote versionCode is valid (> 0), integer comparison is 100% accurate
-        if (remoteCode > 0 && BuildConfig.VERSION_CODE > 0) {
-            return remoteCode > BuildConfig.VERSION_CODE
+        // 1. If remote versionCode is valid (> 0), integer comparison is primary
+        if (remoteCode > 0 && localCode > 0) {
+            return remoteCode > localCode
         }
 
         // 2. SemVer comparison: major.minor.patch
-        if (cleanRemote.isBlank() || cleanRemote.equals("latest", ignoreCase = true) || currentVersion == cleanRemote) {
+        if (cleanRemote.isBlank() || cleanRemote.equals("latest", ignoreCase = true) || localName == cleanRemote) {
             return false
         }
 
         return try {
-            val currentParts = currentVersion.split(".").map { it.toIntOrNull() ?: 0 }
+            val currentParts = localName.split(".").map { it.toIntOrNull() ?: 0 }
             val remoteParts = cleanRemote.split(".").map { it.toIntOrNull() ?: 0 }
             val maxLen = maxOf(currentParts.size, remoteParts.size)
 
@@ -245,7 +289,7 @@ class AppUpdateManager(private val context: Context) {
             }
             false
         } catch (e: Exception) {
-            cleanRemote != currentVersion
+            cleanRemote != localName
         }
     }
 
@@ -385,49 +429,106 @@ class AppUpdateManager(private val context: Context) {
     }
 
     /**
-     * Downloads APK using Android's system DownloadManager and triggers package installer on finish.
+     * High-speed, streaming in-app APK downloader with progress dialog and 302 redirect resolution.
      */
     fun downloadAndInstallApk(activity: Activity, apkUrl: String) {
-        Toast.makeText(activity, "Downloading update in background...", Toast.LENGTH_SHORT).show()
-
-        val fileName = "FitTracker-update.apk"
-        val storageDir = activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-            ?: activity.cacheDir
-        val apkFile = File(storageDir, fileName)
-
-        if (apkFile.exists()) {
-            apkFile.delete()
+        val progressDialog = ProgressDialog(activity).apply {
+            setTitle("Downloading FitTracker Update")
+            setMessage("Please wait while the update is downloading...")
+            setProgressStyle(ProgressDialog.STYLE_HORIZONTAL)
+            isIndeterminate = false
+            max = 100
+            setCancelable(false)
+            show()
         }
 
-        val request = DownloadManager.Request(Uri.parse(apkUrl)).apply {
-            setTitle("FitTracker Update")
-            setDescription("Downloading latest version...")
-            setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            setDestinationUri(Uri.fromFile(apkFile))
-            setMimeType("application/vnd.android.package-archive")
-        }
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val apkFile = File(activity.cacheDir, "FitTracker-update.apk")
+                if (apkFile.exists()) {
+                    apkFile.delete()
+                }
 
-        val downloadManager = activity.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val downloadId = downloadManager.enqueue(request)
+                var currentUrl = apkUrl
+                var redirects = 0
+                var conn: HttpURLConnection? = null
 
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(ctxt: Context?, intent: Intent?) {
-                val id = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
-                if (id == downloadId) {
+                while (redirects < 5) {
+                    conn = URL(currentUrl).openConnection() as HttpURLConnection
+                    conn.instanceFollowRedirects = true
+                    conn.setRequestProperty("User-Agent", "FitTracker-Android-App")
+                    conn.connectTimeout = 15000
+                    conn.readTimeout = 15000
+
+                    val status = conn.responseCode
+                    if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
+                        val location = conn.getHeaderField("Location") ?: break
+                        currentUrl = location
+                        redirects++
+                        continue
+                    }
+                    break
+                }
+
+                if (conn == null || conn.responseCode != 200) {
+                    throw Exception("Server returned HTTP ${conn?.responseCode}")
+                }
+
+                val fileLength = conn.contentLength
+                val input = conn.inputStream
+                val output = FileOutputStream(apkFile)
+
+                val data = ByteArray(8192)
+                var total: Long = 0
+                var count: Int
+
+                while (input.read(data).also { count = it } != -1) {
+                    total += count
+                    if (fileLength > 0) {
+                        val progress = ((total * 100) / fileLength).toInt()
+                        withContext(Dispatchers.Main) {
+                            progressDialog.progress = progress
+                        }
+                    }
+                    output.write(data, 0, count)
+                }
+
+                output.flush()
+                output.close()
+                input.close()
+
+                withContext(Dispatchers.Main) {
                     try {
-                        activity.unregisterReceiver(this)
+                        if (progressDialog.isShowing && !activity.isFinishing && !activity.isDestroyed) {
+                            progressDialog.dismiss()
+                        }
                     } catch (_: Exception) {}
 
-                    installApk(activity, apkFile)
+                    if (apkFile.exists() && apkFile.length() > 500_000) {
+                        installApk(activity, apkFile)
+                    } else {
+                        Toast.makeText(
+                            activity,
+                            "Downloaded APK is incomplete or corrupted. Please try again.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Download error: ${e.localizedMessage}", e)
+                withContext(Dispatchers.Main) {
+                    try {
+                        if (progressDialog.isShowing && !activity.isFinishing && !activity.isDestroyed) {
+                            progressDialog.dismiss()
+                        }
+                    } catch (_: Exception) {}
+                    Toast.makeText(
+                        activity,
+                        "Failed to download update: ${e.localizedMessage}",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             }
-        }
-
-        val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            activity.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
-        } else {
-            activity.registerReceiver(receiver, filter)
         }
     }
 
