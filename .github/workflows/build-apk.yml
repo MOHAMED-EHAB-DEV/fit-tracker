@@ -5,8 +5,15 @@ on:
     branches: [main, master]
     paths:
       - 'FitTrackerAndroid/**'
+      - 'version.json'
+      - 'RELEASE_NOTES.md'
       - '.github/workflows/build-apk.yml'
   workflow_dispatch:
+    inputs:
+      release_notes:
+        description: 'Changelog / Release Notes (Markdown supported)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -35,21 +42,52 @@ jobs:
         working-directory: FitTrackerAndroid
         run: gradle assembleDebug --stacktrace
 
-      - name: Prepare Release Artifacts
+      - name: Prepare Release Notes & Version Artifacts
         id: prep
         run: |
           mkdir -p release-output
-          cp FitTrackerAndroid/app/build/outputs/apk/debug/app-debug.apk release-output/FitTracker.apk
           
-          # Generate version metadata JSON
-          cat <<EOF > release-output/version.json
-          {
-            "versionCode": ${{ github.run_number }},
-            "versionName": "1.0.${{ github.run_number }}",
-            "commit": "${{ github.sha }}",
-            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          }
+          # Extract version from version.json
+          VERSION_NAME=$(node -p "require('./version.json').versionName || '1.0.0'")
+          VERSION_CODE=$(node -p "require('./version.json').versionCode || ${{ github.run_number }}")
+          
+          echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
+          echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_ENV
+
+          cp FitTrackerAndroid/app/build/outputs/apk/debug/app-debug.apk release-output/FitTracker.apk
+          cp FitTrackerAndroid/app/build/outputs/apk/debug/app-debug.apk "release-output/FitTracker-v${VERSION_NAME}.apk"
+          
+          # Determine Release Notes
+          if [ -n "${{ github.event.inputs.release_notes }}" ]; then
+            cat << 'EOF' > release-output/notes.txt
+          ${{ github.event.inputs.release_notes }}
           EOF
+          elif [ -f RELEASE_NOTES.md ]; then
+            cp RELEASE_NOTES.md release-output/notes.txt
+          elif [ -f FitTrackerAndroid/RELEASE_NOTES.md ]; then
+            cp FitTrackerAndroid/RELEASE_NOTES.md release-output/notes.txt
+          else
+            cat << 'EOF' > release-output/notes.txt
+          ### 🚀 What's New
+          - Automated build updates and optimizations.
+          - Performance improvements.
+          EOF
+          fi
+
+          # Generate release version metadata
+          node -e '
+            const fs = require("fs");
+            const vData = JSON.parse(fs.readFileSync("version.json", "utf8"));
+            const notes = fs.readFileSync("release-output/notes.txt", "utf8");
+            const data = {
+              versionCode: vData.versionCode || ${{ github.run_number }},
+              versionName: vData.versionName || "1.0.0",
+              commit: "${{ github.sha }}",
+              timestamp: new Date().toISOString(),
+              releaseNotes: notes
+            };
+            fs.writeFileSync("release-output/version.json", JSON.stringify(data, null, 2));
+          '
 
       - name: Upload Build Artifacts to Actions
         uses: actions/upload-artifact@v4
@@ -58,23 +96,18 @@ jobs:
           path: release-output/FitTracker.apk
           retention-days: 14
 
-      # Create/Update the 'latest' rolling release for automatic in-app updates
+      # Create/Update the 'latest' rolling release with Markdown body
       - name: Publish to GitHub Releases (Latest)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: "FitTracker Android App (Latest)"
-          body: |
-            ## Automated Build #${{ github.run_number }}
-            - **Commit**: `${{ github.sha }}`
-            - **Branch**: `${{ github.ref_name }}`
-            - **Built at**: $(date -u)
-            
-            Download `FitTracker.apk` below or let your installed app auto-update.
+          name: "FitTracker Android App v${{ env.VERSION_NAME }}"
+          body_path: release-output/notes.txt
           draft: false
           prerelease: false
           files: |
             release-output/FitTracker.apk
+            release-output/FitTracker-v${{ env.VERSION_NAME }}.apk
             release-output/version.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

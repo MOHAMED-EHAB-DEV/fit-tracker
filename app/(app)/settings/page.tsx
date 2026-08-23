@@ -2,7 +2,8 @@
 
 import React, { useState } from "react";
 import { useUser } from "@/context/UserContext";
-import { Settings, User, Target, Shield, Check, Loader2, AlertCircle } from "lucide-react";
+import { Settings, User, Target, Shield, Check, Loader2, AlertCircle, Smartphone, RefreshCw } from "lucide-react";
+import versionData from "@/version.json";
 import { ActivityLevel, FitnessGoal, Sex } from "@/types/fitness";
 import { SEX_OPTIONS, ACTIVITY_LEVELS, FITNESS_GOALS } from "@/constants/user";
 
@@ -320,6 +321,36 @@ export function SettingsPage() {
           className="px-4 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-semibold border border-red-500/30 transition"
         >
           Log Out All Other Devices
+        </button>
+      </div>
+
+      {/* App & Version Information */}
+      <div className="p-6 rounded-2xl bg-zinc-900/80 border border-zinc-800/80 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-white font-bold text-base">
+            <Smartphone className="w-5 h-5 text-emerald-400" />
+            <span>App & Version Information</span>
+          </div>
+          <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
+            v{versionData.versionName} (Build {versionData.versionCode})
+          </span>
+        </div>
+        <p className="text-xs text-zinc-400">
+          Running FitTracker {typeof window !== "undefined" && (window as any).AndroidBridge ? "Android Native App" : "Web Platform"}. Automated over-the-air updates check for new features on app launch.
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            if (typeof window !== "undefined" && (window as any).AndroidBridge?.checkForUpdate) {
+              (window as any).AndroidBridge.checkForUpdate();
+            } else {
+              window.open("https://github.com/MOHAMED-EHAB-DEV/fit-tracker/releases/latest", "_blank");
+            }
+          }}
+          className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold border border-zinc-700/60 flex items-center gap-2 transition"
+        >
+          <RefreshCw className="w-3.5 h-3.5 text-emerald-400" />
+          <span>Check for Updates</span>
         </button>
       </div>
     </div>

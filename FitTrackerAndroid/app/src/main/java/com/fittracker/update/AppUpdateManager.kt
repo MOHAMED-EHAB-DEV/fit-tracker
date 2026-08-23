@@ -1,20 +1,31 @@
 package com.fittracker.update
 
 import android.app.Activity
+import android.app.Dialog
 import android.app.DownloadManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.Settings
+import android.text.Spanned
+import android.text.method.LinkMovementMethod
 import android.util.Log
+import android.view.LayoutInflater
+import android.view.ViewGroup
+import android.view.Window
+import android.widget.Button
+import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.core.content.FileProvider
+import androidx.core.text.HtmlCompat
 import com.fittracker.BuildConfig
+import com.fittracker.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -25,7 +36,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Handles Over-The-Air (OTA) APK updates directly from GitHub Releases.
+ * Handles Over-The-Air (OTA) APK updates directly from GitHub Releases with Markdown changelog rendering.
  */
 class AppUpdateManager(private val context: Context) {
 
@@ -44,7 +55,7 @@ class AppUpdateManager(private val context: Context) {
     )
 
     /**
-     * Checks if a new release is available on GitHub and prompts user if an update exists.
+     * Checks if a new release is available on GitHub and prompts user with styled changelog.
      */
     fun checkForUpdates(
         activity: Activity,
@@ -59,7 +70,7 @@ class AppUpdateManager(private val context: Context) {
 
                     if (release != null && isNewerVersion(release.tagName)) {
                         onChecked?.invoke(true, release.tagName)
-                        showUpdateDialog(activity, release)
+                        showCustomUpdateDialog(activity, release)
                     } else {
                         onChecked?.invoke(false, BuildConfig.VERSION_NAME)
                         if (!silent) {
@@ -107,7 +118,7 @@ class AppUpdateManager(private val context: Context) {
         val root = JSONObject(jsonStr)
 
         val tagName = root.optString("tag_name", "").trim()
-        val body = root.optString("body", "Bug fixes and performance enhancements.")
+        val body = root.optString("body", "### What's New\n- Bug fixes and performance improvements.")
         val assets = root.optJSONArray("assets") ?: return null
 
         var apkUrl: String? = null
@@ -132,7 +143,7 @@ class AppUpdateManager(private val context: Context) {
     }
 
     /**
-     * Compare incoming tag/version string with local BuildConfig.VERSION_NAME.
+     * Compares incoming tag/version string with local BuildConfig.VERSION_NAME.
      */
     private fun isNewerVersion(remoteTag: String): Boolean {
         val currentVersion = BuildConfig.VERSION_NAME.removePrefix("v").trim()
@@ -155,30 +166,106 @@ class AppUpdateManager(private val context: Context) {
             }
             false
         } catch (e: Exception) {
-            // Fallback string difference check
             remoteTag != "v$currentVersion" && remoteTag != currentVersion
         }
     }
 
     /**
-     * Displays a clean update dialog informing the user of the new version and changelog.
+     * Converts Markdown text with H1, H2, H3, bold, bullet points into styled Android HTML.
      */
-    private fun showUpdateDialog(activity: Activity, release: ReleaseInfo) {
-        val cleanNotes = if (release.releaseNotes.length > 250) {
-            release.releaseNotes.substring(0, 250) + "..."
-        } else {
-            release.releaseNotes
+    private fun formatMarkdownToSpanned(markdown: String): Spanned {
+        var text = markdown.trim().replace("\r\n", "\n")
+
+        // Escape standard HTML characters
+        text = text.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+
+        val lines = text.split("\n")
+        val formattedLines = mutableListOf<String>()
+
+        for (rawLine in lines) {
+            val line = rawLine.trimEnd()
+            when {
+                line.startsWith("### ") -> {
+                    val title = line.removePrefix("### ").trim()
+                    formattedLines.add("<br/><font color=\"#34D399\"><b>$title</b></font><br/>")
+                }
+                line.startsWith("## ") -> {
+                    val title = line.removePrefix("## ").trim()
+                    formattedLines.add("<br/><font color=\"#10B981\"><b><big>$title</big></b></font><br/>")
+                }
+                line.startsWith("# ") -> {
+                    val title = line.removePrefix("# ").trim()
+                    formattedLines.add("<br/><font color=\"#10B981\"><b><big><big>$title</big></big></b></font><br/>")
+                }
+                line.startsWith("- ") || line.startsWith("* ") -> {
+                    val item = line.substring(2).trim()
+                    formattedLines.add("<font color=\"#34D399\">&#8226;</font>&nbsp;&nbsp;$item<br/>")
+                }
+                line.isBlank() -> {
+                    formattedLines.add("<br/>")
+                }
+                else -> {
+                    formattedLines.add("$line<br/>")
+                }
+            }
         }
 
-        AlertDialog.Builder(activity)
-            .setTitle("FitTracker Update Available 🚀")
-            .setMessage("Version ${release.tagName} is available.\n\n$cleanNotes\n\nWould you like to download and install the update now?")
-            .setPositiveButton("Update Now") { _, _ ->
-                checkInstallPermissionAndDownload(activity, release.apkDownloadUrl)
-            }
-            .setNegativeButton("Later", null)
-            .setCancelable(true)
-            .show()
+        var html = formattedLines.joinToString("")
+
+        // Bold: **text** or __text__
+        html = html.replace(Regex("\\*\\*(.*?)\\*\\*"), "<b>$1</b>")
+        html = html.replace(Regex("__(.*?)__"), "<b>$1</b>")
+
+        // Italic: *text* or _text_
+        html = html.replace(Regex("(?<!\\*)\\*(?!\\*)(.*?)(?<!\\*)\\*(?!\\*)"), "<i>$1</i>")
+
+        // Code spans: `code`
+        html = html.replace(Regex("`([^`]+)`"), "<font color=\"#6EE7B7\"><tt>$1</tt></font>")
+
+        return HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_LEGACY)
+    }
+
+    /**
+     * Displays a custom modal dialog rendering markdown changelog with Dark + Emerald theme.
+     */
+    private fun showCustomUpdateDialog(activity: Activity, release: ReleaseInfo) {
+        val dialog = Dialog(activity)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+
+        val view = LayoutInflater.from(activity).inflate(R.layout.dialog_app_update, null)
+        dialog.setContentView(view)
+
+        // Make window background transparent so rounded card corners show
+        dialog.window?.apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            setLayout(
+                (activity.resources.displayMetrics.widthPixels * 0.90).toInt(),
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        val tvVersionBadge = view.findViewById<TextView>(R.id.tvVersionBadge)
+        val tvReleaseNotes = view.findViewById<TextView>(R.id.tvReleaseNotes)
+        val btnLater = view.findViewById<Button>(R.id.btnLater)
+        val btnUpdateNow = view.findViewById<Button>(R.id.btnUpdateNow)
+
+        tvVersionBadge.text = release.tagName
+        tvReleaseNotes.text = formatMarkdownToSpanned(release.releaseNotes)
+        tvReleaseNotes.movementMethod = LinkMovementMethod.getInstance()
+
+        btnLater.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        btnUpdateNow.setOnClickListener {
+            dialog.dismiss()
+            checkInstallPermissionAndDownload(activity, release.apkDownloadUrl)
+        }
+
+        dialog.setCancelable(true)
+        dialog.show()
     }
 
     /**
@@ -196,7 +283,6 @@ class AppUpdateManager(private val context: Context) {
                     data = Uri.parse("package:${activity.packageName}")
                 }
                 activity.startActivity(intent)
-                // Also trigger download so it's ready when permission is granted
             }
         }
 
