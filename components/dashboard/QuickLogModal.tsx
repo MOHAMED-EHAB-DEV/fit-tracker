@@ -178,13 +178,12 @@ export function QuickLogModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           steps: parseInt(stepsCount, 10),
-          source: "manual",
         }),
       });
 
       if (!res.ok) throw new Error("Failed to sync steps");
 
-      setSuccessMsg("Steps logged!");
+      setSuccessMsg("Steps synchronized!");
       router.refresh();
       setTimeout(() => {
         onClose();
@@ -204,7 +203,7 @@ export function QuickLogModal({
       size="md"
       title={
         <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400">
+          <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400" aria-hidden="true">
             <Plus className="w-4 h-4" />
           </div>
           <span>Quick Log</span>
@@ -213,70 +212,78 @@ export function QuickLogModal({
     >
       <div className="space-y-4">
         {/* Tab Navigation */}
-        <div className="grid grid-cols-4 p-1.5 bg-zinc-950/80 border border-zinc-800 rounded-2xl text-xs font-semibold gap-1">
+        <div role="tablist" aria-label="Quick Log Categories" className="grid grid-cols-4 p-1.5 bg-zinc-950/80 border border-zinc-800 rounded-2xl text-xs font-semibold gap-1 select-none">
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === "food"}
             onClick={() => setActiveTab("food")}
-            className={`py-2 px-2 rounded-xl flex items-center justify-center gap-1.5 transition ${
+            className={`py-2 px-2 min-h-[40px] rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
               activeTab === "food"
                 ? "bg-zinc-800 text-emerald-400 shadow-sm"
                 : "text-zinc-400 hover:text-zinc-200"
             }`}
           >
-            <UtensilsCrossed className="w-3.5 h-3.5" />
+            <UtensilsCrossed className="w-3.5 h-3.5" aria-hidden="true" />
             <span>Food</span>
           </button>
 
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === "water"}
             onClick={() => setActiveTab("water")}
-            className={`py-2 px-2 rounded-xl flex items-center justify-center gap-1.5 transition ${
+            className={`py-2 px-2 min-h-[40px] rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${
               activeTab === "water"
                 ? "bg-zinc-800 text-cyan-400 shadow-sm"
                 : "text-zinc-400 hover:text-zinc-200"
             }`}
           >
-            <Droplets className="w-3.5 h-3.5" />
+            <Droplets className="w-3.5 h-3.5" aria-hidden="true" />
             <span>Water</span>
           </button>
 
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === "weight"}
             onClick={() => setActiveTab("weight")}
-            className={`py-2 px-2 rounded-xl flex items-center justify-center gap-1.5 transition ${
+            className={`py-2 px-2 min-h-[40px] rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
               activeTab === "weight"
                 ? "bg-zinc-800 text-amber-400 shadow-sm"
                 : "text-zinc-400 hover:text-zinc-200"
             }`}
           >
-            <Scale className="w-3.5 h-3.5" />
+            <Scale className="w-3.5 h-3.5" aria-hidden="true" />
             <span>Weight</span>
           </button>
 
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === "steps"}
             onClick={() => setActiveTab("steps")}
-            className={`py-2 px-2 rounded-xl flex items-center justify-center gap-1.5 transition ${
+            className={`py-2 px-2 min-h-[40px] rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
               activeTab === "steps"
                 ? "bg-zinc-800 text-blue-400 shadow-sm"
                 : "text-zinc-400 hover:text-zinc-200"
             }`}
           >
-            <Footprints className="w-3.5 h-3.5" />
+            <Footprints className="w-3.5 h-3.5" aria-hidden="true" />
             <span>Steps</span>
           </button>
         </div>
 
         {/* Status Alerts */}
         {successMsg && (
-          <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2">
-            <Check className="w-4 h-4" />
+          <div role="status" className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2">
+            <Check className="w-4 h-4" aria-hidden="true" />
             <span>{successMsg}</span>
           </div>
         )}
 
         {errorMsg && (
-          <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-semibold">
+          <div role="alert" className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-semibold">
             {errorMsg}
           </div>
         )}
@@ -285,81 +292,89 @@ export function QuickLogModal({
         {activeTab === "food" && (
           <form onSubmit={handleLogFood} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-zinc-400 mb-1">
-                Description / Item
+              <label htmlFor="quick-food-desc" className="block text-xs font-semibold text-zinc-400 mb-1 select-none">
+                Description / Item *
               </label>
               <input
+                id="quick-food-desc"
                 type="text"
+                required
                 placeholder="e.g. Protein shake + 1 Banana"
                 value={mealDescription}
                 onChange={(e) => setMealDescription(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1">
+                <label htmlFor="quick-food-cal" className="block text-xs font-semibold text-zinc-400 mb-1 select-none">
                   Calories (kcal) *
                 </label>
                 <input
+                  id="quick-food-cal"
                   type="number"
+                  required
                   placeholder="350"
                   value={mealCalories}
                   onChange={(e) => setMealCalories(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                  className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-emerald-400 mb-1">
+                <label htmlFor="quick-food-protein" className="block text-xs font-semibold text-emerald-400 mb-1 select-none">
                   Protein (g)
                 </label>
                 <input
+                  id="quick-food-protein"
                   type="number"
                   step="0.1"
                   placeholder="30"
                   value={mealProtein}
                   onChange={(e) => setMealProtein(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                  className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-2.5">
               <div>
-                <label className="block text-[10px] font-semibold text-amber-400 mb-1">
+                <label htmlFor="quick-food-carbs" className="block text-[10px] font-semibold text-amber-400 mb-1 select-none">
                   Carbs (g)
                 </label>
                 <input
+                  id="quick-food-carbs"
                   type="number"
                   step="0.1"
                   placeholder="25"
                   value={mealCarbs}
                   onChange={(e) => setMealCarbs(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs"
+                  className="w-full px-3 py-2 min-h-[40px] bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-semibold text-orange-400 mb-1">
+                <label htmlFor="quick-food-fat" className="block text-[10px] font-semibold text-orange-400 mb-1 select-none">
                   Fat (g)
                 </label>
                 <input
+                  id="quick-food-fat"
                   type="number"
                   step="0.1"
                   placeholder="5"
                   value={mealFat}
                   onChange={(e) => setMealFat(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs"
+                  className="w-full px-3 py-2 min-h-[40px] bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-semibold text-zinc-400 mb-1">
+                <label htmlFor="quick-food-type" className="block text-[10px] font-semibold text-zinc-400 mb-1 select-none">
                   Meal Type
                 </label>
                 <select
+                  id="quick-food-type"
                   value={mealType}
                   onChange={(e) => setMealType(e.target.value as MealType)}
-                  className="w-full px-2 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs"
+                  className="w-full px-2 py-2 min-h-[40px] bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 cursor-pointer"
                 >
                   {MEAL_TYPE_OPTIONS.map((t) => (
                     <option key={t.value} value={t.value}>
@@ -373,9 +388,10 @@ export function QuickLogModal({
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full py-3 bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-bold rounded-xl text-sm transition flex items-center justify-center gap-2"
+              aria-busy={isSubmitting}
+              className="w-full py-3 min-h-[44px] bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-bold rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-98 disabled:opacity-50"
             >
-              {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>Log Food</span>}
+              {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <span>Log Food</span>}
             </button>
           </form>
         )}
@@ -394,10 +410,12 @@ export function QuickLogModal({
                   type="button"
                   onClick={() => handleLogWater(ml)}
                   disabled={isSubmitting}
-                  className="py-4 px-3 rounded-2xl bg-zinc-950 border border-cyan-500/20 hover:border-cyan-500/60 hover:bg-cyan-500/10 text-cyan-400 font-bold transition flex flex-col items-center gap-1 group active:scale-95"
+                  aria-busy={isSubmitting}
+                  aria-label={`Add ${ml} milliliters of water`}
+                  className="py-4 px-3 min-h-[48px] rounded-2xl bg-zinc-950 border border-cyan-500/20 hover:border-cyan-500/60 hover:bg-cyan-500/10 text-cyan-400 font-bold transition flex flex-col items-center gap-1 group active:scale-95 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:opacity-50"
                 >
-                  <Droplets className="w-5 h-5 group-hover:scale-110 transition-transform text-cyan-400" />
-                  <span className="text-base text-white">+{ml} ml</span>
+                  <Droplets className="w-5 h-5 group-hover:scale-110 transition-transform text-cyan-400" aria-hidden="true" />
+                  <span className="text-base text-white tabular-nums">+{ml} ml</span>
                   <span className="text-[10px] text-zinc-500">
                     {ml === 250 ? "1 Glass" : ml === 500 ? "1 Bottle" : `${ml / 1000}L`}
                   </span>
@@ -411,39 +429,43 @@ export function QuickLogModal({
         {activeTab === "weight" && (
           <form onSubmit={handleLogWeight} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-zinc-400 mb-1">
+              <label htmlFor="quick-weight-val" className="block text-xs font-semibold text-zinc-400 mb-1 select-none">
                 Morning Bodyweight (kg) *
               </label>
               <input
+                id="quick-weight-val"
                 type="number"
                 step="0.1"
+                required
                 placeholder="e.g. 74.8"
                 value={weightKg}
                 onChange={(e) => setWeightKg(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+                className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-zinc-400 mb-1">
+              <label htmlFor="quick-weight-bf" className="block text-xs font-semibold text-zinc-400 mb-1 select-none">
                 Estimated Body Fat % (Optional)
               </label>
               <input
+                id="quick-weight-bf"
                 type="number"
                 step="0.1"
                 placeholder="e.g. 14.5"
                 value={bodyFat}
                 onChange={(e) => setBodyFat(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+                className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
               />
             </div>
 
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full py-3 bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-zinc-950 font-bold rounded-xl text-sm transition flex items-center justify-center gap-2"
+              aria-busy={isSubmitting}
+              className="w-full py-3 min-h-[44px] bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-zinc-950 font-bold rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 active:scale-98 disabled:opacity-50"
             >
-              {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>Record Weigh-In</span>}
+              {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <span>Record Weigh-In</span>}
             </button>
           </form>
         )}
@@ -453,34 +475,37 @@ export function QuickLogModal({
           <form onSubmit={handleLogSteps} className="space-y-4">
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-semibold text-zinc-400">
+                <label htmlFor="quick-steps-val" className="block text-xs font-semibold text-zinc-400 select-none">
                   Total Steps for Today *
                 </label>
                 {isNative && nativeSteps > 0 && (
                   <button
                     type="button"
                     onClick={() => setStepsCount(String(nativeSteps))}
-                    className="text-[11px] font-bold text-blue-400 hover:text-blue-300 transition flex items-center gap-1 cursor-pointer"
+                    className="text-[11px] font-bold text-blue-400 hover:text-blue-300 transition flex items-center gap-1 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 rounded"
                   >
                     <span>Use Sensor ({nativeSteps.toLocaleString()})</span>
                   </button>
                 )}
               </div>
               <input
+                id="quick-steps-val"
                 type="number"
+                required
                 placeholder="e.g. 8500"
                 value={stepsCount}
                 onChange={(e) => setStepsCount(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               />
             </div>
 
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full py-3 bg-linear-to-r from-blue-500 to-cyan-500 hover:from-blue-400 hover:to-cyan-400 text-zinc-950 font-bold rounded-xl text-sm transition flex items-center justify-center gap-2"
+              aria-busy={isSubmitting}
+              className="w-full py-3 min-h-[44px] bg-linear-to-r from-blue-500 to-cyan-500 hover:from-blue-400 hover:to-cyan-400 text-zinc-950 font-bold rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 active:scale-98 disabled:opacity-50"
             >
-              {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>Sync Steps</span>}
+              {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <span>Sync Steps</span>}
             </button>
           </form>
         )}
@@ -488,3 +513,5 @@ export function QuickLogModal({
     </Modal>
   );
 }
+
+export default QuickLogModal;

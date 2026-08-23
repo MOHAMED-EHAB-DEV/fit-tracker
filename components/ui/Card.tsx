@@ -18,7 +18,7 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-[28px] p-6 text-zinc-100 transition-all duration-300 relative overflow-hidden",
+        "rounded-[28px] p-4 sm:p-6 text-zinc-100 transition-all duration-300 relative overflow-hidden",
         isBlurred ? "backdrop-blur-2xl" : "",
         variant === "default" &&
           "bg-zinc-900/80 border border-white/10 shadow-[0_10px_40px_-15px_rgba(0,0,0,0.7)] hover:border-white/20",
@@ -27,7 +27,7 @@ export function Card({
         variant === "flat" &&
           "bg-zinc-900/40 border border-white/5",
         variant === "interactive" &&
-          "bg-zinc-900/80 border border-white/10 hover:border-emerald-500/50 shadow-lg hover:shadow-emerald-500/10 cursor-pointer active:scale-[0.99]",
+          "bg-zinc-900/80 border border-white/10 hover:border-emerald-500/50 shadow-lg hover:shadow-emerald-500/10 cursor-pointer active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-emerald-500/50",
         className
       )}
       {...props}

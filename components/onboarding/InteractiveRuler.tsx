@@ -135,7 +135,7 @@ export function InteractiveRuler({
   };
 
   // Generate tick markers centered around the current value
-  const tickRange = 15; // Number of units visible on left and right
+  const tickRange = 15;
   const ticks = [];
   const currentInt = Math.round(value);
 
@@ -145,9 +145,7 @@ export function InteractiveRuler({
       const isSemiMajor = !isMajor && (majorInterval === 10 ? i % 5 === 0 : false);
       const isMinor = !isMajor && !isSemiMajor;
 
-      // Distance in units from current value
       const diff = i - value;
-      // 14px per whole unit
       const pixelOffset = diff * 14;
 
       ticks.push({
@@ -170,7 +168,7 @@ export function InteractiveRuler({
       aria-valuenow={value}
       aria-valuetext={`${value} ${unit}`}
       onKeyDown={handleKeyDown}
-      className="flex flex-col items-center select-none space-y-5 focus:outline-none"
+      className="flex flex-col items-center select-none space-y-5 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 rounded-2xl p-2"
     >
       {/* Unit Selector Toggle */}
       {unitOptions && unitOptions.length > 1 && onUnitChange && activeUnit && (
@@ -185,9 +183,10 @@ export function InteractiveRuler({
               type="button"
               role="radio"
               aria-checked={activeUnit === opt.value}
+              tabIndex={activeUnit === opt.value ? 0 : -1}
               onClick={() => onUnitChange(opt.value)}
               className={cn(
-                "px-4 py-1.5 rounded-xl text-xs font-bold transition",
+                "px-4 py-1.5 min-h-[36px] rounded-xl text-xs font-bold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
                 activeUnit === opt.value
                   ? "bg-zinc-800 text-emerald-400 shadow-sm ring-1 ring-emerald-500/30"
                   : "text-zinc-400 hover:text-zinc-200"
@@ -209,10 +208,11 @@ export function InteractiveRuler({
               min={min}
               max={max}
               autoFocus
+              aria-label={`Enter exact value in ${unit}`}
               value={directInput}
               onChange={(e) => setDirectInput(e.target.value)}
               onBlur={handleDirectSubmit}
-              className="w-28 text-center text-4xl sm:text-5xl font-black bg-zinc-950 text-emerald-400 border border-emerald-500 rounded-2xl py-1 focus:outline-none ring-2 ring-emerald-500/50"
+              className="w-28 text-center text-4xl sm:text-5xl font-black bg-zinc-950 text-emerald-400 border border-emerald-500 rounded-2xl py-1 tabular-nums focus:outline-none ring-2 ring-emerald-500/50"
             />
             <span className="text-xl sm:text-2xl font-bold text-zinc-400">{unit}</span>
           </form>
@@ -221,9 +221,10 @@ export function InteractiveRuler({
             type="button"
             onClick={() => setIsEditingDirectly(true)}
             title="Click to type manually"
-            className="group flex items-baseline gap-2 py-1 px-4 rounded-2xl hover:bg-zinc-800/60 transition active:scale-95"
+            aria-label={`Current value ${value} ${unit}. Click to type manually.`}
+            className="group flex items-baseline gap-2 py-1 px-4 rounded-2xl hover:bg-zinc-800/60 transition active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
           >
-            <span className="text-5xl sm:text-6xl font-black text-white tracking-tight group-hover:text-emerald-400 transition-colors">
+            <span className="text-5xl sm:text-6xl font-black text-white tracking-tight group-hover:text-emerald-400 transition-colors tabular-nums">
               {value}
             </span>
             <span className="text-2xl font-bold text-emerald-400/90">{unit}</span>
@@ -231,7 +232,7 @@ export function InteractiveRuler({
         )}
 
         {secondaryDisplay && (
-          <span className="text-xs font-semibold text-zinc-500 mt-1">
+          <span className="text-xs font-semibold text-zinc-500 mt-1 tabular-nums">
             {secondaryDisplay}
           </span>
         )}
@@ -281,7 +282,7 @@ export function InteractiveRuler({
 
               {/* Number label on major ticks */}
               {t.isMajor && (
-                <span className="text-[10px] font-bold text-zinc-400 select-none">
+                <span className="text-[10px] font-bold text-zinc-400 select-none tabular-nums">
                   {t.val}
                 </span>
               )}
@@ -308,40 +309,40 @@ export function InteractiveRuler({
           type="button"
           aria-label={`Decrease by ${majorInterval}`}
           onClick={() => adjustBy(-majorInterval)}
-          className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700 transition active:scale-95"
+          className="p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700 transition active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 cursor-pointer"
         >
-          <ChevronsLeft className="w-4 h-4" />
+          <ChevronsLeft className="w-4 h-4" aria-hidden="true" />
         </button>
 
         <button
           type="button"
           aria-label={`Decrease by ${step}`}
           onClick={() => adjustBy(-step)}
-          className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700 transition active:scale-95"
+          className="p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700 transition active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 cursor-pointer"
         >
-          <ChevronLeft className="w-4 h-4" />
+          <ChevronLeft className="w-4 h-4" aria-hidden="true" />
         </button>
 
-        <span className="text-[11px] font-semibold text-zinc-500 px-3">
-          Drag ruler or tap arrows
+        <span className="text-[11px] font-semibold text-zinc-500 px-2 text-center select-none">
+          Drag ruler or use keys
         </span>
 
         <button
           type="button"
           aria-label={`Increase by ${step}`}
           onClick={() => adjustBy(step)}
-          className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700 transition active:scale-95"
+          className="p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700 transition active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 cursor-pointer"
         >
-          <ChevronRight className="w-4 h-4" />
+          <ChevronRight className="w-4 h-4" aria-hidden="true" />
         </button>
 
         <button
           type="button"
           aria-label={`Increase by ${majorInterval}`}
           onClick={() => adjustBy(majorInterval)}
-          className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700 transition active:scale-95"
+          className="p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700 transition active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 cursor-pointer"
         >
-          <ChevronsRight className="w-4 h-4" />
+          <ChevronsRight className="w-4 h-4" aria-hidden="true" />
         </button>
       </div>
     </div>

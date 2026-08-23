@@ -37,7 +37,7 @@ export function RecentPRsWidget({ prs }: RecentPRsWidgetProps) {
             Recent PRs & Milestones
           </h3>
         </div>
-        <span aria-label={`${prs.length} personal records achieved`} className="text-xs font-medium text-amber-400/90 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
+        <span aria-label={`${prs.length} personal records achieved`} className="text-xs font-medium text-amber-400/90 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20 tabular-nums">
           {prs.length} Records
         </span>
       </header>
@@ -58,7 +58,7 @@ export function RecentPRsWidget({ prs }: RecentPRsWidgetProps) {
               <Link
                 href={`/workouts/${pr.workoutId}`}
                 aria-label={`${pr.exerciseName}: ${pr.weight}kg for ${pr.reps} reps, estimated one rep max ${pr.oneRM}kg`}
-                className="flex items-center justify-between p-3 sm:p-3.5 rounded-2xl bg-zinc-950/60 border border-zinc-800/60 hover:border-amber-500/40 hover:bg-zinc-900/90 transition group"
+                className="flex items-center justify-between p-3 sm:p-3.5 rounded-2xl bg-zinc-950/60 border border-zinc-800/60 hover:border-amber-500/40 hover:bg-zinc-900/90 transition group focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
               >
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <div aria-hidden="true" className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center font-bold shrink-0 group-hover:scale-105 transition-transform">
@@ -74,7 +74,7 @@ export function RecentPRsWidget({ prs }: RecentPRsWidgetProps) {
                       </span>
                     </div>
                     <div className="flex items-center gap-2 text-[11px] text-zinc-500 mt-0.5 truncate">
-                      <span>{pr.weight} kg × {pr.reps} reps</span>
+                      <span className="tabular-nums">{pr.weight} kg × {pr.reps} reps</span>
                       <span>•</span>
                       <span className="truncate">{pr.workoutName}</span>
                     </div>
@@ -83,7 +83,7 @@ export function RecentPRsWidget({ prs }: RecentPRsWidgetProps) {
 
                 <div className="text-right shrink-0 ml-3">
                   <span className="text-[10px] text-zinc-500 uppercase block font-semibold">1RM Est.</span>
-                  <span className="text-sm font-extrabold text-amber-300">
+                  <span className="text-sm font-extrabold text-amber-300 tabular-nums">
                     {pr.oneRM} kg
                   </span>
                 </div>

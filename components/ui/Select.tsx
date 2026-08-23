@@ -125,21 +125,27 @@ export function Select<T = string | number>({
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : filteredOptions.length - 1));
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      setHighlightedIndex(0);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      setHighlightedIndex(filteredOptions.length - 1);
     } else if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       const opt = filteredOptions[highlightedIndex];
       if (opt && !opt.disabled) {
         handleSelect(opt);
       }
-    } else if (e.key === "Tab") {
+    } else if (e.key === "Escape" || e.key === "Tab") {
       setIsOpen(false);
     }
   };
 
   return (
-    <div ref={containerRef} className={cn("relative w-full space-y-1.5", className)}>
+    <div ref={containerRef} className={cn("relative w-full space-y-1.5 text-left", className)}>
       {label && (
-        <label id={`${selectId}-label`} htmlFor={`${selectId}-button`} className="block text-xs font-bold uppercase tracking-wider text-zinc-400">
+        <label id={`${selectId}-label`} htmlFor={`${selectId}-button`} className="block text-xs font-bold uppercase tracking-wider text-zinc-400 select-none">
           {label}
         </label>
       )}
@@ -155,11 +161,12 @@ export function Select<T = string | number>({
         aria-controls={isOpen ? `${selectId}-listbox` : undefined}
         aria-labelledby={label ? `${selectId}-label` : undefined}
         aria-label={ariaLabel || (!label ? placeholder : undefined)}
+        aria-activedescendant={isOpen && highlightedIndex >= 0 ? `${selectId}-opt-${highlightedIndex}` : undefined}
         disabled={disabled}
         onClick={() => !disabled && setIsOpen((prev) => !prev)}
         onKeyDown={handleKeyDown}
         className={cn(
-          "w-full px-4 py-3 bg-zinc-950/80 backdrop-blur-md border rounded-2xl text-left flex items-center justify-between gap-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 active:scale-[0.99] cursor-pointer",
+          "w-full px-4 py-3 min-h-[44px] bg-zinc-950/80 backdrop-blur-md border rounded-2xl text-left flex items-center justify-between gap-2 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 active:scale-[0.99] cursor-pointer select-none",
           error
             ? "border-red-500/80 focus:border-red-500 shadow-sm shadow-red-500/20"
             : isOpen
@@ -185,7 +192,7 @@ export function Select<T = string | number>({
               className="p-1 hover:text-white rounded-lg hover:bg-white/10 transition cursor-pointer"
               aria-label="Clear selection"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-3.5 h-3.5" aria-hidden="true" />
             </span>
           )}
           <ChevronDown
@@ -211,7 +218,7 @@ export function Select<T = string | number>({
             ref={listboxWrapperRef}
             style={floatingStyle}
             className={cn(
-              "rounded-[22px] bg-zinc-900/95 border border-white/10 shadow-[0_15px_50px_rgba(0,0,0,0.8),0_0_1px_1px_rgba(255,255,255,0.08)] backdrop-blur-2xl p-1.5 transform ring-1 ring-white/5 transition duration-150 ease-out",
+              "rounded-[22px] bg-zinc-900/95 border border-white/10 shadow-[0_15px_50px_rgba(0,0,0,0.8),0_0_1px_1px_rgba(255,255,255,0.08)] backdrop-blur-2xl p-1.5 transform ring-1 ring-white/5 transition duration-150 ease-out z-9999",
               actualSide === "top" ? "origin-bottom" : "origin-top",
               isAnimatingIn && !isAnimatingOut
                 ? "opacity-100 scale-100 translate-y-0 pointer-events-auto"
@@ -258,6 +265,7 @@ export function Select<T = string | number>({
                   return (
                     <li
                       key={String(opt.value)}
+                      id={`${selectId}-opt-${i}`}
                       role="option"
                       aria-selected={isSelected}
                       aria-disabled={opt.disabled}

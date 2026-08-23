@@ -52,7 +52,7 @@ const CustomTooltip = ({ active, payload }: any) => {
               <span className="w-2 h-2 rounded-full bg-emerald-400" />
               <span>Calories In:</span>
             </span>
-            <span className="font-bold text-white">{d.caloriesIn.toLocaleString()} kcal</span>
+            <span className="font-bold text-white tabular-nums">{d.caloriesIn.toLocaleString()} kcal</span>
           </div>
 
           <div className="flex justify-between items-center text-zinc-300">
@@ -60,18 +60,18 @@ const CustomTooltip = ({ active, payload }: any) => {
               <span className="w-2 h-2 rounded-full bg-orange-400" />
               <span>Calories Out:</span>
             </span>
-            <span className="font-bold text-white">{d.caloriesOut.toLocaleString()} kcal</span>
+            <span className="font-bold text-white tabular-nums">{d.caloriesOut.toLocaleString()} kcal</span>
           </div>
 
           <div className="flex justify-between items-center pt-1 border-t border-zinc-800/60 font-semibold">
             <span className="text-zinc-400">Net Energy:</span>
-            <span className={isDeficit ? "text-emerald-400" : "text-amber-400"}>
+            <span className={`tabular-nums ${isDeficit ? "text-emerald-400" : "text-amber-400"}`}>
               {isDeficit ? "" : "+"}
               {net.toLocaleString()} kcal ({isDeficit ? "Deficit" : "Surplus"})
             </span>
           </div>
 
-          <div className="flex justify-between items-center text-[10px] text-zinc-400 pt-1">
+          <div className="flex justify-between items-center text-[10px] text-zinc-400 pt-1 tabular-nums">
             <span>P: {d.protein}g</span>
             <span>C: {d.carbs}g</span>
             <span>F: {d.fat}g</span>
@@ -120,15 +120,17 @@ export function EnergyBalanceChart({
 
         {/* View Toggle */}
         <div
-          role="group"
+          role="radiogroup"
           aria-label="Chart view mode"
-          className="flex items-center p-1 bg-zinc-950 rounded-xl border border-zinc-800 text-xs font-semibold self-start sm:self-auto"
+          className="flex items-center p-1 bg-zinc-950 rounded-xl border border-zinc-800 text-xs font-semibold self-start sm:self-auto select-none"
         >
           <button
             type="button"
-            aria-pressed={viewMode === "energy"}
+            role="radio"
+            aria-checked={viewMode === "energy"}
+            tabIndex={viewMode === "energy" ? 0 : -1}
             onClick={() => setViewMode("energy")}
-            className={`px-3 py-1.5 rounded-lg transition ${
+            className={`px-3 py-1.5 rounded-lg transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
               viewMode === "energy"
                 ? "bg-zinc-800 text-white shadow-sm"
                 : "text-zinc-400 hover:text-zinc-200"
@@ -138,9 +140,11 @@ export function EnergyBalanceChart({
           </button>
           <button
             type="button"
-            aria-pressed={viewMode === "macros"}
+            role="radio"
+            aria-checked={viewMode === "macros"}
+            tabIndex={viewMode === "macros" ? 0 : -1}
             onClick={() => setViewMode("macros")}
-            className={`px-3 py-1.5 rounded-lg transition ${
+            className={`px-3 py-1.5 rounded-lg transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
               viewMode === "macros"
                 ? "bg-zinc-800 text-white shadow-sm"
                 : "text-zinc-400 hover:text-zinc-200"
@@ -155,14 +159,14 @@ export function EnergyBalanceChart({
       <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-4 gap-2.5 sm:gap-3">
         <article className="p-3 sm:p-3.5 rounded-2xl bg-zinc-950/60 border border-zinc-800/60 flex flex-col justify-between">
           <span className="text-[10px] uppercase font-bold text-zinc-500 block truncate">Avg Daily In</span>
-          <span className="text-base sm:text-lg font-extrabold text-white block mt-1 truncate">
+          <span className="text-base sm:text-lg font-extrabold text-white block mt-1 truncate tabular-nums">
             {avgIn.toLocaleString()} <span className="text-[11px] font-medium text-zinc-500">kcal</span>
           </span>
         </article>
 
         <article className="p-3 sm:p-3.5 rounded-2xl bg-zinc-950/60 border border-zinc-800/60 flex flex-col justify-between">
           <span className="text-[10px] uppercase font-bold text-zinc-500 block truncate">Avg Daily Burn</span>
-          <span className="text-base sm:text-lg font-extrabold text-orange-400 block mt-1 truncate">
+          <span className="text-base sm:text-lg font-extrabold text-orange-400 block mt-1 truncate tabular-nums">
             {avgOut.toLocaleString()} <span className="text-[11px] font-medium text-zinc-500">kcal</span>
           </span>
         </article>
@@ -177,7 +181,7 @@ export function EnergyBalanceChart({
             )}
             <span
               aria-label={`7-day net energy: ${netWeekly < 0 ? "" : "+"}${netWeekly} kcal`}
-              className={`text-base sm:text-lg font-extrabold truncate ${netWeekly < 0 ? "text-emerald-400" : "text-amber-400"}`}
+              className={`text-base sm:text-lg font-extrabold truncate tabular-nums ${netWeekly < 0 ? "text-emerald-400" : "text-amber-400"}`}
             >
               {netWeekly < 0 ? "" : "+"}{netWeekly.toLocaleString()} <span className="text-[11px] font-medium text-zinc-500">kcal</span>
             </span>

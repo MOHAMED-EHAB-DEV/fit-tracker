@@ -46,6 +46,10 @@ class AppUpdateManager(private val context: Context) {
         const val GITHUB_REPO_NAME = "fit-tracker"
         private const val RELEASES_API_URL =
             "https://api.github.com/repos/$GITHUB_REPO_OWNER/$GITHUB_REPO_NAME/releases/latest"
+
+        // Prevent duplicate dialogs or nagging on every resume within the same app session
+        private var isDialogShowing = false
+        private var sessionDismissed = false
     }
 
     data class ReleaseInfo(
@@ -63,9 +67,14 @@ class AppUpdateManager(private val context: Context) {
         silent: Boolean = true,
         onChecked: ((hasUpdate: Boolean, version: String?) -> Unit)? = null
     ) {
+        if (silent && (isDialogShowing || sessionDismissed)) {
+            Log.d(TAG, "Skipping silent update check (dialog showing: $isDialogShowing, dismissed: $sessionDismissed)")
+            return
+        }
+
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                Log.d(TAG, "Checking for updates at $RELEASES_API_URL... Current local version: v${BuildConfig.VERSION_NAME} (code: ${BuildConfig.VERSION_CODE})")
+                Log.d(TAG, "Checking for updates at $RELEASES_API_URL... Local: v${BuildConfig.VERSION_NAME} (code: ${BuildConfig.VERSION_CODE})")
                 val release = fetchLatestRelease()
 
                 withContext(Dispatchers.Main) {
@@ -147,7 +156,6 @@ class AppUpdateManager(private val context: Context) {
             val asset = assets.getJSONObject(i)
             val name = asset.optString("name", "")
             if (name.endsWith(".apk", ignoreCase = true)) {
-                // Prefer specific version APK or default FitTracker.apk
                 if (apkUrl == null || name.startsWith("FitTracker-v", ignoreCase = true)) {
                     apkUrl = asset.optString("browser_download_url")
                 }
@@ -187,7 +195,7 @@ class AppUpdateManager(private val context: Context) {
             }
         }
 
-        // 2. Fallback: Extract SemVer from release title (e.g. "FitTracker Android App v1.0.2")
+        // 2. Fallback: Extract SemVer from release title (e.g. "FitTracker Android App v1.0.3")
         if (resolvedVersionName.isNullOrBlank()) {
             val semverRegex = Regex("""\bv?(\d+\.\d+\.\d+)\b""")
             val matchInTitle = semverRegex.find(releaseTitle)
@@ -216,8 +224,7 @@ class AppUpdateManager(private val context: Context) {
 
         // 1. If remote versionCode is valid (> 0), integer comparison is 100% accurate
         if (remoteCode > 0 && BuildConfig.VERSION_CODE > 0) {
-            if (remoteCode > BuildConfig.VERSION_CODE) return true
-            if (remoteCode < BuildConfig.VERSION_CODE) return false
+            return remoteCode > BuildConfig.VERSION_CODE
         }
 
         // 2. SemVer comparison: major.minor.patch
@@ -303,6 +310,9 @@ class AppUpdateManager(private val context: Context) {
      * Displays a custom modal dialog rendering markdown changelog with Dark + Emerald theme.
      */
     private fun showCustomUpdateDialog(activity: Activity, release: ReleaseInfo) {
+        if (isDialogShowing) return
+        isDialogShowing = true
+
         val dialog = Dialog(activity)
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
 
@@ -335,7 +345,12 @@ class AppUpdateManager(private val context: Context) {
             tvReleaseNotes.movementMethod = LinkMovementMethod.getInstance()
         }
 
+        dialog.setOnDismissListener {
+            isDialogShowing = false
+        }
+
         btnLater.setOnClickListener {
+            sessionDismissed = true
             dialog.dismiss()
         }
 

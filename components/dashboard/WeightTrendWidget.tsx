@@ -31,9 +31,9 @@ const CustomWeightTooltip = ({ active, payload }: any) => {
     return (
       <div className="p-2.5 rounded-2xl bg-zinc-900/95 border border-zinc-800 shadow-xl backdrop-blur-md text-xs space-y-1">
         <div className="text-zinc-400 text-[10px]">{d.date}</div>
-        <div className="font-extrabold text-white text-sm">{d.weight} kg</div>
+        <div className="font-extrabold text-white text-sm tabular-nums">{d.weight} kg</div>
         {d.bodyFatPercent && (
-          <div className="text-amber-400 text-[10px] font-semibold">
+          <div className="text-amber-400 text-[10px] font-semibold tabular-nums">
             {d.bodyFatPercent}% Body Fat
           </div>
         )}
@@ -78,7 +78,7 @@ export function WeightTrendWidget({
         <Link
           href="/body-comp"
           aria-label="View all body composition check-ins and photos"
-          className="flex items-center gap-1 text-xs font-semibold text-emerald-400 hover:text-emerald-300 transition"
+          className="flex items-center gap-1 text-xs font-semibold text-emerald-400 hover:text-emerald-300 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 rounded"
         >
           <span>Check-Ins</span>
           <ChevronRight aria-hidden="true" className="w-3.5 h-3.5" />
@@ -89,7 +89,7 @@ export function WeightTrendWidget({
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3">
         <article className="p-3 sm:p-3.5 rounded-2xl bg-zinc-950/60 border border-zinc-800/60">
           <span className="text-[10px] uppercase font-bold text-zinc-500 block truncate">Current Weight</span>
-          <span className="text-lg sm:text-xl font-extrabold text-white block mt-0.5 truncate">
+          <span className="text-lg sm:text-xl font-extrabold text-white block mt-0.5 truncate tabular-nums">
             {latestWeight ? `${latestWeight} kg` : "—"}
           </span>
         </article>
@@ -104,7 +104,7 @@ export function WeightTrendWidget({
             )}
             <span
               aria-label={`Weight change: ${diff > 0 ? `+${diff}` : `${diff}`} kilograms`}
-              className={`text-lg sm:text-xl font-extrabold truncate ${isLoss ? "text-emerald-400" : "text-amber-400"}`}
+              className={`text-lg sm:text-xl font-extrabold truncate tabular-nums ${isLoss ? "text-emerald-400" : "text-amber-400"}`}
             >
               {diff > 0 ? `+${diff}` : `${diff}`} kg
             </span>

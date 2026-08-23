@@ -5,17 +5,57 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-// Dynamically resolve app version from the single source of truth (version.json)
+// Dynamically resolve app version from Gradle properties (-P), Env vars, or version.json
 fun getAppVersion(): Pair<Int, String> {
-    val versionFile = File(rootDir, "../version.json")
-    if (versionFile.exists()) {
-        val content = versionFile.readText()
-        val codeMatch = Regex("\"versionCode\"\\s*:\\s*(\\d+)").find(content)
-        val nameMatch = Regex("\"versionName\"\\s*:\\s*\"([^\"]+)\"").find(content)
-        val code = codeMatch?.groupValues?.get(1)?.toIntOrNull() ?: 1
-        val name = nameMatch?.groupValues?.get(1) ?: "1.0.0"
-        return Pair(code, name)
+    // 1. Check Gradle project property (e.g. -PversionCode=4 -PversionName=1.0.3)
+    val propCode = if (project.hasProperty("versionCode")) {
+        project.property("versionCode")?.toString()?.toIntOrNull()
+    } else null
+    val propName = if (project.hasProperty("versionName")) {
+        project.property("versionName")?.toString()?.trim()
+    } else null
+
+    if (propCode != null && !propName.isNullOrBlank()) {
+        println("FitTracker: Using Gradle property version: v$propName (code $propCode)")
+        return Pair(propCode, propName)
     }
+
+    // 2. Check System Environment variables
+    val envCode = System.getenv("VERSION_CODE")?.toIntOrNull()
+    val envName = System.getenv("VERSION_NAME")?.trim()
+    if (envCode != null && !envName.isNullOrBlank()) {
+        println("FitTracker: Using Environment version: v$envName (code $envCode)")
+        return Pair(envCode, envName)
+    }
+
+    // 3. Search for version.json in multiple relative paths
+    val searchPaths = listOf(
+        File(rootDir, "../version.json"),
+        File(rootDir, "version.json"),
+        File(projectDir, "../../version.json"),
+        File(projectDir, "../version.json"),
+        File(rootProject.projectDir.parentFile, "version.json")
+    )
+
+    for (versionFile in searchPaths) {
+        if (versionFile.exists()) {
+            try {
+                val content = versionFile.readText()
+                val codeMatch = Regex("\"versionCode\"\\s*:\\s*(\\d+)").find(content)
+                val nameMatch = Regex("\"versionName\"\\s*:\\s*\"([^\"]+)\"").find(content)
+                val code = codeMatch?.groupValues?.get(1)?.toIntOrNull()
+                val name = nameMatch?.groupValues?.get(1)?.trim()
+                if (code != null && !name.isNullOrBlank()) {
+                    println("FitTracker: Read version from ${versionFile.path}: v$name (code $code)")
+                    return Pair(code, name)
+                }
+            } catch (e: Exception) {
+                // Try next path
+            }
+        }
+    }
+
+    println("FitTracker: Fallback default version 1.0.0 (code 1)")
     return Pair(1, "1.0.0")
 }
 

@@ -27,9 +27,9 @@ const VARIANT_MAP = {
 };
 
 const SIZE_MAP = {
-  sm: "px-3 py-1.5 text-xs gap-1.5",
-  md: "px-4 py-2.5 text-xs sm:text-sm gap-2",
-  lg: "px-6 py-3.5 text-sm sm:text-base gap-2.5",
+  sm: "px-3 py-1.5 min-h-[36px] text-xs gap-1.5",
+  md: "px-4 py-2.5 min-h-[44px] text-xs sm:text-sm gap-2",
+  lg: "px-6 py-3.5 min-h-[48px] text-sm sm:text-base gap-2.5",
 };
 
 const RADIUS_MAP = {
@@ -60,8 +60,10 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         disabled={disabled || isLoading}
+        aria-busy={isLoading}
+        aria-disabled={disabled || isLoading}
         className={cn(
-          "inline-flex items-center justify-center font-semibold transition-all duration-150 active:scale-[0.97] focus:outline-none focus:ring-2 focus:ring-emerald-500/40 cursor-pointer disabled:opacity-50 disabled:pointer-events-none select-none",
+          "inline-flex items-center justify-center font-semibold transition-all duration-150 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 cursor-pointer disabled:opacity-50 disabled:pointer-events-none select-none",
           VARIANT_MAP[variant],
           SIZE_MAP[size],
           RADIUS_MAP[radius],
@@ -70,12 +72,12 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         {...props}
       >
         {isLoading ? (
-          <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+          <Loader2 className="w-4 h-4 animate-spin shrink-0" aria-hidden="true" />
         ) : (
-          startContent && <span className="shrink-0">{startContent}</span>
+          startContent && <span className="shrink-0" aria-hidden="true">{startContent}</span>
         )}
         <span>{children}</span>
-        {!isLoading && endContent && <span className="shrink-0">{endContent}</span>}
+        {!isLoading && endContent && <span className="shrink-0" aria-hidden="true">{endContent}</span>}
       </button>
     );
   }

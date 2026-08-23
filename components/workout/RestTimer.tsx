@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Timer, Plus, SkipForward, Volume2 } from "lucide-react";
+import { Timer, Plus, SkipForward } from "lucide-react";
 
 interface RestTimerProps {
   initialSeconds?: number;
@@ -79,9 +79,13 @@ export function RestTimer({ initialSeconds = 90, onFinish }: RestTimerProps) {
   if (remaining <= 0) return null;
 
   return (
-    <div className="p-4 rounded-2xl bg-zinc-900 border border-emerald-500/30 flex items-center justify-between gap-4 shadow-xl shadow-emerald-950/20">
+    <div
+      role="timer"
+      aria-label="Rest Countdown Timer"
+      className="p-4 rounded-2xl bg-zinc-900 border border-emerald-500/30 flex items-center justify-between gap-4 shadow-xl shadow-emerald-950/20"
+    >
       <div className="flex items-center gap-3">
-        <div className="relative w-12 h-12 flex items-center justify-center shrink-0">
+        <div className="relative w-12 h-12 flex items-center justify-center shrink-0" aria-hidden="true">
           <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
             <path
               className="text-zinc-800"
@@ -106,7 +110,7 @@ export function RestTimer({ initialSeconds = 90, onFinish }: RestTimerProps) {
           <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">
             Resting
           </span>
-          <span className="text-xl font-extrabold text-white font-mono">
+          <span className="text-xl font-extrabold text-white font-mono tabular-nums" aria-live="polite">
             {mins}:{secs < 10 ? `0${secs}` : secs}
           </span>
         </div>
@@ -114,18 +118,22 @@ export function RestTimer({ initialSeconds = 90, onFinish }: RestTimerProps) {
 
       <div className="flex items-center gap-2">
         <button
+          type="button"
           onClick={() => addTime(30)}
-          className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold border border-zinc-700 transition"
+          aria-label="Add 30 seconds to rest timer"
+          className="flex items-center gap-1 px-3 py-1.5 min-h-[36px] rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold border border-zinc-700 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-95"
         >
-          <Plus className="w-3.5 h-3.5" />
+          <Plus className="w-3.5 h-3.5" aria-hidden="true" />
           <span>+30s</span>
         </button>
 
         <button
+          type="button"
           onClick={skipTimer}
-          className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 text-xs font-semibold border border-zinc-700 transition"
+          aria-label="Skip rest timer"
+          className="flex items-center gap-1 px-3 py-1.5 min-h-[36px] rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 text-xs font-semibold border border-zinc-700 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-95"
         >
-          <SkipForward className="w-3.5 h-3.5" />
+          <SkipForward className="w-3.5 h-3.5" aria-hidden="true" />
           <span>Skip</span>
         </button>
       </div>

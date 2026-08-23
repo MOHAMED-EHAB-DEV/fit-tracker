@@ -3,7 +3,7 @@
 import React, { useState, useRef } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Camera, Upload, Sparkles, Check, AlertCircle, Loader2, RefreshCw, ImageIcon } from "lucide-react";
+import { Camera, Upload, Sparkles, Check, AlertCircle, Loader2, ImageIcon } from "lucide-react";
 import { useClientResize } from "@/hooks/useClientResize";
 import { MealType } from "@/types/fitness";
 import { MEAL_TYPE_OPTIONS } from "@/constants/nutrition";
@@ -24,7 +24,6 @@ export function PhotoAnalyzer() {
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    // Clear input value so selecting the same file consecutively triggers onChange
     e.target.value = "";
     if (!file) return;
 
@@ -33,7 +32,7 @@ export function PhotoAnalyzer() {
       const resized = await resizeImage(file, { maxDimension: 800, quality: 0.82 });
       setSelectedBlob(resized);
       setPreviewUrl(URL.createObjectURL(resized));
-    } catch (err: any) {
+    } catch {
       setError("Failed to process image. Please try again.");
     }
   };
@@ -83,7 +82,7 @@ export function PhotoAnalyzer() {
       <div className="p-6 rounded-2xl bg-zinc-900/80 border border-zinc-800/80 space-y-6">
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-emerald-400" />
+            <Sparkles className="w-5 h-5 text-emerald-400" aria-hidden="true" />
             <span>AI Food Photo Analyzer</span>
           </h2>
           <p className="text-xs text-zinc-400 mt-1">
@@ -92,8 +91,8 @@ export function PhotoAnalyzer() {
         </div>
 
         {error && (
-          <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center gap-3 text-red-400 text-sm">
-            <AlertCircle className="w-5 h-5 shrink-0" />
+          <div role="alert" className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center gap-3 text-red-400 text-sm">
+            <AlertCircle className="w-5 h-5 shrink-0" aria-hidden="true" />
             <span>{error}</span>
           </div>
         )}
@@ -104,6 +103,7 @@ export function PhotoAnalyzer() {
           ref={galleryInputRef}
           onChange={handleFileChange}
           accept="image/*"
+          aria-label="Upload meal photo from gallery"
           className="hidden"
         />
         <input
@@ -112,6 +112,7 @@ export function PhotoAnalyzer() {
           onChange={handleFileChange}
           accept="image/*"
           capture="environment"
+          aria-label="Take meal photo with camera"
           className="hidden"
         />
 
@@ -133,29 +134,31 @@ export function PhotoAnalyzer() {
                 <button
                   type="button"
                   onClick={() => cameraInputRef.current?.click()}
-                  className="px-3 py-2 bg-zinc-800/90 hover:bg-zinc-700 rounded-lg flex items-center gap-1.5 text-xs transition"
+                  className="px-3 py-2 min-h-[36px] bg-zinc-800/90 hover:bg-zinc-700 rounded-lg flex items-center gap-1.5 text-xs transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
                 >
-                  <Camera className="w-4 h-4 text-emerald-400" />
+                  <Camera className="w-4 h-4 text-emerald-400" aria-hidden="true" />
                   <span>Camera</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => galleryInputRef.current?.click()}
-                  className="px-3 py-2 bg-zinc-800/90 hover:bg-zinc-700 rounded-lg flex items-center gap-1.5 text-xs transition"
+                  className="px-3 py-2 min-h-[36px] bg-zinc-800/90 hover:bg-zinc-700 rounded-lg flex items-center gap-1.5 text-xs transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
                 >
-                  <ImageIcon className="w-4 h-4 text-emerald-400" />
+                  <ImageIcon className="w-4 h-4 text-emerald-400" aria-hidden="true" />
                   <span>Gallery</span>
                 </button>
               </div>
             </div>
           ) : (
             <div className="border-2 border-dashed border-zinc-800 hover:border-emerald-500/50 rounded-2xl p-6 sm:p-8 flex flex-col items-center justify-center text-center transition bg-zinc-950/40 group">
-              <div
+              <button
+                type="button"
                 onClick={() => galleryInputRef.current?.click()}
-                className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform cursor-pointer"
+                aria-label="Upload photo from device"
+                className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
               >
-                <Camera className="w-7 h-7" />
-              </div>
+                <Camera className="w-7 h-7" aria-hidden="true" />
+              </button>
               <p className="font-bold text-sm text-zinc-200">Take Photo or Upload Meal Image</p>
               <p className="text-xs text-zinc-500 mt-1 mb-4">Automatic client-side optimization (800×800 WebP)</p>
 
@@ -164,17 +167,17 @@ export function PhotoAnalyzer() {
                 <button
                   type="button"
                   onClick={() => cameraInputRef.current?.click()}
-                  className="px-4 py-2 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 font-semibold rounded-xl text-xs flex items-center gap-2 transition"
+                  className="px-4 py-2 min-h-[40px] bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 font-semibold rounded-xl text-xs flex items-center gap-2 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-95"
                 >
-                  <Camera className="w-4 h-4 text-emerald-400" />
+                  <Camera className="w-4 h-4 text-emerald-400" aria-hidden="true" />
                   <span>Take Photo</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => galleryInputRef.current?.click()}
-                  className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/60 text-zinc-200 font-semibold rounded-xl text-xs flex items-center gap-2 transition"
+                  className="px-4 py-2 min-h-[40px] bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/60 text-zinc-200 font-semibold rounded-xl text-xs flex items-center gap-2 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-95"
                 >
-                  <Upload className="w-4 h-4 text-zinc-400" />
+                  <Upload className="w-4 h-4 text-zinc-400" aria-hidden="true" />
                   <span>Choose from Gallery</span>
                 </button>
               </div>
@@ -185,13 +188,14 @@ export function PhotoAnalyzer() {
         {/* Meal Options */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">
+            <label htmlFor="meal-type-select" className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1.5 select-none">
               Meal Type
             </label>
             <select
+              id="meal-type-select"
               value={mealType}
               onChange={(e) => setMealType(e.target.value as MealType)}
-              className="w-full px-3.5 py-2.5 bg-zinc-800/80 border border-zinc-700/60 rounded-xl text-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+              className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-800/80 border border-zinc-700/60 rounded-xl text-zinc-200 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 cursor-pointer"
             >
               {MEAL_TYPE_OPTIONS.map((t) => (
                 <option key={t.value} value={t.value}>
@@ -202,15 +206,16 @@ export function PhotoAnalyzer() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">
+            <label htmlFor="meal-description-input" className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1.5 select-none">
               Description (Optional)
             </label>
             <input
+              id="meal-description-input"
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="e.g. 200g chicken breast, 1 cup white rice"
-              className="w-full px-3.5 py-2.5 bg-zinc-800/80 border border-zinc-700/60 rounded-xl text-zinc-200 text-sm placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+              className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-800/80 border border-zinc-700/60 rounded-xl text-zinc-200 text-sm placeholder-zinc-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             />
           </div>
         </div>
@@ -221,16 +226,17 @@ export function PhotoAnalyzer() {
             type="button"
             onClick={handleAnalyze}
             disabled={isAnalyzing || isResizing || (!selectedBlob && !description.trim())}
-            className="w-full py-3.5 px-4 bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-bold rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            aria-busy={isAnalyzing || isResizing}
+            className="w-full py-3.5 px-4 min-h-[44px] bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-bold rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-98"
           >
             {isAnalyzing || isResizing ? (
               <>
-                <Loader2 className="w-5 h-5 animate-spin" />
+                <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
                 <span>{isResizing ? "Optimizing photo..." : "Analyzing with Gemini AI..."}</span>
               </>
             ) : (
               <>
-                <Sparkles className="w-5 h-5" />
+                <Sparkles className="w-5 h-5" aria-hidden="true" />
                 <span>Analyze & Log Meal</span>
               </>
             )}
@@ -240,10 +246,10 @@ export function PhotoAnalyzer() {
 
       {/* Analysis Result Card */}
       {analysisResult && (
-        <div className="p-6 rounded-2xl bg-zinc-900/90 border border-emerald-500/40 space-y-5 shadow-2xl shadow-emerald-950/20 animate-fade-in">
+        <div role="region" aria-label="Meal Analysis Results" className="p-6 rounded-2xl bg-zinc-900/90 border border-emerald-500/40 space-y-5 shadow-2xl shadow-emerald-950/20 animate-in fade-in duration-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-emerald-400 font-bold text-base">
-              <Check className="w-5 h-5" />
+              <Check className="w-5 h-5" aria-hidden="true" />
               <span>Meal Analyzed & Saved!</span>
             </div>
             <span className="text-xs uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
@@ -259,23 +265,23 @@ export function PhotoAnalyzer() {
           <div className="grid grid-cols-4 gap-2 text-center">
             <div className="p-3 rounded-xl bg-zinc-950/80 border border-zinc-800">
               <span className="text-[10px] text-zinc-400 uppercase font-semibold block">Calories</span>
-              <span className="text-lg font-bold text-white mt-0.5 block">{analysisResult.totals?.calories}</span>
+              <span className="text-lg font-bold text-white mt-0.5 block tabular-nums">{analysisResult.totals?.calories}</span>
               <span className="text-[10px] text-zinc-500">kcal</span>
             </div>
             <div className="p-3 rounded-xl bg-zinc-950/80 border border-zinc-800">
               <span className="text-[10px] text-emerald-400 uppercase font-semibold block">Protein</span>
-              <span className="text-lg font-bold text-emerald-300 mt-0.5 block">{analysisResult.totals?.protein}g</span>
-              <span className="text-[10px] text-zinc-500">{Math.round((analysisResult.totals?.protein * 4 / analysisResult.totals?.calories) * 100 || 0)}%</span>
+              <span className="text-lg font-bold text-emerald-300 mt-0.5 block tabular-nums">{analysisResult.totals?.protein}g</span>
+              <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round((analysisResult.totals?.protein * 4 / analysisResult.totals?.calories) * 100 || 0)}%</span>
             </div>
             <div className="p-3 rounded-xl bg-zinc-950/80 border border-zinc-800">
               <span className="text-[10px] text-amber-400 uppercase font-semibold block">Carbs</span>
-              <span className="text-lg font-bold text-amber-300 mt-0.5 block">{analysisResult.totals?.carbs}g</span>
-              <span className="text-[10px] text-zinc-500">{Math.round((analysisResult.totals?.carbs * 4 / analysisResult.totals?.calories) * 100 || 0)}%</span>
+              <span className="text-lg font-bold text-amber-300 mt-0.5 block tabular-nums">{analysisResult.totals?.carbs}g</span>
+              <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round((analysisResult.totals?.carbs * 4 / analysisResult.totals?.calories) * 100 || 0)}%</span>
             </div>
             <div className="p-3 rounded-xl bg-zinc-950/80 border border-zinc-800">
               <span className="text-[10px] text-orange-400 uppercase font-semibold block">Fat</span>
-              <span className="text-lg font-bold text-orange-300 mt-0.5 block">{analysisResult.totals?.fat}g</span>
-              <span className="text-[10px] text-zinc-500">{Math.round((analysisResult.totals?.fat * 9 / analysisResult.totals?.calories) * 100 || 0)}%</span>
+              <span className="text-lg font-bold text-orange-300 mt-0.5 block tabular-nums">{analysisResult.totals?.fat}g</span>
+              <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round((analysisResult.totals?.fat * 9 / analysisResult.totals?.calories) * 100 || 0)}%</span>
             </div>
           </div>
 
@@ -295,8 +301,8 @@ export function PhotoAnalyzer() {
                       {item.name} <span className="text-zinc-500">({item.quantity})</span>
                     </span>
                     <div className="flex items-center gap-3 text-zinc-400">
-                      <span className="font-semibold text-white">{item.calories} kcal</span>
-                      <span className="text-emerald-400">P: {item.protein}g</span>
+                      <span className="font-semibold text-white tabular-nums">{item.calories} kcal</span>
+                      <span className="text-emerald-400 tabular-nums">P: {item.protein}g</span>
                     </div>
                   </div>
                 ))}
@@ -312,19 +318,21 @@ export function PhotoAnalyzer() {
 
           <div className="flex items-center gap-3 pt-2">
             <button
+              type="button"
               onClick={handleDone}
-              className="flex-1 py-3 px-4 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold rounded-xl transition shadow-lg shadow-emerald-500/20"
+              className="flex-1 py-3 px-4 min-h-[44px] bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold rounded-xl transition shadow-lg shadow-emerald-500/20 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-98"
             >
               Done & View Log
             </button>
             <button
+              type="button"
               onClick={() => {
                 setAnalysisResult(null);
                 setSelectedBlob(null);
                 setPreviewUrl(null);
                 setDescription("");
               }}
-              className="py-3 px-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold rounded-xl text-xs transition"
+              className="py-3 px-4 min-h-[44px] bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold rounded-xl text-xs transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 active:scale-98"
             >
               Log Another
             </button>

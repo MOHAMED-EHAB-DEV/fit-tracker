@@ -38,25 +38,22 @@ jobs:
         with:
           gradle-version: '8.5'
 
-      - name: Build APK with Gradle
-        working-directory: FitTrackerAndroid
-        run: gradle assembleDebug --stacktrace
-
-      - name: Prepare Release Notes & Version Artifacts
+      # Step 1: Extract Version Metadata from version.json BEFORE building APK
+      - name: Extract Version Metadata & Prepare Notes
         id: prep
         run: |
           mkdir -p release-output
-          
+
           # Extract version from version.json
           VERSION_NAME=$(node -p "require('./version.json').versionName || '1.0.0'")
           VERSION_CODE=$(node -p "require('./version.json').versionCode || ${{ github.run_number }}")
-          
+
           echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
           echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_ENV
+          echo "=========================================="
+          echo "Building FitTracker APK v$VERSION_NAME (Build $VERSION_CODE)"
+          echo "=========================================="
 
-          cp FitTrackerAndroid/app/build/outputs/apk/debug/app-debug.apk release-output/FitTracker.apk
-          cp FitTrackerAndroid/app/build/outputs/apk/debug/app-debug.apk "release-output/FitTracker-v${VERSION_NAME}.apk"
-          
           # Determine Release Notes
           if [ -n "${{ github.event.inputs.release_notes }}" ]; then
             cat << 'EOF' > release-output/notes.txt
@@ -74,7 +71,7 @@ jobs:
           EOF
           fi
 
-          # Generate release version metadata
+          # Generate release version metadata JSON
           node -e '
             const fs = require("fs");
             const vData = JSON.parse(fs.readFileSync("version.json", "utf8"));
@@ -89,6 +86,17 @@ jobs:
             fs.writeFileSync("release-output/version.json", JSON.stringify(data, null, 2));
           '
 
+      # Step 2: Build APK with explicit version parameters injected into Gradle
+      - name: Build APK with Gradle
+        working-directory: FitTrackerAndroid
+        run: gradle assembleDebug -PversionCode=${{ env.VERSION_CODE }} -PversionName=${{ env.VERSION_NAME }} --stacktrace
+
+      # Step 3: Copy and archive APK assets
+      - name: Package Release APKs
+        run: |
+          cp FitTrackerAndroid/app/build/outputs/apk/debug/app-debug.apk release-output/FitTracker.apk
+          cp FitTrackerAndroid/app/build/outputs/apk/debug/app-debug.apk "release-output/FitTracker-v${{ env.VERSION_NAME }}.apk"
+
       - name: Upload Build Artifacts to Actions
         uses: actions/upload-artifact@v4
         with:
@@ -96,7 +104,7 @@ jobs:
           path: release-output/FitTracker.apk
           retention-days: 14
 
-      # Publish Versioned Release (GitHub automatically marks the newest as 'Latest')
+      # Step 4: Publish Versioned Release (GitHub automatically marks the newest as 'Latest')
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:

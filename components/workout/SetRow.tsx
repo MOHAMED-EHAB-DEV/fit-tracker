@@ -61,11 +61,12 @@ export function SetRow({
           <span
             className="w-5 h-5 sm:w-6 sm:h-6 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40 font-black text-[10px] sm:text-xs flex items-center justify-center"
             title="Warmup Set (excluded from 1RM / PR records)"
+            aria-label={`Warmup Set ${index + 1}`}
           >
             W
           </span>
         ) : (
-          <span className="font-bold text-xs text-zinc-400">{index + 1}</span>
+          <span className="font-bold text-xs text-zinc-400" aria-label={`Set ${index + 1}`}>{index + 1}</span>
         )}
       </div>
 
@@ -73,7 +74,7 @@ export function SetRow({
       <div className="hidden sm:block w-20 sm:w-24 text-center shrink-0">
         <span
           className={cn(
-            "text-[11px] sm:text-xs font-mono",
+            "text-[11px] sm:text-xs font-mono tabular-nums",
             set.isWarmup ? "text-amber-300/70" : "text-zinc-500"
           )}
         >
@@ -87,16 +88,17 @@ export function SetRow({
           <input
             type="number"
             step="0.5"
+            aria-label={`Set ${index + 1} weight in ${unit}`}
             value={set.weight ?? ""}
             onChange={(e) =>
               onChange({ weight: e.target.value ? parseFloat(e.target.value) : null })
             }
             placeholder={set.targetWeight ? String(set.targetWeight) : unit}
             className={cn(
-              "w-full text-center py-1 sm:py-1.5 px-1 sm:px-2 bg-zinc-900 border rounded-xl text-white font-bold text-xs sm:text-sm focus:outline-none",
+              "w-full text-center py-1 sm:py-1.5 px-1 sm:px-2 min-h-[36px] bg-zinc-900 border rounded-xl text-white font-bold text-xs sm:text-sm tabular-nums focus:outline-none focus-visible:ring-2",
               set.isWarmup
-                ? "border-amber-500/30 focus:ring-2 focus:ring-amber-500/50"
-                : "border-white/10 focus:ring-2 focus:ring-emerald-500/50"
+                ? "border-amber-500/30 focus-visible:ring-amber-500/50"
+                : "border-white/10 focus-visible:ring-emerald-500/50"
             )}
           />
         </div>
@@ -107,16 +109,17 @@ export function SetRow({
         <div className="relative">
           <input
             type="number"
+            aria-label={`Set ${index + 1} completed reps`}
             value={set.completedReps ?? ""}
             onChange={(e) =>
               onChange({ completedReps: e.target.value ? parseInt(e.target.value, 10) : null })
             }
             placeholder={set.targetReps ? String(set.targetReps) : "reps"}
             className={cn(
-              "w-full text-center py-1 sm:py-1.5 px-1 sm:px-2 bg-zinc-900 border rounded-xl text-white font-bold text-xs sm:text-sm focus:outline-none",
+              "w-full text-center py-1 sm:py-1.5 px-1 sm:px-2 min-h-[36px] bg-zinc-900 border rounded-xl text-white font-bold text-xs sm:text-sm tabular-nums focus:outline-none focus-visible:ring-2",
               set.isWarmup
-                ? "border-amber-500/30 focus:ring-2 focus:ring-amber-500/50"
-                : "border-white/10 focus:ring-2 focus:ring-emerald-500/50"
+                ? "border-amber-500/30 focus-visible:ring-amber-500/50"
+                : "border-white/10 focus-visible:ring-emerald-500/50"
             )}
           />
         </div>
@@ -129,19 +132,20 @@ export function SetRow({
           min="1"
           max="10"
           step="0.5"
+          aria-label={`Set ${index + 1} RPE`}
           value={set.rpe ?? ""}
           onChange={(e) =>
             onChange({ rpe: e.target.value ? parseFloat(e.target.value) : null })
           }
           placeholder="RPE"
-          className="w-full text-center py-1 sm:py-1.5 px-1 bg-zinc-900 border border-white/10 rounded-xl text-zinc-300 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+          className="w-full text-center py-1 sm:py-1.5 px-1 min-h-[36px] bg-zinc-900 border border-white/10 rounded-xl text-zinc-300 text-xs tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50"
         />
       </div>
 
       {/* PR Badge */}
       {set.isPR && (
-        <div className="p-1 sm:p-1.5 rounded-lg bg-amber-500/20 text-amber-300 shrink-0" title="Personal Record!">
-          <Trophy className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+        <div className="p-1 sm:p-1.5 rounded-lg bg-amber-500/20 text-amber-300 shrink-0" title="Personal Record!" aria-label="Personal Record achieved">
+          <Trophy className="w-3.5 h-3.5 sm:w-4 sm:h-4" aria-hidden="true" />
         </div>
       )}
 
@@ -149,24 +153,27 @@ export function SetRow({
       <button
         type="button"
         onClick={handleToggleComplete}
+        aria-pressed={isCompleted}
+        aria-label={isCompleted ? `Mark set ${index + 1} incomplete` : `Mark set ${index + 1} complete`}
         className={cn(
-          "w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center transition shrink-0 font-bold cursor-pointer",
+          "w-8 h-8 rounded-lg flex items-center justify-center transition shrink-0 font-bold cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-90",
           isCompleted
             ? "bg-emerald-500 text-zinc-950 shadow-md shadow-emerald-500/30"
             : "bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white"
         )}
       >
-        <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+        <Check className="w-4 h-4" aria-hidden="true" />
       </button>
 
       {/* Delete Set */}
       <button
         type="button"
         onClick={onDelete}
-        title="Delete set"
-        className="p-1 text-zinc-600 hover:text-red-400 transition shrink-0 cursor-pointer"
+        title={`Delete set ${index + 1}`}
+        aria-label={`Delete set ${index + 1}`}
+        className="p-1.5 text-zinc-600 hover:text-red-400 rounded-lg transition shrink-0 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
       >
-        <Trash2 className="w-3.5 h-3.5" />
+        <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
       </button>
     </div>
   );
