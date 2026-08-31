@@ -62,7 +62,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
       .join(" ") || undefined;
 
     return (
-      <div className="w-full space-y-1.5 text-left">
+      <div className="w-full space-y-1.5 text-start">
         {label && (
           <label
             htmlFor={inputId}
@@ -74,7 +74,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
 
         <div
           className={cn(
-            "relative flex items-center gap-2.5 px-4 py-3 min-h-[44px] text-sm transition-all duration-200 backdrop-blur-md",
+            "relative flex items-center gap-2.5 px-4 py-3 min-h-11 text-sm transition-all duration-200 backdrop-blur-md",
             VARIANT_MAP[variant],
             RADIUS_MAP[radius],
             isInvalid && "border-red-500/80 ring-2 ring-red-500/20 bg-red-500/5",

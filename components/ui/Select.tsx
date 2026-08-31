@@ -143,7 +143,7 @@ export function Select<T = string | number>({
   };
 
   return (
-    <div ref={containerRef} className={cn("relative w-full space-y-1.5 text-left", className)}>
+    <div ref={containerRef} className={cn("relative w-full space-y-1.5 text-start", className)}>
       {label && (
         <label id={`${selectId}-label`} htmlFor={`${selectId}-button`} className="block text-xs font-bold uppercase tracking-wider text-zinc-400 select-none">
           {label}
@@ -166,7 +166,7 @@ export function Select<T = string | number>({
         onClick={() => !disabled && setIsOpen((prev) => !prev)}
         onKeyDown={handleKeyDown}
         className={cn(
-          "w-full px-4 py-3 min-h-[44px] bg-zinc-950/80 backdrop-blur-md border rounded-2xl text-left flex items-center justify-between gap-2 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 active:scale-[0.99] cursor-pointer select-none",
+          "w-full px-4 py-3 min-h-11 bg-zinc-950/80 backdrop-blur-md border rounded-2xl text-start flex items-center justify-between gap-2 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 active:scale-[0.99] cursor-pointer select-none",
           error
             ? "border-red-500/80 focus:border-red-500 shadow-sm shadow-red-500/20"
             : isOpen

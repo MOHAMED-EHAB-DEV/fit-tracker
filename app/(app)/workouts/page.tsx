@@ -1,6 +1,6 @@
 import React, { Suspense } from "react";
 import Link from "next/link";
-import { Dumbbell, Plus, LayoutTemplate, Calendar, Loader2 } from "lucide-react";
+import { Dumbbell, Plus, LayoutTemplate, Calendar, Loader2, History } from "lucide-react";
 import { getFullUser } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/mongoose";
 import Workout from "@/lib/db/models/Workout";
@@ -36,7 +36,15 @@ async function WorkoutsContent() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
+          <Link
+            href="/workouts/sessions"
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-bold border border-emerald-500/30 transition shadow-sm"
+          >
+            <History className="w-4 h-4" />
+            <span>Recorded Sessions</span>
+          </Link>
+
           <Link
             href="/workouts/templates"
             className="flex items-center gap-2 px-3.5 py-2.5 rounded-2xl bg-zinc-800 hover:bg-zinc-700/80 text-zinc-200 text-xs font-semibold border border-zinc-700 transition"
@@ -66,14 +74,22 @@ async function WorkoutsContent() {
           </span>
         </div>
 
-        <div className="p-5 rounded-3xl bg-zinc-900/80 border border-zinc-800/80">
-          <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 block mb-1">
-            Completed Sessions
-          </span>
+        <Link
+          href="/workouts/sessions"
+          className="p-5 rounded-3xl bg-zinc-900/80 hover:bg-zinc-850 border border-zinc-800/80 hover:border-emerald-500/30 transition group block"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 block mb-1 group-hover:text-emerald-400 transition">
+              Completed Sessions
+            </span>
+            <span className="text-xs text-emerald-400 opacity-0 group-hover:opacity-100 transition font-bold">
+              View All &rarr;
+            </span>
+          </div>
           <span className="text-2xl md:text-3xl font-extrabold text-emerald-400">
             {workouts.length}
           </span>
-        </div>
+        </Link>
 
         <div className="p-5 rounded-3xl bg-zinc-900/80 border border-zinc-800/80">
           <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 block mb-1">

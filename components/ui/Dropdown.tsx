@@ -93,7 +93,7 @@ export function Dropdown({
     <div
       ref={containerRef}
       onKeyDown={handleKeyDown}
-      className={cn("relative inline-block text-left", className)}
+      className={cn("relative inline-block text-start", className)}
     >
       {/* Trigger */}
       <button
@@ -180,7 +180,7 @@ export function DropdownItem({
         aria-label={ariaLabel}
         onClick={handleClick}
         className={cn(
-          "w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold rounded-xl text-left transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-emerald-500/40 active:scale-[0.98] cursor-pointer",
+          "w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold rounded-xl text-start transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-emerald-500/40 active:scale-[0.98] cursor-pointer",
           destructive
             ? "text-red-400 hover:bg-red-500/15 hover:text-red-300 focus:bg-red-500/15"
             : "text-zinc-200 hover:bg-white/10 hover:text-white focus:bg-white/10",

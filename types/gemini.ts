@@ -47,10 +47,29 @@ export interface DataContextSummary {
   badgeLabel: string;
 }
 
+export interface ReferencedMessage {
+  id: string;
+  sender: "user" | "assistant";
+  text: string;
+  timestamp?: string;
+  commandName?: string;
+}
+
+export interface CoachAttachment {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  base64: string;
+  previewUrl?: string;
+}
+
 export interface CoachChatRequest {
   message: string;
   model?: GeminiModelChoice;
   mode?: "coach" | "log" | "auto";
+  referencedMessages?: ReferencedMessage[];
+  attachments?: CoachAttachment[];
 }
 
 export interface CoachChatResponse {
@@ -67,3 +86,4 @@ export interface CoachChatResponse {
   };
   error?: string;
 }
+
