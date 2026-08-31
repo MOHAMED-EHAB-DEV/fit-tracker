@@ -70,7 +70,22 @@ export async function POST(request: NextRequest) {
           });
         }
 
-        const promptText = `Meal type: ${mealType}. User description: "${description || "Analyze the meal shown in the photo"}". Estimate all ingredients, portions, calories, and macros with high accuracy up to one decimal point.`;
+        const promptText = [
+          `Target Meal Category: ${mealType}`,
+          description.trim()
+            ? `User Provided Notes / Ingredients: "${description.trim()}"`
+            : `User Provided Notes: None (Perform visual plate analysis).`,
+          `Input Modality: ${base64Image ? "Photo + text description" : "Text description only"}.`,
+          "",
+          "Evaluation Protocol:",
+          "1. Deconstruct every visible or described food item into specific ingredients (proteins, carbs, fats, vegetables, dairy, sauces, cooking oils).",
+          "2. Estimate realistic portion sizes using metric units (grams 'g' or milliliters 'ml') and specify cooked vs raw state.",
+          "3. Account for cooking fats (e.g., 5g–10g oil/butter for pan-searing or roasting) unless explicitly oil-free.",
+          "4. Calculate scientific macronutrients (Calories, Protein, Carbs, Fat, Fiber) per ingredient using USDA nutritional standards.",
+          "5. If the user provided explicit weights or ingredients in their description, prioritize them over visual guesses.",
+          "6. Ensure strict mathematical sum consistency: totals MUST equal the sum of all individual items.",
+          "7. Provide a concise, professional dietitian note in 'geminiNotes' summarizing key assumptions (cooking oils, sauces) and nutritional balance.",
+        ].join("\n");
         contents.push(promptText);
 
         const response = await genAI.models.generateContent({
@@ -87,7 +102,34 @@ export async function POST(request: NextRequest) {
         const text = response.text;
         if (text) {
           const cleanedText = text.replace(/```json\s*|```/g, "").trim();
-          analysis = JSON.parse(cleanedText);
+          const parsed = JSON.parse(cleanedText);
+          if (parsed && typeof parsed === "object") {
+            const items = Array.isArray(parsed.items) ? parsed.items : [];
+            let { calories = 0, protein = 0, carbs = 0, fat = 0, fiber = 0 } = parsed.totals || {};
+
+            // If totals are missing or 0 while items exist, sum up from items
+            if ((!calories || calories <= 0) && items.length > 0) {
+              calories = items.reduce((sum: number, it: any) => sum + (Number(it.calories) || 0), 0);
+              protein = items.reduce((sum: number, it: any) => sum + (Number(it.protein) || 0), 0);
+              carbs = items.reduce((sum: number, it: any) => sum + (Number(it.carbs) || 0), 0);
+              fat = items.reduce((sum: number, it: any) => sum + (Number(it.fat) || 0), 0);
+              fiber = items.reduce((sum: number, it: any) => sum + (Number(it.fiber) || 0), 0);
+            }
+
+            analysis = {
+              mealDescription: parsed.mealDescription || description || "Logged Meal",
+              items,
+              totals: {
+                calories: Math.round(Number(calories) || 0),
+                protein: Number((Number(protein) || 0).toFixed(1)),
+                carbs: Number((Number(carbs) || 0).toFixed(1)),
+                fat: Number((Number(fat) || 0).toFixed(1)),
+                fiber: Number((Number(fiber) || 0).toFixed(1)),
+              },
+              confidence: parsed.confidence || "medium",
+              geminiNotes: parsed.geminiNotes || "",
+            };
+          }
         }
       } catch (geminiErr) {
         console.error("Gemini meal analysis error:", geminiErr);
