@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ShieldCheck, Menu, X, LogOut, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ADMIN_NAV_ITEMS } from "@/constants/navigation";
@@ -15,11 +15,13 @@ interface AdminMobileNavProps {
 export function AdminMobileNav({ adminName, adminEmail }: AdminMobileNavProps) {
   const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
 
   const handleLogout = async () => {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
-      window.location.href = "/login";
+      router.push("/login");
+      router.refresh();
     } catch (err) {
       console.error("Logout failed:", err);
     }
@@ -31,7 +33,7 @@ export function AdminMobileNav({ adminName, adminEmail }: AdminMobileNavProps) {
         {/* Brand */}
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-linear-to-tr from-violet-600 to-purple-500 p-0.5 shadow-md shadow-violet-500/20 flex items-center justify-center">
-            <div className="w-full h-full bg-zinc-950 rounded-[6px] flex items-center justify-center">
+            <div className="w-full h-full bg-zinc-950 rounded-md flex items-center justify-center">
               <ShieldCheck className="w-4 h-4 text-violet-400" aria-hidden="true" />
             </div>
           </div>
@@ -56,7 +58,7 @@ export function AdminMobileNav({ adminName, adminEmail }: AdminMobileNavProps) {
             onClick={() => setIsOpen((prev) => !prev)}
             aria-label={isOpen ? "Close admin menu" : "Open admin menu"}
             aria-expanded={isOpen}
-            className="p-2 min-h-[40px] min-w-[40px] rounded-xl bg-violet-500/15 border border-violet-500/30 text-violet-300 flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+            className="p-2 min-h-10 min-w-10 rounded-xl bg-violet-500/15 border border-violet-500/30 text-violet-300 flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
           >
             {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>

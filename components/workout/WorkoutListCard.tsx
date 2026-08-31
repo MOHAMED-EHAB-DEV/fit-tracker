@@ -1,10 +1,16 @@
 "use client";
 
-import React, { useState } from "react";
+import { useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Dumbbell, Calendar, Trash2, Loader2, Play, Edit3 } from "lucide-react";
-import { Modal } from "@/components/ui/Modal";
+
+const Modal = dynamic(() => import("@/components/ui/Modal").then((mod) => mod.Modal), {
+  ssr: false,
+});
+
+import { deleteWorkoutAction } from "@/lib/fitness/actions";
 
 interface WorkoutListCardProps {
   workout: {
@@ -35,13 +41,9 @@ export function WorkoutListCard({ workout }: WorkoutListCardProps) {
     setIsDeleting(true);
 
     try {
-      const res = await fetch(`/api/workouts/${workout.id}`, {
-        method: "DELETE",
-      });
-
-      if (res.ok) {
+      const res = await deleteWorkoutAction(workout.id);
+      if (res.success) {
         setShowConfirm(false);
-        router.refresh();
       }
     } catch (err) {
       console.error("Failed to delete workout:", err);

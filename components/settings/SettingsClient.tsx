@@ -6,19 +6,26 @@ import { User, Target, Shield, Check, Loader2, Smartphone, RefreshCw } from "luc
 import versionData from "@/version.json";
 import { ActivityLevel, FitnessGoal, Sex } from "@/types/fitness";
 import { SEX_OPTIONS, ACTIVITY_LEVELS, FITNESS_GOALS } from "@/constants/user";
+import { isAndroidNativeApp, triggerAppUpdateCheck } from "@/services/webview-bridge";
+import { updateProfileSettingsAction } from "@/lib/fitness/actions";
 
-export function SettingsClient() {
-  const { user, refreshUser } = useUser();
+interface SettingsClientProps {
+  initialUser?: any;
+}
 
-  const [name, setName] = useState("");
-  const [sex, setSex] = useState<Sex>("male");
-  const [weightKg, setWeightKg] = useState("75");
-  const [heightCm, setHeightCm] = useState("178");
-  const [activityLevel, setActivityLevel] = useState<ActivityLevel>("moderate");
-  const [goal, setGoal] = useState<FitnessGoal>("maintain");
-  const [stepGoal, setStepGoal] = useState("10000");
-  const [waterGoalMl, setWaterGoalMl] = useState("3000");
-  const [restTimerDefaultSec, setRestTimerDefaultSec] = useState("90");
+export function SettingsClient({ initialUser }: SettingsClientProps = {}) {
+  const { user: contextUser, refreshUser } = useUser();
+  const user = contextUser || initialUser;
+
+  const [name, setName] = useState(user?.name || "");
+  const [sex, setSex] = useState<Sex>(user?.fitnessProfile?.sex || "male");
+  const [weightKg, setWeightKg] = useState(user?.fitnessProfile?.weightKg ? String(user.fitnessProfile.weightKg) : "75");
+  const [heightCm, setHeightCm] = useState(user?.fitnessProfile?.heightCm ? String(user.fitnessProfile.heightCm) : "178");
+  const [activityLevel, setActivityLevel] = useState<ActivityLevel>(user?.fitnessProfile?.activityLevel || "moderate");
+  const [goal, setGoal] = useState<FitnessGoal>(user?.fitnessProfile?.goal || "maintain");
+  const [stepGoal, setStepGoal] = useState(user?.preferences?.stepGoal ? String(user.preferences.stepGoal) : "10000");
+  const [waterGoalMl, setWaterGoalMl] = useState(user?.preferences?.waterGoalMl ? String(user.preferences.waterGoalMl) : "3000");
+  const [restTimerDefaultSec, setRestTimerDefaultSec] = useState(user?.preferences?.restTimerDefaultSec ? String(user.preferences.restTimerDefaultSec) : "90");
 
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
@@ -45,29 +52,24 @@ export function SettingsClient() {
     setError(null);
 
     try {
-      const res = await fetch("/api/profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          fitnessProfile: {
-            sex,
-            weightKg: parseFloat(weightKg) || null,
-            heightCm: parseFloat(heightCm) || null,
-            activityLevel,
-            goal,
-          },
-          preferences: {
-            stepGoal: parseInt(stepGoal, 10) || 10000,
-            waterGoalMl: parseInt(waterGoalMl, 10) || 3000,
-            restTimerDefaultSec: parseInt(restTimerDefaultSec, 10) || 90,
-          },
-        }),
+      const res = await updateProfileSettingsAction({
+        name: name.trim(),
+        fitnessProfile: {
+          sex,
+          weightKg: parseFloat(weightKg) || null,
+          heightCm: parseFloat(heightCm) || null,
+          activityLevel,
+          goal,
+        },
+        preferences: {
+          stepGoal: parseInt(stepGoal, 10) || 10000,
+          waterGoalMl: parseInt(waterGoalMl, 10) || 3000,
+          restTimerDefaultSec: parseInt(restTimerDefaultSec, 10) || 90,
+        },
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to update settings");
+      if (!res.success) {
+        throw new Error(res.error || "Failed to update settings");
       }
 
       await refreshUser();
@@ -125,7 +127,7 @@ export function SettingsClient() {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-950 border border-zinc-700/60 rounded-xl text-white text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-950 border border-zinc-700/60 rounded-xl text-white text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               />
             </div>
 
@@ -137,7 +139,7 @@ export function SettingsClient() {
                 id="settings-sex"
                 value={sex}
                 onChange={(e) => setSex(e.target.value as Sex)}
-                className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-950 border border-zinc-700/60 rounded-xl text-white text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 cursor-pointer"
+                className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-950 border border-zinc-700/60 rounded-xl text-white text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 cursor-pointer"
               >
                 {SEX_OPTIONS.map((s) => (
                   <option key={s.value} value={s.value}>
@@ -157,7 +159,7 @@ export function SettingsClient() {
                 step="0.1"
                 value={weightKg}
                 onChange={(e) => setWeightKg(e.target.value)}
-                className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-950 border border-zinc-700/60 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-950 border border-zinc-700/60 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               />
             </div>
 
@@ -170,7 +172,7 @@ export function SettingsClient() {
                 type="number"
                 value={heightCm}
                 onChange={(e) => setHeightCm(e.target.value)}
-                className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-950 border border-zinc-700/60 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-950 border border-zinc-700/60 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               />
             </div>
           </div>
@@ -192,7 +194,7 @@ export function SettingsClient() {
                 id="settings-activity"
                 value={activityLevel}
                 onChange={(e) => setActivityLevel(e.target.value as ActivityLevel)}
-                className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-950 border border-zinc-700/60 rounded-xl text-white text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 cursor-pointer"
+                className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-950 border border-zinc-700/60 rounded-xl text-white text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 cursor-pointer"
               >
                 {ACTIVITY_LEVELS.map((act) => (
                   <option key={act.key} value={act.key}>
@@ -210,7 +212,7 @@ export function SettingsClient() {
                 id="settings-goal"
                 value={goal}
                 onChange={(e) => setGoal(e.target.value as FitnessGoal)}
-                className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-950 border border-zinc-700/60 rounded-xl text-white text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 cursor-pointer"
+                className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-950 border border-zinc-700/60 rounded-xl text-white text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 cursor-pointer"
               >
                 {FITNESS_GOALS.map((g) => (
                   <option key={g.key} value={g.key}>
@@ -229,7 +231,7 @@ export function SettingsClient() {
                 type="number"
                 value={stepGoal}
                 onChange={(e) => setStepGoal(e.target.value)}
-                className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-950 border border-zinc-700/60 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-950 border border-zinc-700/60 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               />
             </div>
 
@@ -242,7 +244,7 @@ export function SettingsClient() {
                 type="number"
                 value={waterGoalMl}
                 onChange={(e) => setWaterGoalMl(e.target.value)}
-                className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-950 border border-zinc-700/60 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-950 border border-zinc-700/60 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               />
             </div>
 
@@ -255,7 +257,7 @@ export function SettingsClient() {
                 type="number"
                 value={restTimerDefaultSec}
                 onChange={(e) => setRestTimerDefaultSec(e.target.value)}
-                className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-950 border border-zinc-700/60 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-950 border border-zinc-700/60 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               />
             </div>
           </div>
@@ -298,7 +300,7 @@ export function SettingsClient() {
           type="submit"
           disabled={isSaving}
           aria-busy={isSaving}
-          className="w-full py-3.5 px-4 min-h-[44px] bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-bold rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-98"
+          className="w-full py-3.5 px-4 min-h-11 bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-bold rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-98"
         >
           {isSaving ? (
             <>
@@ -328,7 +330,7 @@ export function SettingsClient() {
         <button
           type="button"
           onClick={handleInvalidateAll}
-          className="px-4 py-2 min-h-[36px] rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-semibold border border-red-500/30 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 active:scale-98"
+          className="px-4 py-2 min-h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-semibold border border-red-500/30 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 active:scale-98"
         >
           Log Out All Other Devices
         </button>
@@ -346,18 +348,12 @@ export function SettingsClient() {
           </span>
         </div>
         <p className="text-xs text-zinc-400">
-          Running FitTracker {typeof window !== "undefined" && (window as any).AndroidBridge ? "Android Native App" : "Web Platform"}. Automated over-the-air updates check for new features on app launch.
+          Running FitTracker {isAndroidNativeApp() ? "Android Native App" : "Web Platform"}. Automated over-the-air updates check for new features on app launch.
         </p>
         <button
           type="button"
-          onClick={() => {
-            if (typeof window !== "undefined" && (window as any).AndroidBridge?.checkForUpdate) {
-              (window as any).AndroidBridge.checkForUpdate();
-            } else {
-              window.open("https://github.com/MOHAMED-EHAB-DEV/fit-tracker/releases/latest", "_blank");
-            }
-          }}
-          className="px-4 py-2 min-h-[36px] rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold border border-zinc-700/60 flex items-center gap-2 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-98"
+          onClick={() => triggerAppUpdateCheck()}
+          className="px-4 py-2 min-h-9 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold border border-zinc-700/60 flex items-center gap-2 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-98"
         >
           <RefreshCw className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
           <span>Check for Updates</span>

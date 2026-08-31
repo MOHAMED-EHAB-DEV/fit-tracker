@@ -19,21 +19,7 @@ interface StepTrackerState {
   lastSyncedAt: Date | null;
 }
 
-declare global {
-  interface Window {
-    AndroidBridge?: {
-      isNativeApp?: () => boolean;
-      getTodaySteps?: () => number;
-      getSensorInfo?: () => string;
-      requestStepSync?: () => void;
-      setAuthToken?: (token: string) => void;
-      setServerUrl?: (url: string) => void;
-    };
-    __fitBridge?: {
-      onStepUpdate?: (steps: number) => void;
-    };
-  }
-}
+
 
 export function useNativeStepTracker(initialSteps: number = 0) {
   const [state, setState] = useState<StepTrackerState>({

@@ -1,8 +1,7 @@
 "use client";
 
-import React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Dumbbell, LogOut } from "lucide-react";
 import { useUser } from "@/context/UserContext";
 import { cn } from "@/lib/utils";
@@ -10,12 +9,14 @@ import { MAIN_NAV_ITEMS as NAV_ITEMS } from "@/constants/navigation";
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { user } = useUser();
 
   const handleLogout = async () => {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
-      window.location.href = "/login";
+      router.push("/login");
+      router.refresh();
     } catch (err) {
       console.error("Logout failed:", err);
     }

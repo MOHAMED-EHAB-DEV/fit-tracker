@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import {
   Dumbbell,
   ArrowRight,
@@ -22,6 +23,7 @@ import { ACTIVITY_LEVELS, FITNESS_GOALS } from "@/constants/user";
 import { REST_TIMER_PRESETS } from "@/constants/workout";
 
 export function OnboardingFlow() {
+  const router = useRouter();
   const [step, setStep] = useState(1);
   const totalSteps = 6;
 
@@ -179,8 +181,9 @@ export function OnboardingFlow() {
         throw new Error(data.error || "Failed to complete profile setup");
       }
 
-      // Hard redirect to reload shell with updated complete profile in DB
-      window.location.href = "/";
+      // Client navigation with router refresh to update authenticated shell
+      router.push("/");
+      router.refresh();
     } catch (err: any) {
       setError(err.message || "Failed to save profile. Please try again.");
       setIsSubmitting(false);

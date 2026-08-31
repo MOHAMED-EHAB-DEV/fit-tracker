@@ -441,7 +441,7 @@ export function CoachClient() {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] max-w-4xl mx-auto rounded-2xl bg-zinc-900/80 border border-zinc-800/80 overflow-hidden shadow-2xl relative">
+    <div className="flex flex-col h-[calc(100dvh-8rem)] max-w-4xl mx-auto rounded-2xl bg-zinc-900/80 border border-zinc-800/80 overflow-hidden shadow-2xl relative">
       {/* Chat Header with Model Selector */}
       <div className="p-4 border-b border-zinc-800/80 bg-zinc-950/70 flex items-center justify-between backdrop-blur-sm z-10">
         <div className="flex items-center gap-3">
@@ -466,7 +466,7 @@ export function CoachClient() {
           <button
             type="button"
             onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 min-h-[36px] rounded-xl bg-zinc-900 border border-zinc-700/70 hover:border-emerald-500/40 text-xs text-zinc-200 transition shadow-inner cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+            className="flex items-center gap-2 px-3 py-1.5 min-h-9 rounded-xl bg-zinc-900 border border-zinc-700/70 hover:border-emerald-500/40 text-xs text-zinc-200 transition shadow-inner cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
           >
             <Cpu className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
             <span className="font-medium">
@@ -489,7 +489,7 @@ export function CoachClient() {
                     setIsModelDropdownOpen(false);
                   }}
                   className={cn(
-                    "w-full text-left p-2.5 min-h-[44px] rounded-lg text-xs transition flex flex-col gap-0.5 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
+                    "w-full text-left p-2.5 min-h-11 rounded-lg text-xs transition flex flex-col gap-0.5 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
                     selectedModel === opt.id
                       ? "bg-emerald-500/15 border border-emerald-500/30 text-white"
                       : "hover:bg-zinc-900 text-zinc-300"
@@ -728,14 +728,14 @@ export function CoachClient() {
               ? activeCommand.samplePrompt || "Add custom instructions or press Send..."
               : "Type / for data analysis commands, or ask a question / log food..."
           }
-          className="flex-1 px-4 py-3 min-h-[44px] bg-zinc-900 border border-zinc-700/60 rounded-xl text-white placeholder-zinc-500 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+          className="flex-1 px-4 py-3 min-h-11 bg-zinc-900 border border-zinc-700/60 rounded-xl text-white placeholder-zinc-500 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
         />
         <button
           type="button"
           onClick={() => sendMessage()}
           disabled={(!input.trim() && !activeCommand) || isLoading}
           aria-label="Send message to AI Coach"
-          className="p-3 min-h-[44px] min-w-[44px] rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold transition disabled:opacity-50 flex items-center justify-center shadow-lg shadow-emerald-500/10 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-95"
+          className="p-3 min-h-11 min-w-11 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold transition disabled:opacity-50 flex items-center justify-center shadow-lg shadow-emerald-500/10 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-95"
         >
           <Send className="w-4 h-4" aria-hidden="true" />
         </button>

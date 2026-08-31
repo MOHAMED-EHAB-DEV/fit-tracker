@@ -72,18 +72,39 @@ export function useDialogOverlay({
     };
   }, [isOpen, lockScroll]);
 
-  // 4. Escape Key Handler
+  // 4. Escape Key & Android Back Button Popstate Interception
   useEffect(() => {
-    if (!closeOnEscape || !isOpen) return;
+    if (!isOpen || typeof window === "undefined") return;
+
+    // Push a dummy history state when opening dialog
+    const modalHistoryKey = `modal_state_${Date.now()}`;
+    window.history.pushState({ [modalHistoryKey]: true }, "");
+
+    let isClosedByPopState = false;
+
+    const handlePopState = () => {
+      isClosedByPopState = true;
+      onClose();
+    };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" || e.key === "Esc") {
+      if (closeOnEscape && (e.key === "Escape" || e.key === "Esc")) {
         onClose();
       }
     };
 
+    window.addEventListener("popstate", handlePopState);
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      window.removeEventListener("keydown", handleKeyDown);
+
+      // If closed by button/click instead of browser back, revert the pushed history state
+      if (!isClosedByPopState && window.history.state?.[modalHistoryKey]) {
+        window.history.back();
+      }
+    };
   }, [isOpen, closeOnEscape, onClose]);
 
   return { isMounted, shouldRender, isAnimatingOut };

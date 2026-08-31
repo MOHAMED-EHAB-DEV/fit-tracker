@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LogOut,
   ShieldCheck,
@@ -18,11 +18,13 @@ interface AdminSidebarProps {
 
 export function AdminSidebar({ adminName, adminEmail }: AdminSidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
 
   const handleLogout = async () => {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
-      window.location.href = "/login";
+      router.push("/login");
+      router.refresh();
     } catch (err) {
       console.error("Logout failed:", err);
     }

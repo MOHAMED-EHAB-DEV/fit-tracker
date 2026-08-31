@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useId, useMemo } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -28,8 +29,12 @@ import {
   Flame,
   Info,
 } from "lucide-react";
-import { Modal } from "@/components/ui/Modal";
 import { IWeeklyRoutineDay } from "@/lib/db/models/User";
+import { updateWeeklyRoutineAction } from "@/lib/fitness/actions";
+
+const Modal = dynamic(() => import("@/components/ui/Modal").then((mod) => mod.Modal), {
+  ssr: false,
+});
 
 export type DayOfWeekKey = "saturday" | "sunday" | "monday" | "tuesday" | "wednesday" | "thursday" | "friday";
 
@@ -320,17 +325,10 @@ export function WeeklySplitMap({
     setStatusMsg(null);
 
     try {
-      const res = await fetch("/api/user/weekly-routine", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ weeklyRoutine: routineDraft }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.error || "Failed to update routine");
+      const res = await updateWeeklyRoutineAction(routineDraft);
+      if (!res.success) throw new Error(res.error || "Failed to update routine");
 
       setStatusMsg({ type: "success", text: "Weekly training split saved!" });
-      router.refresh();
       setTimeout(() => {
         setIsCustomizingRoutine(false);
         setStatusMsg(null);

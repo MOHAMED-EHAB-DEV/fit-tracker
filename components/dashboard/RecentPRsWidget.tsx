@@ -1,5 +1,3 @@
-"use client";
-
 import { useId } from "react";
 import Link from "next/link";
 import { Trophy, Flame } from "lucide-react";

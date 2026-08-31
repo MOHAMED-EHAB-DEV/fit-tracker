@@ -1,12 +1,21 @@
 "use client";
 
-import React, { useState } from "react";
+import { useState } from "react";
+import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { UtensilsCrossed, Plus, Clock, Camera, Edit3, Trash2, Loader2 } from "lucide-react";
-import { Modal } from "@/components/ui/Modal";
-import { EditMealModal, MealData } from "@/components/nutrition/EditMealModal";
+import type { MealData } from "@/components/nutrition/EditMealModal";
+
+const Modal = dynamic(() => import("@/components/ui/Modal").then((mod) => mod.Modal), {
+  ssr: false,
+});
+
+const EditMealModal = dynamic(
+  () => import("@/components/nutrition/EditMealModal").then((mod) => mod.EditMealModal),
+  { ssr: false }
+);
 
 interface MealItem {
   _id: string;
@@ -60,6 +69,8 @@ function MealImageThumbnail({
   );
 }
 
+import { deleteMealAction } from "@/lib/fitness/actions";
+
 export function MealTimeline({ meals }: MealTimelineProps) {
   const router = useRouter();
   const [editingMeal, setEditingMeal] = useState<MealData | null>(null);
@@ -71,13 +82,9 @@ export function MealTimeline({ meals }: MealTimelineProps) {
 
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/meals/${deletingMeal._id}`, {
-        method: "DELETE",
-      });
-
-      if (res.ok) {
+      const res = await deleteMealAction(deletingMeal._id);
+      if (res.success) {
         setDeletingMeal(null);
-        router.refresh();
       }
     } catch (err) {
       console.error("Failed to delete meal:", err);

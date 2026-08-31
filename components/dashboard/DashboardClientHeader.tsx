@@ -1,9 +1,14 @@
 "use client";
 
-import React, { useState } from "react";
+import { useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Dumbbell, Camera, Sparkles, Zap } from "lucide-react";
-import { QuickLogModal } from "@/components/dashboard/QuickLogModal";
+
+const QuickLogModal = dynamic(
+  () => import("@/components/dashboard/QuickLogModal").then((mod) => mod.QuickLogModal),
+  { ssr: false }
+);
 
 interface DashboardClientHeaderProps {
   userName: string;

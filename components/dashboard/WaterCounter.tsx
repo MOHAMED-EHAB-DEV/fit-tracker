@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import { useState, useTransition } from "react";
 import { Droplets, Plus } from "lucide-react";
+import { logWaterAction } from "@/lib/fitness/actions";
 
 interface WaterCounterProps {
   initialWaterMl: number;
@@ -9,27 +10,21 @@ interface WaterCounterProps {
 
 export function WaterCounter({ initialWaterMl }: WaterCounterProps) {
   const [waterMl, setWaterMl] = useState(initialWaterMl);
-  const [isUpdating, setIsUpdating] = useState(false);
+  const [isPending, startTransition] = useTransition();
 
-  const addWater = async (amount: number) => {
-    setIsUpdating(true);
-    const newAmount = waterMl + amount;
-    setWaterMl(newAmount); // optimistic update
+  const addWater = (amount: number) => {
+    // 1. Optimistic instant visual update
+    setWaterMl((prev) => prev + amount);
 
-    try {
-      await fetch("/api/assistant/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: `Add ${amount}ml water`,
-          mode: "multi_log",
-        }),
-      });
-    } catch (err) {
-      console.error("Failed to log water:", err);
-    } finally {
-      setIsUpdating(false);
-    }
+    // 2. Server Action transition
+    startTransition(async () => {
+      const res = await logWaterAction(amount);
+      if (!res.success) {
+        console.error("Failed to persist water update:", res.error);
+      } else if (typeof res.waterMl === "number") {
+        setWaterMl(res.waterMl);
+      }
+    });
   };
 
   return (
@@ -50,10 +45,10 @@ export function WaterCounter({ initialWaterMl }: WaterCounterProps) {
         <button
           type="button"
           onClick={() => addWater(250)}
-          disabled={isUpdating}
-          aria-busy={isUpdating}
+          disabled={isPending}
+          aria-busy={isPending}
           aria-label="Add 250 milliliters of water"
-          className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 min-h-[40px] rounded-xl bg-zinc-800 hover:bg-zinc-700/80 text-zinc-200 hover:text-white text-xs font-semibold border border-zinc-700/60 transition active:scale-95 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 cursor-pointer"
+          className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 min-h-10 rounded-xl bg-zinc-800 hover:bg-zinc-700/80 text-zinc-200 hover:text-white text-xs font-semibold border border-zinc-700/60 transition active:scale-95 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5 text-cyan-400" aria-hidden="true" />
           <span>+250 ml</span>
@@ -62,10 +57,10 @@ export function WaterCounter({ initialWaterMl }: WaterCounterProps) {
         <button
           type="button"
           onClick={() => addWater(500)}
-          disabled={isUpdating}
-          aria-busy={isUpdating}
+          disabled={isPending}
+          aria-busy={isPending}
           aria-label="Add 500 milliliters of water"
-          className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 min-h-[40px] rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 text-xs font-semibold border border-cyan-500/30 transition active:scale-95 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 cursor-pointer"
+          className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 min-h-10 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 text-xs font-semibold border border-cyan-500/30 transition active:scale-95 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5 text-cyan-400" aria-hidden="true" />
           <span>+500 ml</span>
