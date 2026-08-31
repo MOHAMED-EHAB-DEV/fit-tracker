@@ -52,8 +52,8 @@ export function useNativeStepTracker(initialSteps: number = 0) {
         // 2. Read initial cached steps from Android StepStore
         if (bridge.getTodaySteps) {
           const cached = Number(bridge.getTodaySteps());
-          if (!isNaN(cached) && cached > 0) {
-            initialCount = Math.max(initialCount, cached);
+          if (!isNaN(cached) && cached >= 0) {
+            initialCount = cached;
           }
         }
 
@@ -76,14 +76,14 @@ export function useNativeStepTracker(initialSteps: number = 0) {
       sensorInfo,
     }));
 
-    // Step update event listener
+    // Step update event listener for today's steps
     const handleStepEvent = (event: Event) => {
       const customEvent = event as CustomEvent<{ steps: number; timestamp?: number }>;
       const steps = customEvent.detail?.steps;
       if (typeof steps === "number" && !isNaN(steps)) {
         setState((prev) => ({
           ...prev,
-          nativeSteps: Math.max(prev.nativeSteps || 0, steps),
+          nativeSteps: steps,
           lastSyncedAt: new Date(),
           isSyncing: false,
         }));
@@ -98,7 +98,7 @@ export function useNativeStepTracker(initialSteps: number = 0) {
         if (typeof steps === "number" && !isNaN(steps)) {
           setState((prev) => ({
             ...prev,
-            nativeSteps: Math.max(prev.nativeSteps || 0, steps),
+            nativeSteps: steps,
             lastSyncedAt: new Date(),
             isSyncing: false,
           }));

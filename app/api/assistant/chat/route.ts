@@ -214,10 +214,25 @@ export async function POST(request: NextRequest) {
         waterAdded += amount;
       } else if (item.type === "steps" && item.count) {
         const count = Number(item.count);
+        const stepCalories = Math.round(count * 0.04);
         writePromises.push(
           DailyLog.findOneAndUpdate(
             { userId: session.userId, dateString: todayStr },
-            { $max: { steps: count } },
+            {
+              $max: { steps: count },
+              $set: {
+                stepsSyncedAt: new Date(),
+                stepsSource: "manual",
+                "caloriesOut.steps": stepCalories,
+              },
+              $setOnInsert: {
+                date: new Date(),
+                caloriesIn: 0,
+                macros: { protein: 0, carbs: 0, fat: 0, fiber: 0 },
+                waterMl: 0,
+                waterEntries: [],
+              },
+            },
             { upsert: true }
           )
         );
