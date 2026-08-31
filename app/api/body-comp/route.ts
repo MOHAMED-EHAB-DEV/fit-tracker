@@ -83,6 +83,19 @@ export async function POST(request: NextRequest) {
     let aiAnalysis = null;
     if (process.env.GEMINI_API_KEY && base64Photo) {
       try {
+        const promptText = [
+          "--- PHYSIQUE CHECK-IN EVALUATION ---",
+          `Current Body Weight: ${weight ? `${weight} kg` : "Not provided"}`,
+          notes ? `User Check-in Notes: "${notes}"` : "User Check-in Notes: None provided.",
+          measurements ? `Body Circumferences: ${JSON.stringify(measurements)}` : "",
+          "",
+          "Evaluation Directives:",
+          "1. Objectively analyze visible muscular development, symmetry, and conditioning.",
+          "2. Estimate body fat percentage range based on anatomical landmarks (abdominal definition, vascularity, waist-to-shoulder taper, subcutaneous fat).",
+          "3. Highlight standout muscle groups and structural balance.",
+          "4. Deliver 3–4 practical, actionable recommendations for nutrition phase (cut / maintain / lean bulk) and progressive training volume.",
+        ].filter(Boolean).join("\n");
+
         const response = await genAI.models.generateContent({
           model: flashModel,
           contents: [
@@ -92,7 +105,7 @@ export async function POST(request: NextRequest) {
                 mimeType: "image/webp",
               },
             },
-            `Evaluate this physique check-in photo. Weight: ${weight || "N/A"}kg. Notes: ${notes || "N/A"}. Provide bodybuilding & body composition feedback with accurate measurements and percentages up to one decimal point.`,
+            promptText,
           ],
           config: {
             systemInstruction: BODY_COMP_SYSTEM_PROMPT,
@@ -105,8 +118,13 @@ export async function POST(request: NextRequest) {
         const text = response.text;
         if (text) {
           const cleaned = text.replace(/```json\s*|```/g, "").trim();
+          const parsed = JSON.parse(cleaned);
           aiAnalysis = {
-            ...JSON.parse(cleaned),
+            qualitativeNotes: parsed.qualitativeNotes || "",
+            estimatedBodyFatRange: parsed.estimatedBodyFatRange || "",
+            comparedToPrevious: parsed.comparedToPrevious || "",
+            muscleGroupHighlights: Array.isArray(parsed.muscleGroupHighlights) ? parsed.muscleGroupHighlights : [],
+            recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations : [],
             modelUsed: flashModel,
             generatedAt: new Date(),
           };

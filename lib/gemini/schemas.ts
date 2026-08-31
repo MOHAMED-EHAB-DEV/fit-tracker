@@ -58,33 +58,58 @@ export const multiLogSchema = {
   properties: {
     logItems: {
       type: "array",
+      description: "Array of parsed fitness/nutrition logging entries extracted from natural language",
       items: {
         type: "object",
         properties: {
           type: {
             type: "string",
             enum: ["meal", "water", "steps", "weight", "note"],
+            description: "Activity classification domain",
           },
-          description: { type: "string" },
+          description: {
+            type: "string",
+            description: "Clear, descriptive title including quantity/portion (e.g., 'Oatmeal with Whey Protein & Berries', 'Morning hydration')",
+          },
           macros: {
             type: "object",
+            description: "Macronutrient breakdown required when type is 'meal'",
             properties: {
-              calories: { type: "number" },
-              protein: { type: "number" },
-              carbs: { type: "number" },
-              fat: { type: "number" },
+              calories: { type: "number", description: "Estimated total calories in kcal" },
+              protein: { type: "number", description: "Estimated protein in grams" },
+              carbs: { type: "number", description: "Estimated carbohydrates in grams" },
+              fat: { type: "number", description: "Estimated fat in grams" },
             },
           },
-          amountMl: { type: "number" },
-          count: { type: "number" },
-          weightKg: { type: "number" },
-          confidence: { type: "string", enum: ["high", "medium", "low"] },
+          amountMl: {
+            type: "number",
+            description: "Water/liquid volume in milliliters (required when type is 'water')",
+          },
+          count: {
+            type: "number",
+            description: "Total step count (required when type is 'steps')",
+          },
+          weightKg: {
+            type: "number",
+            description: "Body weight in kilograms rounded to 1 decimal place (required when type is 'weight')",
+          },
+          confidence: {
+            type: "string",
+            enum: ["high", "medium", "low"],
+            description: "Confidence in parsing certainty",
+          },
         },
         required: ["type", "description", "confidence"],
       },
     },
-    chatReply: { type: "string" },
-    parseNotes: { type: "string" },
+    chatReply: {
+      type: "string",
+      description: "Friendly, motivating confirmation response summarizing logged entries or answering coaching questions",
+    },
+    parseNotes: {
+      type: "string",
+      description: "Internal parser diagnostics on assumptions or conversions made",
+    },
   },
   required: ["logItems", "chatReply"],
 };
@@ -92,11 +117,29 @@ export const multiLogSchema = {
 export const bodyCompAnalysisSchema = {
   type: "object",
   properties: {
-    qualitativeNotes: { type: "string" },
-    estimatedBodyFatRange: { type: "string" },
-    comparedToPrevious: { type: "string" },
-    muscleGroupHighlights: { type: "array", items: { type: "string" } },
-    recommendations: { type: "array", items: { type: "string" } },
+    qualitativeNotes: {
+      type: "string",
+      description: "Clinical, objective overview of current physique condition, conditioning level, and posture",
+    },
+    estimatedBodyFatRange: {
+      type: "string",
+      description: "Estimated body fat percentage range with 1 decimal precision (e.g. '12.0% – 14.0%')",
+    },
+    comparedToPrevious: {
+      type: "string",
+      description: "Comparison to baseline or historical trend if notes or context are provided",
+    },
+    muscleGroupHighlights: {
+      type: "array",
+      description: "List of well-developed or standout muscle groups (e.g., 'Clavicular pectoralis definition', 'Lateral deltoid cap')",
+      items: { type: "string" },
+    },
+    recommendations: {
+      type: "array",
+      description: "Actionable periodization, training volume, and caloric balance recommendations",
+      items: { type: "string" },
+    },
   },
-  required: ["qualitativeNotes", "estimatedBodyFatRange"],
+  required: ["qualitativeNotes", "estimatedBodyFatRange", "muscleGroupHighlights", "recommendations"],
 };
+

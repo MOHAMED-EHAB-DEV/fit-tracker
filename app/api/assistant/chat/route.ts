@@ -48,15 +48,20 @@ export async function POST(request: NextRequest) {
 
       if (process.env.GEMINI_API_KEY) {
         try {
-          const contents = `--- USER COMPRESSED FITNESS DATA CONTEXT ---
-${textContext}
---- END DATA CONTEXT ---
-
-User Request: "${parsedCmd.userPrompt}"
-${parsedCmd.coachingFocus ? `Special Focus: Please focus on ${parsedCmd.coachingFocus.replace(/_/g, " ")} based on the data above.` : ""}
-Current Date: ${todayStr}
-
-Provide clear, motivating, data-backed coaching and formatted bullet points.`;
+          const contents = [
+            "=== USER COMPRESSED FITNESS DATA CONTEXT ===",
+            textContext,
+            "=== END DATA CONTEXT ===",
+            "",
+            `User Query / Intent: "${parsedCmd.userPrompt}"`,
+            parsedCmd.coachingFocus ? `Special Coaching Focus: ${parsedCmd.coachingFocus.replace(/_/g, " ")}` : "",
+            `Current Date Reference: ${todayStr}`,
+            "",
+            "Coaching Directives:",
+            "- Directly reference the user's actual averages, targets, volume trends, and weight change slopes from the context block.",
+            "- Apply exercise physiology and sports nutrition principles (energy balance, volume landmarks MEV/MAV/MRV, protein threshold).",
+            "- Use bold formatting for all numerical metrics and conclude with a concrete ⚡ Action Plan.",
+          ].filter(Boolean).join("\n");
 
           const response = await genAI.models.generateContent({
             model: targetModel,
@@ -96,9 +101,23 @@ Provide clear, motivating, data-backed coaching and formatted bullet points.`;
 
     if (process.env.GEMINI_API_KEY) {
       try {
+        const promptText = [
+          `User Natural Language Input: "${message.trim()}"`,
+          `Today's Reference Date: ${todayStr}`,
+          "",
+          "Parsing & Coaching Instructions:",
+          "1. If logging activities, extract all distinct items (meals, water, steps, weight, notes) into structured 'logItems'.",
+          "2. For meals: estimate realistic portions and scientific macronutrients using USDA references (Calories ≈ P*4 + C*4 + F*9).",
+          "3. For water: convert amounts accurately to milliliters 'amountMl' (1 glass = 250ml, 1 bottle = 500ml, 1L = 1000ml).",
+          "4. For weight: convert to kilograms 'weightKg' with 1 decimal precision.",
+          "5. For step counts: extract total daily count 'count'.",
+          "6. If the input is purely a fitness or coaching question, leave 'logItems' empty and provide an expert coach answer in 'chatReply'.",
+          "7. In 'chatReply', confirm exact numbers logged with an upbeat, professional tone or deliver sharp coaching advice.",
+        ].join("\n");
+
         const response = await genAI.models.generateContent({
           model: targetModel,
-          contents: `User message: "${message}". Current date: ${todayStr}. If the user is logging food/water/steps/weight, extract all items accurately. If the user is asking a general fitness or coaching question without logging, provide an insightful coach reply and leave logItems empty.`,
+          contents: promptText,
           config: {
             systemInstruction: MULTI_LOG_SYSTEM_PROMPT,
             responseMimeType: "application/json",
@@ -110,7 +129,31 @@ Provide clear, motivating, data-backed coaching and formatted bullet points.`;
         const text = response.text;
         if (text) {
           const cleaned = text.replace(/```json\s*|```/g, "").trim();
-          parsedResult = JSON.parse(cleaned);
+          const parsed = JSON.parse(cleaned);
+          if (parsed && typeof parsed === "object") {
+            parsedResult = {
+              logItems: Array.isArray(parsed.logItems)
+                ? parsed.logItems.map((item: any) => ({
+                    type: item.type,
+                    description: item.description || "Activity",
+                    macros: item.macros
+                      ? {
+                          calories: Math.round(Number(item.macros.calories) || 0),
+                          protein: Number((Number(item.macros.protein) || 0).toFixed(1)),
+                          carbs: Number((Number(item.macros.carbs) || 0).toFixed(1)),
+                          fat: Number((Number(item.macros.fat) || 0).toFixed(1)),
+                        }
+                      : undefined,
+                    amountMl: item.amountMl ? Math.round(Number(item.amountMl)) : undefined,
+                    count: item.count ? Math.round(Number(item.count)) : undefined,
+                    weightKg: item.weightKg ? Number((Number(item.weightKg) || 0).toFixed(1)) : undefined,
+                    confidence: item.confidence || "medium",
+                  }))
+                : [],
+              chatReply: parsed.chatReply || "Logged your request.",
+              parseNotes: parsed.parseNotes || "",
+            };
+          }
         }
       } catch (geminiErr) {
         console.error("Gemini multi-log error:", geminiErr);

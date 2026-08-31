@@ -7,7 +7,7 @@ const genAI = new GoogleGenAI({ apiKey });
 /**
  * Primary Flash model for high-intelligence multi-domain coaching, meal analysis, and data analysis.
  */
-export const flashModel = "gemini-3.6-flash";
+export const flashModel = "gemini-3.7-flash";
 
 /**
  * Ultra-fast lightweight model for rapid daily briefs and fast multi-log parsing.

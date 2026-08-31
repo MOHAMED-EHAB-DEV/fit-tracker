@@ -10,42 +10,15 @@ import Workout from "@/lib/db/models/Workout";
 import BodyComp from "@/lib/db/models/BodyComp";
 import { getTodayDateString, getWeekStartDateString, getWeekDatesStrings } from "@/lib/fitness/timezone";
 
-import dynamic from "next/dynamic";
 import { DashboardClientHeader } from "@/components/dashboard/DashboardClientHeader";
 import { MetricsGrid } from "@/components/dashboard/MetricsGrid";
-import type { IDailyHistoryPoint } from "@/components/dashboard/EnergyBalanceChart";
+import { EnergyBalanceChart, type IDailyHistoryPoint } from "@/components/dashboard/EnergyBalanceChart";
 import { WeeklySplitMap, IWeeklyDaySession, IMuscleVolumeGroup, DayOfWeekKey } from "@/components/dashboard/WeeklySplitMap";
 import { RecentPRsWidget, IRecentPR } from "@/components/dashboard/RecentPRsWidget";
-import type { IWeightDataPoint } from "@/components/dashboard/WeightTrendWidget";
+import { WeightTrendWidget, type IWeightDataPoint } from "@/components/dashboard/WeightTrendWidget";
 import { WaterCounter } from "@/components/dashboard/WaterCounter";
 import { MealTimeline } from "@/components/dashboard/MealTimeline";
 import { DAYS_OF_WEEK as DAYS_LIST } from "@/constants/workout";
-
-const EnergyBalanceChart = dynamic(
-  () => import("@/components/dashboard/EnergyBalanceChart").then((mod) => mod.EnergyBalanceChart),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="p-6 rounded-3xl bg-zinc-900/80 border border-zinc-800/80 h-95 flex flex-col justify-between animate-pulse">
-        <div className="h-5 w-44 bg-zinc-800 rounded-lg" />
-        <div className="h-56 w-full bg-zinc-800/30 rounded-2xl" />
-      </div>
-    ),
-  }
-);
-
-const WeightTrendWidget = dynamic(
-  () => import("@/components/dashboard/WeightTrendWidget").then((mod) => mod.WeightTrendWidget),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="p-6 rounded-3xl bg-zinc-900/80 border border-zinc-800/80 h-95 flex flex-col justify-between animate-pulse">
-        <div className="h-5 w-40 bg-zinc-800 rounded-lg" />
-        <div className="h-56 w-full bg-zinc-800/30 rounded-2xl" />
-      </div>
-    ),
-  }
-);
 
 async function DashboardContent() {
   const user = await getFullUser();
