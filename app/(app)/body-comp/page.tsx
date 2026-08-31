@@ -37,6 +37,7 @@ async function BodyCompDataLoader() {
       aiAnalysis: doc.aiAnalysis
         ? {
             qualitativeNotes: doc.aiAnalysis.qualitativeNotes || "",
+            estimatedBodyFatPercent: doc.aiAnalysis.estimatedBodyFatPercent ?? null,
             estimatedBodyFatRange: doc.aiAnalysis.estimatedBodyFatRange || "",
             muscleGroupHighlights: doc.aiAnalysis.muscleGroupHighlights || [],
             recommendations: doc.aiAnalysis.recommendations || [],

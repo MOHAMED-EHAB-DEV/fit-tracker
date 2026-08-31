@@ -31,6 +31,7 @@ export interface MultiLogResponse {
 
 export interface BodyCompAnalysisResponse {
   qualitativeNotes: string;
+  estimatedBodyFatPercent?: number;
   estimatedBodyFatRange: string;
   comparedToPrevious?: string;
   muscleGroupHighlights?: string[];

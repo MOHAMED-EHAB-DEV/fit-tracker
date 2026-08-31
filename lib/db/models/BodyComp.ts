@@ -9,6 +9,7 @@ interface IBodyPhoto {
 
 interface IAiAnalysis {
   qualitativeNotes: string;
+  estimatedBodyFatPercent?: number | null;
   estimatedBodyFatRange: string;
   comparedToPrevious: string;
   muscleGroupHighlights: string[];
@@ -66,6 +67,7 @@ const BodyCompSchema = new Schema<IBodyComp>(
     aiAnalysis: {
       type: {
         qualitativeNotes: String,
+        estimatedBodyFatPercent: { type: Number, default: null },
         estimatedBodyFatRange: String,
         comparedToPrevious: String,
         muscleGroupHighlights: [String],

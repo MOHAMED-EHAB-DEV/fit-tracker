@@ -117,13 +117,17 @@ export const multiLogSchema = {
 export const bodyCompAnalysisSchema = {
   type: "object",
   properties: {
-    qualitativeNotes: {
-      type: "string",
-      description: "Clinical, objective overview of current physique condition, conditioning level, and posture",
+    estimatedBodyFatPercent: {
+      type: "number",
+      description: "Precise single-value body fat percentage estimate (e.g. 13.5) rounded to 1 decimal place based on visual markers and anatomical context",
     },
     estimatedBodyFatRange: {
       type: "string",
       description: "Estimated body fat percentage range with 1 decimal precision (e.g. '12.0% – 14.0%')",
+    },
+    qualitativeNotes: {
+      type: "string",
+      description: "Clinical, objective overview of current physique condition, conditioning level, and posture",
     },
     comparedToPrevious: {
       type: "string",
@@ -140,6 +144,6 @@ export const bodyCompAnalysisSchema = {
       items: { type: "string" },
     },
   },
-  required: ["qualitativeNotes", "estimatedBodyFatRange", "muscleGroupHighlights", "recommendations"],
+  required: ["estimatedBodyFatPercent", "estimatedBodyFatRange", "qualitativeNotes", "muscleGroupHighlights", "recommendations"],
 };
 
