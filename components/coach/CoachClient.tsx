@@ -193,14 +193,14 @@ export const COMMAND_DEFINITIONS: CommandDef[] = [
 
 export const MODEL_OPTIONS: { id: GeminiModelChoice; label: string; tag: string; description: string }[] = [
   {
-    id: "gemini-flash-lite",
-    label: "Gemini Flash Lite",
+    id: "gemini-2.5-flash-lite",
+    label: "Gemini 2.5 Flash Lite",
     tag: "Default • Ultra-Fast",
     description: "Zero latency for rapid food/water logging and fast data summaries",
   },
   {
-    id: "gemini-3.6-flash",
-    label: "Gemini 3.6 Flash",
+    id: "gemini-3.7-flash",
+    label: "Gemini 3.7 Flash",
     tag: "High Intelligence",
     description: "Deep, accurate coaching analysis for multi-week trends, meals & volume",
   },
@@ -231,11 +231,11 @@ export function CoachClient() {
       sender: "assistant",
       text: "👋 **Welcome to your AI Strength & Nutrition Coach!**\n\nType `/` to browse available data & analysis commands, quote past messages to ask follow-up questions, or attach meal photos and data files to analyze instantly.",
       timestamp: "Just now",
-      modelUsed: "gemini-flash-lite",
+      modelUsed: "gemini-2.5-flash-lite",
     },
   ]);
   const [input, setInput] = useState("");
-  const [selectedModel, setSelectedModel] = useState<GeminiModelChoice>("gemini-flash-lite");
+  const [selectedModel, setSelectedModel] = useState<GeminiModelChoice>("gemini-2.5-flash-lite");
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 

@@ -18,6 +18,29 @@ import {
   MAX_TOTAL_UPLOAD_BYTES,
 } from "@/lib/security/file-validator";
 
+function extractGeminiErrorMessage(err: any): { status: number; message: string } {
+  const status =
+    err?.status ||
+    err?.statusCode ||
+    (typeof err?.message === "string" && err.message.includes("503")
+      ? 503
+      : typeof err?.message === "string" && err.message.includes("404")
+      ? 404
+      : 503);
+
+  let rawMsg = err?.message || "AI Service temporarily unavailable";
+  try {
+    const jsonMatch = typeof rawMsg === "string" ? rawMsg.match(/\{[\s\S]*\}/) : null;
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed?.error?.message) {
+        rawMsg = parsed.error.message;
+      }
+    }
+  } catch {}
+  return { status, message: rawMsg };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession();
@@ -192,8 +215,11 @@ export async function POST(request: NextRequest) {
           }
         } catch (geminiErr: any) {
           console.error("Gemini Coach Command Error:", geminiErr);
-          reply = `Sorry, I encountered an issue analyzing your data with ${targetModel}. Please try again.`;
+          const { status, message: errDetail } = extractGeminiErrorMessage(geminiErr);
+          reply = `⚠️ Error (${status}): ${errDetail}`;
         }
+      } else {
+        reply = "⚠️ Error (500): GEMINI_API_KEY is not configured on the server.";
       }
 
       return NextResponse.json({
@@ -283,10 +309,13 @@ export async function POST(request: NextRequest) {
             };
           }
         }
-      } catch (geminiErr) {
+      } catch (geminiErr: any) {
         console.error("Gemini multi-log error:", geminiErr);
-        parsedResult.chatReply = "Saved your request locally.";
+        const { status, message: errDetail } = extractGeminiErrorMessage(geminiErr);
+        parsedResult.chatReply = `⚠️ Error (${status}): ${errDetail}`;
       }
+    } else {
+      parsedResult.chatReply = "⚠️ Error (500): GEMINI_API_KEY is not configured on the server.";
     }
 
     // Orchestrate batch writes for parsed items if any

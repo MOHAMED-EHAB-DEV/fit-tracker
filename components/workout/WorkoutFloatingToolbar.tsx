@@ -52,7 +52,7 @@ export function WorkoutFloatingToolbar({
       <aside
         aria-label="Workout quick actions"
         className={cn(
-          "fixed bottom-6 left-1/2 -translate-x-1/2 z-40 transition-all duration-300 ease-out flex items-center",
+          "fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] md:bottom-6 left-1/2 -translate-x-1/2 z-40 transition-all duration-300 ease-out flex items-center max-w-[calc(100vw-1.5rem)]",
           isVisible
             ? "opacity-100 translate-y-0 pointer-events-auto"
             : "opacity-0 translate-y-8 pointer-events-none"

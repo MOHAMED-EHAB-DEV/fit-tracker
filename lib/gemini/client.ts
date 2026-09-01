@@ -12,7 +12,7 @@ export const flashModel = "gemini-3.7-flash";
 /**
  * Ultra-fast lightweight model for rapid daily briefs and fast multi-log parsing.
  */
-export const flashLiteModel = "gemini-flash-lite";
+export const flashLiteModel = "gemini-2.5-flash-lite";
 
 /**
  * AI Power Modes:

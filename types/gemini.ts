@@ -39,7 +39,11 @@ export interface BodyCompAnalysisResponse {
   recommendations?: string[];
 }
 
-export type GeminiModelChoice = "gemini-3.7-flash" | "gemini-3.6-flash" | "gemini-flash-lite";
+export type GeminiModelChoice =
+  | "gemini-3.7-flash"
+  | "gemini-3.6-flash"
+  | "gemini-2.5-flash-lite"
+  | "gemini-flash-lite";
 
 export type AIPowerMode = "full" | "balanced" | "low";
 
