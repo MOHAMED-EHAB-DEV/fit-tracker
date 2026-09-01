@@ -100,6 +100,9 @@ async function NutritionContent({ searchParams }: NutritionPageProps) {
     mealType: m.mealType,
     description: m.description,
     loggedAt: m.loggedAt ? new Date(m.loggedAt).toISOString() : new Date().toISOString(),
+    dateString: m.dateString,
+    imageSource: m.imageSource,
+    isManualOverride: m.isManualOverride,
     macros: {
       calories: m.macros?.calories || 0,
       protein: m.macros?.protein || 0,
@@ -107,7 +110,23 @@ async function NutritionContent({ searchParams }: NutritionPageProps) {
       fat: m.macros?.fat || 0,
       fiber: m.macros?.fiber || 0,
     },
-    cloudinary: m.cloudinary?.secureUrl ? { secureUrl: m.cloudinary.secureUrl } : null,
+    aiMacros: m.aiMacros ? {
+      calories: m.aiMacros.calories,
+      protein: m.aiMacros.protein,
+      carbs: m.aiMacros.carbs,
+      fat: m.aiMacros.fat,
+      fiber: m.aiMacros.fiber,
+      confidence: m.aiMacros.confidence,
+      confidenceReason: m.aiMacros.confidenceReason,
+      geminiNotes: m.aiMacros.geminiNotes,
+      modelUsed: m.aiMacros.modelUsed,
+    } : null,
+    cloudinary: m.cloudinary?.secureUrl ? {
+      secureUrl: m.cloudinary.secureUrl,
+      publicId: m.cloudinary.publicId,
+    } : null,
+    createdAt: m.createdAt ? new Date(m.createdAt).toISOString() : undefined,
+    updatedAt: m.updatedAt ? new Date(m.updatedAt).toISOString() : undefined,
   }));
 
   const analyzeLinkUrl = selectedDateStr !== todayStr

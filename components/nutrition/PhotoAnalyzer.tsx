@@ -410,7 +410,7 @@ export function PhotoAnalyzer() {
       <Modal
         isOpen={isConfirmModalOpen}
         onClose={() => setIsConfirmModalOpen(false)}
-        size="lg"
+        size="2xl"
         title={
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400" aria-hidden="true">
@@ -444,126 +444,198 @@ export function PhotoAnalyzer() {
           </div>
         }
       >
-        <div className="space-y-5 text-start">
-          {/* AI Confidence & Diagnostic Assessment */}
-          {analysisResult && (
-            <div className="p-4 rounded-2xl bg-zinc-950/60 border border-white/10 space-y-2.5">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <span className="text-xs font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-                  <Info className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
-                  <span>AI Confidence Assessment</span>
-                </span>
-                {getConfidenceBadge(analysisResult.confidence)}
-              </div>
-
-              {analysisResult.confidenceReason && (
-                <p className="text-xs text-zinc-300 font-medium">
-                  {analysisResult.confidenceReason}
-                </p>
+        <div className="space-y-6 text-start">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            {/* Left Column: Image Preview + AI Diagnostics + Caloric Ratio */}
+            <div className="lg:col-span-5 space-y-4">
+              {/* Photo Preview Thumbnail */}
+              {previewUrl && (
+                <div className="relative w-full h-44 rounded-2xl overflow-hidden border border-white/10 shadow-lg bg-zinc-950">
+                  <Image
+                    src={previewUrl}
+                    alt="Analyzed food photo"
+                    fill
+                    className="object-cover"
+                    sizes="(max-width: 1024px) 100vw, 360px"
+                  />
+                  <div className="absolute inset-0 bg-linear-to-t from-zinc-950/80 via-transparent to-transparent pointer-events-none" />
+                  <div className="absolute bottom-2.5 inset-s-3 flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-900/90 backdrop-blur-md border border-white/10 text-[10px] font-bold text-zinc-300">
+                      <Camera className="w-3 h-3 text-emerald-400" />
+                      Visual Snapshot
+                    </span>
+                  </div>
+                </div>
               )}
 
-              {analysisResult.geminiNotes && (
-                <p className="text-xs text-zinc-400 italic bg-white/3 p-2.5 rounded-xl border border-white/5">
-                  Dietitian Note: {analysisResult.geminiNotes}
-                </p>
+              {/* AI Confidence & Diagnostic Assessment */}
+              {analysisResult && (
+                <div className="p-4 rounded-2xl bg-zinc-950/70 border border-white/10 space-y-2.5 shadow-sm">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="text-xs font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                      <Info className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
+                      <span>AI Diagnostic</span>
+                    </span>
+                    {getConfidenceBadge(analysisResult.confidence)}
+                  </div>
+
+                  {analysisResult.confidenceReason && (
+                    <p className="text-xs text-zinc-300 font-medium leading-relaxed">
+                      {analysisResult.confidenceReason}
+                    </p>
+                  )}
+
+                  {analysisResult.geminiNotes && (
+                    <p className="text-xs text-zinc-400 italic bg-white/3 p-2.5 rounded-xl border border-white/5">
+                      Dietitian Note: {analysisResult.geminiNotes}
+                    </p>
+                  )}
+                </div>
               )}
-            </div>
-          )}
 
-          {/* Editable Main Details */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-            <Input
-              label="Meal Description"
-              value={editDescription}
-              onChange={(e) => setEditDescription(e.target.value)}
-              startContent={<Edit3 className="w-4 h-4" />}
-              placeholder="e.g. Grilled Chicken Bowl"
-            />
-            <Select
-              label="Meal Type"
-              value={editMealType}
-              onChange={(val) => setEditMealType(val as MealType)}
-              options={MEAL_TYPE_OPTIONS}
-            />
-          </div>
+              {/* Live Caloric Distribution Bar */}
+              {(() => {
+                const p = parseFloat(editProtein) || 0;
+                const c = parseFloat(editCarbs) || 0;
+                const f = parseFloat(editFat) || 0;
+                const cal = parseInt(editCalories, 10) || (p * 4 + c * 4 + f * 9) || 1;
+                const pCal = p * 4;
+                const cCal = c * 4;
+                const fCal = f * 9;
+                const totalMacroCal = pCal + cCal + fCal || 1;
+                const pPct = Math.round((pCal / totalMacroCal) * 100);
+                const cPct = Math.round((cCal / totalMacroCal) * 100);
+                const fPct = Math.max(0, 100 - pPct - cPct);
 
-          {/* Editable Macronutrient Totals */}
-          <div className="space-y-2">
-            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 select-none">
-              Macronutrient Targets
-            </label>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-              <Input
-                label="Calories (kcal)"
-                type="number"
-                value={editCalories}
-                onChange={(e) => setEditCalories(e.target.value)}
-                startContent={<Flame className="w-3.5 h-3.5 text-amber-400" />}
-              />
-              <Input
-                label="Protein (g)"
-                type="number"
-                value={editProtein}
-                onChange={(e) => setEditProtein(e.target.value)}
-                startContent={<Dumbbell className="w-3.5 h-3.5 text-emerald-400" />}
-              />
-              <Input
-                label="Carbs (g)"
-                type="number"
-                value={editCarbs}
-                onChange={(e) => setEditCarbs(e.target.value)}
-                startContent={<Wheat className="w-3.5 h-3.5 text-amber-300" />}
-              />
-              <Input
-                label="Fat (g)"
-                type="number"
-                value={editFat}
-                onChange={(e) => setEditFat(e.target.value)}
-                startContent={<Droplet className="w-3.5 h-3.5 text-orange-400" />}
-              />
-              <Input
-                label="Fiber (g)"
-                type="number"
-                value={editFiber}
-                onChange={(e) => setEditFiber(e.target.value)}
-                startContent={<Layers className="w-3.5 h-3.5 text-teal-400" />}
-              />
-            </div>
-          </div>
-
-          {/* Ingredient Breakdown Section */}
-          {analysisResult?.items && analysisResult.items.length > 0 && (
-            <div className="space-y-2">
-              <span className="block text-xs font-bold uppercase tracking-wider text-zinc-400 select-none">
-                Detected Ingredient Breakdown
-              </span>
-              <div className="max-h-48 overflow-y-auto space-y-1.5 pe-1">
-                {analysisResult.items.map((item: any, idx: number) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between text-xs p-2.5 rounded-xl bg-zinc-950/40 border border-white/5"
-                  >
-                    <div className="truncate me-2">
-                      <span className="text-zinc-200 font-semibold">{item.name}</span>
-                      <span className="text-zinc-500 ms-1.5">({item.quantity})</span>
+                return (
+                  <div className="p-3.5 rounded-2xl bg-zinc-950/60 border border-white/8 space-y-2.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-zinc-400 uppercase tracking-wider text-[10px]">
+                        Energy Distribution
+                      </span>
+                      <span className="text-zinc-300 font-extrabold tabular-nums">
+                        {cal} kcal
+                      </span>
                     </div>
-                    <div className="flex items-center gap-3 text-zinc-400 shrink-0 font-medium">
-                      <span className="text-white tabular-nums">{item.calories} kcal</span>
-                      <span className="text-emerald-400 tabular-nums">P: {item.protein}g</span>
+
+                    <div className="w-full h-2.5 bg-zinc-900 rounded-full overflow-hidden flex border border-white/5">
+                      <div style={{ width: `${pPct}%` }} className="h-full bg-emerald-500 transition-all duration-300" title={`Protein: ${pPct}%`} />
+                      <div style={{ width: `${cPct}%` }} className="h-full bg-amber-400 transition-all duration-300" title={`Carbs: ${cPct}%`} />
+                      <div style={{ width: `${fPct}%` }} className="h-full bg-orange-500 transition-all duration-300" title={`Fat: ${fPct}%`} />
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] font-semibold pt-0.5">
+                      <span className="text-emerald-400 tabular-nums">P: {pPct}%</span>
+                      <span className="text-amber-400 tabular-nums">C: {cPct}%</span>
+                      <span className="text-orange-400 tabular-nums">F: {fPct}%</span>
                     </div>
                   </div>
-                ))}
-              </div>
+                );
+              })()}
             </div>
-          )}
 
-          {/* Additional Notes */}
-          <Input
-            label="Additional Notes / Cooking Details (Optional)"
-            placeholder="e.g. 1 tbsp extra virgin olive oil used for cooking"
-            value={editNotes}
-            onChange={(e) => setEditNotes(e.target.value)}
-          />
+            {/* Right Column: Editable Inputs + Ingredients */}
+            <div className="lg:col-span-7 space-y-4">
+              {/* Editable Main Details */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <Input
+                  label="Meal Description"
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  startContent={<Edit3 className="w-4 h-4" />}
+                  placeholder="e.g. Grilled Chicken Bowl"
+                />
+                <Select
+                  label="Meal Type"
+                  value={editMealType}
+                  onChange={(val) => setEditMealType(val as MealType)}
+                  options={MEAL_TYPE_OPTIONS}
+                />
+              </div>
+
+              {/* Editable Macronutrient Totals */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 select-none">
+                  Macronutrient Targets
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                  <Input
+                    label="Calories (kcal)"
+                    type="number"
+                    value={editCalories}
+                    onChange={(e) => setEditCalories(e.target.value)}
+                    startContent={<Flame className="w-3.5 h-3.5 text-amber-400" />}
+                  />
+                  <Input
+                    label="Protein (g)"
+                    type="number"
+                    step="0.1"
+                    value={editProtein}
+                    onChange={(e) => setEditProtein(e.target.value)}
+                    startContent={<Dumbbell className="w-3.5 h-3.5 text-emerald-400" />}
+                  />
+                  <Input
+                    label="Carbs (g)"
+                    type="number"
+                    step="0.1"
+                    value={editCarbs}
+                    onChange={(e) => setEditCarbs(e.target.value)}
+                    startContent={<Wheat className="w-3.5 h-3.5 text-amber-300" />}
+                  />
+                  <Input
+                    label="Fat (g)"
+                    type="number"
+                    step="0.1"
+                    value={editFat}
+                    onChange={(e) => setEditFat(e.target.value)}
+                    startContent={<Droplet className="w-3.5 h-3.5 text-orange-400" />}
+                  />
+                  <Input
+                    label="Fiber (g)"
+                    type="number"
+                    step="0.1"
+                    value={editFiber}
+                    onChange={(e) => setEditFiber(e.target.value)}
+                    startContent={<Layers className="w-3.5 h-3.5 text-teal-400" />}
+                  />
+                </div>
+              </div>
+
+              {/* Ingredient Breakdown Section */}
+              {analysisResult?.items && analysisResult.items.length > 0 && (
+                <div className="space-y-2">
+                  <span className="block text-xs font-bold uppercase tracking-wider text-zinc-400 select-none">
+                    Detected Ingredient Breakdown ({analysisResult.items.length} items)
+                  </span>
+                  <div className="max-h-48 overflow-y-auto space-y-1.5 pe-1">
+                    {analysisResult.items.map((item: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between text-xs p-2.5 rounded-xl bg-zinc-950/50 border border-white/5 hover:border-white/10 transition"
+                      >
+                        <div className="truncate me-2">
+                          <span className="text-zinc-200 font-semibold">{item.name}</span>
+                          <span className="text-zinc-500 ms-1.5">({item.quantity})</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-zinc-400 shrink-0 font-medium">
+                          <span className="text-white tabular-nums">{item.calories} kcal</span>
+                          <span className="text-emerald-400 tabular-nums">P: {item.protein}g</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Additional Notes */}
+              <Input
+                label="Additional Notes / Cooking Details (Optional)"
+                placeholder="e.g. 1 tbsp extra virgin olive oil used for cooking"
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+              />
+            </div>
+          </div>
         </div>
       </Modal>
 

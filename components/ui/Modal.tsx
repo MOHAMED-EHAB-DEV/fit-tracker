@@ -13,7 +13,7 @@ export interface ModalProps {
   description?: React.ReactNode;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  size?: "sm" | "md" | "lg" | "xl" | "full";
+  size?: "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "full";
   showCloseButton?: boolean;
   closeOnBackdropClick?: boolean;
   className?: string;
@@ -25,6 +25,8 @@ const SIZE_MAP = {
   md: "max-w-md",
   lg: "max-w-lg",
   xl: "max-w-2xl",
+  "2xl": "max-w-4xl",
+  "3xl": "max-w-5xl",
   full: "max-w-[95vw] h-[90vh]",
 };
 
@@ -104,7 +106,7 @@ export function Modal({
                 type="button"
                 onClick={onClose}
                 aria-label="Close dialog"
-                className="p-2 rounded-full text-zinc-400 hover:text-white bg-white/4 hover:bg-white/10 active:scale-90 transition-all duration-150 ml-auto shrink-0 cursor-pointer"
+                className="p-2 rounded-full text-zinc-400 hover:text-white bg-white/4 hover:bg-white/10 active:scale-90 transition-all duration-150 ms-auto shrink-0 cursor-pointer"
               >
                 <X className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
               </button>

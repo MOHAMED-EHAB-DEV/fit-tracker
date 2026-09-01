@@ -150,6 +150,10 @@ export function MacroRemainingCards({ stats }: MacroRemainingCardsProps) {
           const isOver = remaining < 0;
           const isMet = percentage >= 100 && percentage <= 110;
 
+          const isGrams = m.unit === "g";
+          const formattedLeft = isGrams ? remaining.toFixed(1) : Math.round(remaining).toLocaleString();
+          const formattedOver = isGrams ? Math.abs(remaining).toFixed(1) : Math.abs(Math.round(remaining)).toLocaleString();
+
           const energyKcal = m.multiplier ? Math.round(consumedVal * m.multiplier) : null;
 
           return (
@@ -172,7 +176,7 @@ export function MacroRemainingCards({ stats }: MacroRemainingCardsProps) {
                   {isOver ? (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/20 text-[10px] font-extrabold text-amber-400">
                       <AlertCircle className="w-2.5 h-2.5" />
-                      +{Math.abs(remaining)} {m.unit} over
+                      +{formattedOver} {m.unit} over
                     </span>
                   ) : isMet ? (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/20 text-[10px] font-extrabold text-emerald-400">
@@ -181,7 +185,7 @@ export function MacroRemainingCards({ stats }: MacroRemainingCardsProps) {
                     </span>
                   ) : (
                     <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-zinc-800 border border-white/10 text-[10px] font-bold text-zinc-400">
-                      {remaining} {m.unit} left
+                      {formattedLeft} {m.unit} left
                     </span>
                   )}
                 </div>
@@ -189,10 +193,10 @@ export function MacroRemainingCards({ stats }: MacroRemainingCardsProps) {
                 {/* Main Values */}
                 <div className="flex items-baseline gap-1.5 mb-3">
                   <span className={`text-2xl sm:text-3xl font-black text-white tracking-tight`}>
-                    {consumedVal.toLocaleString()}
+                    {isGrams ? (Number.isInteger(consumedVal) ? consumedVal.toString() : consumedVal.toFixed(1)) : consumedVal.toLocaleString()}
                   </span>
                   <span className="text-xs font-semibold text-zinc-500">
-                    / {targetVal.toLocaleString()} {m.unit}
+                    / {isGrams ? (Number.isInteger(targetVal) ? targetVal.toString() : targetVal.toFixed(1)) : targetVal.toLocaleString()} {m.unit}
                   </span>
                 </div>
               </div>
@@ -210,11 +214,11 @@ export function MacroRemainingCards({ stats }: MacroRemainingCardsProps) {
                   <span className="font-bold text-zinc-300">{percentage}%</span>
                   {energyKcal !== null ? (
                     <span className="text-[10px] text-zinc-500">
-                      {energyKcal} kcal ({Math.round(consumedVal)}g)
+                      {energyKcal} kcal ({isGrams ? (Number.isInteger(consumedVal) ? consumedVal : consumedVal.toFixed(1)) : Math.round(consumedVal)}g)
                     </span>
                   ) : (
                     <span className="text-[10px] text-zinc-500">
-                      {remaining > 0 ? `${remaining} ${m.unit} to go` : "Budget reached"}
+                      {remaining > 0 ? `${formattedLeft} ${m.unit} to go` : "Budget reached"}
                     </span>
                   )}
                 </div>

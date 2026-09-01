@@ -17,25 +17,8 @@ const EditMealModal = dynamic(
   { ssr: false }
 );
 
-interface MealItem {
-  _id: string;
-  mealType: string;
-  description: string;
-  loggedAt: string;
-  macros: {
-    calories: number;
-    protein: number;
-    carbs: number;
-    fat: number;
-    fiber?: number;
-  };
-  cloudinary?: {
-    secureUrl: string;
-  } | null;
-}
-
 interface MealTimelineProps {
-  meals: MealItem[];
+  meals: MealData[];
 }
 
 function MealImageThumbnail({
@@ -74,7 +57,7 @@ import { deleteMealAction } from "@/lib/fitness/actions";
 export function MealTimeline({ meals }: MealTimelineProps) {
   const router = useRouter();
   const [editingMeal, setEditingMeal] = useState<MealData | null>(null);
-  const [deletingMeal, setDeletingMeal] = useState<MealItem | null>(null);
+  const [deletingMeal, setDeletingMeal] = useState<MealData | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleDeleteConfirm = async () => {
@@ -133,9 +116,9 @@ export function MealTimeline({ meals }: MealTimelineProps) {
       ) : (
         <div className="space-y-3">
           {meals.map((meal) => {
-            const time = new Date(meal.loggedAt).toLocaleTimeString([], {
+            const time = new Date(meal.loggedAt as string).toLocaleTimeString([], {
               hour: "2-digit",
-              minute: "2-digit",
+              minute: "2-digit", 
             });
 
             return (
@@ -181,7 +164,7 @@ export function MealTimeline({ meals }: MealTimelineProps) {
                   <div className="flex items-center gap-1 ps-2 border-s border-zinc-800/60 shrink-0">
                     <button
                       type="button"
-                      onClick={() => setEditingMeal(meal as any)}
+                      onClick={() => setEditingMeal(meal)}
                       className="p-1.5 sm:p-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 transition cursor-pointer"
                       title="Edit meal"
                       aria-label={`Edit ${meal.description || "meal"}`}
