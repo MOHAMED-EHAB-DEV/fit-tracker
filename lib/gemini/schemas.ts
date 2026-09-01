@@ -45,12 +45,16 @@ export const mealAnalysisSchema = {
       enum: ["high", "medium", "low"],
       description: "Assessment confidence based on visibility, scale, and clarity of ingredients",
     },
+    confidenceReason: {
+      type: "string",
+      description: "Brief rationale explaining why this confidence rating was assigned",
+    },
     geminiNotes: {
       type: "string",
       description: "Professional clinical/dietitian note on assumptions made (cooking oils, sauces) and nutritional highlights",
     },
   },
-  required: ["mealDescription", "items", "totals", "confidence"],
+  required: ["mealDescription", "items", "totals", "confidence", "confidenceReason"],
 };
 
 export const multiLogSchema = {

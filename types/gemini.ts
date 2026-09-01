@@ -10,6 +10,7 @@ export interface MealAnalysisResponse {
   items: MealAnalysisItem[];
   totals: MacroSplit;
   confidence: "high" | "medium" | "low";
+  confidenceReason?: string;
   geminiNotes?: string;
 }
 
@@ -38,7 +39,9 @@ export interface BodyCompAnalysisResponse {
   recommendations?: string[];
 }
 
-export type GeminiModelChoice = "gemini-3.6-flash" | "gemini-flash-lite";
+export type GeminiModelChoice = "gemini-3.7-flash" | "gemini-3.6-flash" | "gemini-flash-lite";
+
+export type AIPowerMode = "full" | "balanced" | "low";
 
 export interface DataContextSummary {
   dataType: "meals" | "workouts" | "bodycomp" | "progress" | "all" | "today";

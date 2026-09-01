@@ -15,12 +15,97 @@ export const flashModel = "gemini-3.7-flash";
 export const flashLiteModel = "gemini-flash-lite";
 
 /**
- * Resolves user/command model choice to supported Gemini model ID. Defaults to flashLiteModel.
+ * AI Power Modes:
+ * - "full": Full power AI with NO output token limits (unconstrained reasoning and output).
+ * - "balanced": Standard token limits (e.g., 2048–3000 tokens).
+ * - "low": Restricted token limits (e.g., 512–1024 tokens) for lightweight/eco output.
+ */
+export type AIPowerMode = "full" | "balanced" | "low";
+
+/**
+ * Global AI Power setting.
+ * Adjust via environment variable `AI_POWER_MODE` or dynamically via `setAIPowerMode`.
+ * Default is "full".
+ */
+export let AI_POWER_MODE: AIPowerMode =
+  (process.env.AI_POWER_MODE as AIPowerMode) || "full";
+
+export function setAIPowerMode(mode: AIPowerMode): void {
+  AI_POWER_MODE = mode;
+}
+
+export function getAIPowerMode(): AIPowerMode {
+  return AI_POWER_MODE;
+}
+
+/**
+ * Resolves max output tokens based on active power mode.
+ * In "full" power mode, returns undefined so no token limit is imposed on the AI.
+ */
+export function resolveMaxOutputTokens(
+  defaultLimit?: number,
+  overrideMode?: AIPowerMode
+): number | undefined {
+  const mode = overrideMode || AI_POWER_MODE;
+  if (mode === "full") {
+    return undefined; // No limit
+  }
+  if (mode === "low") {
+    return defaultLimit
+      ? Math.max(256, Math.min(Math.round(defaultLimit / 2), 1024))
+      : 768;
+  }
+  // "balanced" mode
+  return defaultLimit || 2048;
+}
+
+export interface GeminiConfigOptions {
+  systemInstruction?: string;
+  responseMimeType?: string;
+  responseSchema?: any;
+  maxOutputTokens?: number;
+  powerMode?: AIPowerMode;
+  temperature?: number;
+}
+
+/**
+ * Constructs a Gemini model configuration respecting the active AI power mode.
+ */
+export function createGeminiConfig(options: GeminiConfigOptions) {
+  const {
+    systemInstruction,
+    responseMimeType,
+    responseSchema,
+    maxOutputTokens: customLimit,
+    powerMode,
+    temperature,
+  } = options;
+
+  const resolvedTokens = resolveMaxOutputTokens(customLimit, powerMode);
+
+  const config: Record<string, any> = {};
+
+  if (systemInstruction) config.systemInstruction = systemInstruction;
+  if (responseMimeType) config.responseMimeType = responseMimeType;
+  if (responseSchema) config.responseSchema = responseSchema;
+  if (typeof temperature === "number") config.temperature = temperature;
+  if (typeof resolvedTokens === "number") config.maxOutputTokens = resolvedTokens;
+
+  return config;
+}
+
+/**
+ * Resolves user/command model choice to supported Gemini model ID.
  */
 export function resolveGeminiModel(choice?: string): string {
-  if (!choice) return flashLiteModel;
+  if (!choice) return AI_POWER_MODE === "full" ? flashModel : flashLiteModel;
   const lower = choice.toLowerCase().trim();
-  if (lower.includes("3.6") || lower === "flash-3.6" || (lower.includes("flash") && !lower.includes("lite"))) {
+  if (
+    lower.includes("3.7") ||
+    lower.includes("3.6") ||
+    lower === "flash-3.6" ||
+    (lower.includes("flash") && !lower.includes("lite"))
+  ) {
     return flashModel;
   }
   return flashLiteModel;

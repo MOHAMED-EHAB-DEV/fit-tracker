@@ -16,6 +16,7 @@ interface IAiMacros {
   fat: number;
   fiber: number;
   confidence: "high" | "medium" | "low";
+  confidenceReason?: string;
   geminiNotes: string;
   modelUsed: string;
 }
@@ -72,6 +73,7 @@ const MealSchema = new Schema<IMeal>(
         fat: Number,
         fiber: Number,
         confidence: { type: String, enum: ["high", "medium", "low"] },
+        confidenceReason: String,
         geminiNotes: String,
         modelUsed: String,
       },

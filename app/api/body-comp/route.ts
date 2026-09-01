@@ -4,7 +4,7 @@ import { getDb } from "@/lib/db/mongoose";
 import BodyComp from "@/lib/db/models/BodyComp";
 import User from "@/lib/db/models/User";
 import cloudinary from "@/lib/cloudinary";
-import genAI, { flashModel } from "@/lib/gemini/client";
+import genAI, { flashModel, createGeminiConfig } from "@/lib/gemini/client";
 import { bodyCompAnalysisSchema } from "@/lib/gemini/schemas";
 import { BODY_COMP_SYSTEM_PROMPT } from "@/lib/gemini/prompts";
 import { getTodayDateString } from "@/lib/fitness/timezone";
@@ -144,12 +144,12 @@ export async function POST(request: NextRequest) {
             },
             promptText,
           ],
-          config: {
+          config: createGeminiConfig({
             systemInstruction: BODY_COMP_SYSTEM_PROMPT,
             responseMimeType: "application/json",
             responseSchema: bodyCompAnalysisSchema as any,
             maxOutputTokens: 2048,
-          },
+          }),
         });
 
         const text = response.text;

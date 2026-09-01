@@ -4,7 +4,7 @@ import { getDb } from "@/lib/db/mongoose";
 import Meal from "@/lib/db/models/Meal";
 import DailyLog from "@/lib/db/models/DailyLog";
 import cloudinary from "@/lib/cloudinary";
-import genAI, { flashModel } from "@/lib/gemini/client";
+import genAI, { flashModel, createGeminiConfig } from "@/lib/gemini/client";
 import { mealAnalysisSchema } from "@/lib/gemini/schemas";
 import { MEAL_ANALYZER_SYSTEM_PROMPT } from "@/lib/gemini/prompts";
 import { getTodayDateString } from "@/lib/fitness/timezone";
@@ -18,11 +18,95 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
+    const contentType = request.headers.get("content-type") || "";
+
+    // 1. Handle JSON payload (Saving confirmed details from the confirmation modal)
+    if (contentType.includes("application/json")) {
+      const body = await request.json();
+      const {
+        description,
+        mealType = "lunch",
+        dateString,
+        macros,
+        aiMacros,
+        cloudinary: cloudinaryData,
+      } = body;
+
+      if (!macros || typeof macros.calories === "undefined") {
+        return NextResponse.json(
+          { success: false, error: "Missing required macro fields" },
+          { status: 400 }
+        );
+      }
+
+      await getDb();
+      const targetDateStr = dateString || getTodayDateString();
+
+      const meal = await Meal.create({
+        userId: session.userId,
+        loggedAt: new Date(),
+        dateString: targetDateStr,
+        mealType,
+        description: description || "Logged Meal",
+        imageSource: cloudinaryData ? "photo" : "text_only",
+        cloudinary: cloudinaryData || null,
+        aiMacros: aiMacros
+          ? {
+              calories: Number(aiMacros.calories) || Number(macros.calories) || 0,
+              protein: Number(aiMacros.protein) || Number(macros.protein) || 0,
+              carbs: Number(aiMacros.carbs) || Number(macros.carbs) || 0,
+              fat: Number(aiMacros.fat) || Number(macros.fat) || 0,
+              fiber: Number(aiMacros.fiber) || Number(macros.fiber) || 0,
+              confidence: aiMacros.confidence || "medium",
+              confidenceReason: aiMacros.confidenceReason || "",
+              geminiNotes: aiMacros.geminiNotes || "",
+              modelUsed: flashModel,
+            }
+          : null,
+        macros: {
+          calories: Math.round(Number(macros.calories) || 0),
+          protein: Number((Number(macros.protein) || 0).toFixed(1)),
+          carbs: Number((Number(macros.carbs) || 0).toFixed(1)),
+          fat: Number((Number(macros.fat) || 0).toFixed(1)),
+          fiber: Number((Number(macros.fiber) || 0).toFixed(1)),
+        },
+        isManualOverride: false,
+      });
+
+      // Update DailyLog totals atomically via $inc
+      await DailyLog.findOneAndUpdate(
+        { userId: session.userId, dateString: targetDateStr },
+        {
+          $inc: {
+            caloriesIn: Math.round(Number(macros.calories) || 0),
+            "macros.protein": Number((Number(macros.protein) || 0).toFixed(1)),
+            "macros.carbs": Number((Number(macros.carbs) || 0).toFixed(1)),
+            "macros.fat": Number((Number(macros.fat) || 0).toFixed(1)),
+            "macros.fiber": Number((Number(macros.fiber) || 0).toFixed(1)),
+          },
+          $setOnInsert: {
+            date: new Date(),
+            waterMl: 0,
+            steps: 0,
+          },
+        },
+        { upsert: true }
+      );
+
+      return NextResponse.json({
+        success: true,
+        mealId: meal._id.toString(),
+        meal,
+      });
+    }
+
+    // 2. Handle Multipart Form Data (Photo / description analysis)
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     const description = (formData.get("description") as string) || "";
     const mealType = ((formData.get("mealType") as string) || "lunch") as MealType;
     const dateStringParam = (formData.get("dateString") as string) || null;
+    const shouldSaveImmediately = formData.get("save") === "true";
 
     let cloudinaryResult: UploadApiResponse | null = null;
     let base64Image: string | null = null;
@@ -55,6 +139,7 @@ export async function POST(request: NextRequest) {
       items: [] as any[],
       totals: { calories: 450, protein: 30, carbs: 45, fat: 15, fiber: 5 },
       confidence: "medium" as const,
+      confidenceReason: "Standard dish with estimated portion scale and seasoning.",
       geminiNotes: "",
     };
 
@@ -85,19 +170,20 @@ export async function POST(request: NextRequest) {
           "4. Calculate scientific macronutrients (Calories, Protein, Carbs, Fat, Fiber) per ingredient using USDA nutritional standards.",
           "5. If the user provided explicit weights or ingredients in their description, prioritize them over visual guesses.",
           "6. Ensure strict mathematical sum consistency: totals MUST equal the sum of all individual items.",
-          "7. Provide a concise, professional dietitian note in 'geminiNotes' summarizing key assumptions (cooking oils, sauces) and nutritional balance.",
+          "7. Specify accurate confidence rating ('high', 'medium', or 'low') and provide a clear 'confidenceReason' explaining visibility, lighting, ingredients, and portion certainty.",
+          "8. Provide a concise, professional dietitian note in 'geminiNotes' summarizing key assumptions (cooking oils, sauces) and nutritional balance.",
         ].join("\n");
         contents.push(promptText);
 
         const response = await genAI.models.generateContent({
           model: flashModel,
           contents,
-          config: {
+          config: createGeminiConfig({
             systemInstruction: MEAL_ANALYZER_SYSTEM_PROMPT,
             responseMimeType: "application/json",
             responseSchema: mealAnalysisSchema as any,
             maxOutputTokens: 2048,
-          },
+          }),
         });
 
         const text = response.text;
@@ -128,6 +214,13 @@ export async function POST(request: NextRequest) {
                 fiber: Number((Number(fiber) || 0).toFixed(1)),
               },
               confidence: parsed.confidence || "medium",
+              confidenceReason:
+                parsed.confidenceReason ||
+                (parsed.confidence === "high"
+                  ? "Clear visibility with distinct ingredients and standard scale."
+                  : parsed.confidence === "low"
+                  ? "Complex mixed dish or obscured ingredients requiring portion estimation."
+                  : "Standard dish with estimated cooking fats or sauces."),
               geminiNotes: parsed.geminiNotes || "",
             };
           }
@@ -137,10 +230,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const cloudinaryPayload = cloudinaryResult
+      ? {
+          publicId: cloudinaryResult.public_id,
+          secureUrl: cloudinaryResult.secure_url,
+          deliveryType: "upload" as const,
+          width: cloudinaryResult.width,
+          height: cloudinaryResult.height,
+          bytes: cloudinaryResult.bytes,
+        }
+      : null;
+
+    // If immediate save is not requested (default flow for opening the confirmation modal)
+    if (!shouldSaveImmediately) {
+      return NextResponse.json({
+        success: true,
+        analysis,
+        cloudinary: cloudinaryPayload,
+      });
+    }
+
+    // Direct immediate save flow (if requested)
     await getDb();
     const targetDateStr = dateStringParam || getTodayDateString();
 
-    // Create Meal in MongoDB
     const meal = await Meal.create({
       userId: session.userId,
       loggedAt: new Date(),
@@ -148,16 +261,7 @@ export async function POST(request: NextRequest) {
       mealType,
       description: analysis.mealDescription || description || "Logged Meal",
       imageSource: cloudinaryResult ? "photo" : "text_only",
-      cloudinary: cloudinaryResult
-        ? {
-            publicId: cloudinaryResult.public_id,
-            secureUrl: cloudinaryResult.secure_url,
-            deliveryType: "upload",
-            width: cloudinaryResult.width,
-            height: cloudinaryResult.height,
-            bytes: cloudinaryResult.bytes,
-          }
-        : null,
+      cloudinary: cloudinaryPayload,
       aiMacros: {
         calories: analysis.totals.calories,
         protein: analysis.totals.protein,
@@ -165,6 +269,7 @@ export async function POST(request: NextRequest) {
         fat: analysis.totals.fat,
         fiber: analysis.totals.fiber || 0,
         confidence: analysis.confidence,
+        confidenceReason: analysis.confidenceReason,
         geminiNotes: analysis.geminiNotes || "",
         modelUsed: flashModel,
       },
@@ -178,7 +283,6 @@ export async function POST(request: NextRequest) {
       isManualOverride: false,
     });
 
-    // Update DailyLog totals atomically via $inc
     await DailyLog.findOneAndUpdate(
       { userId: session.userId, dateString: targetDateStr },
       {
@@ -203,6 +307,7 @@ export async function POST(request: NextRequest) {
       mealId: meal._id.toString(),
       analysis,
       meal,
+      cloudinary: cloudinaryPayload,
     });
   } catch (err: any) {
     console.error("Meal analyze route error:", err);

@@ -5,7 +5,7 @@ import Meal from "@/lib/db/models/Meal";
 import DailyLog from "@/lib/db/models/DailyLog";
 import User from "@/lib/db/models/User";
 import BodyComp from "@/lib/db/models/BodyComp";
-import genAI, { flashModel, resolveGeminiModel } from "@/lib/gemini/client";
+import genAI, { flashModel, resolveGeminiModel, createGeminiConfig } from "@/lib/gemini/client";
 import { multiLogSchema } from "@/lib/gemini/schemas";
 import { MULTI_LOG_SYSTEM_PROMPT, AI_COACH_SYSTEM_PROMPT } from "@/lib/gemini/prompts";
 import { getTodayDateString } from "@/lib/fitness/timezone";
@@ -181,10 +181,10 @@ export async function POST(request: NextRequest) {
           const response = await genAI.models.generateContent({
             model: targetModel,
             contents,
-            config: {
+            config: createGeminiConfig({
               systemInstruction: AI_COACH_SYSTEM_PROMPT,
               maxOutputTokens: 3000,
-            },
+            }),
           });
 
           if (response.text) {
@@ -246,12 +246,12 @@ export async function POST(request: NextRequest) {
         const response = await genAI.models.generateContent({
           model: targetModel,
           contents,
-          config: {
+          config: createGeminiConfig({
             systemInstruction: MULTI_LOG_SYSTEM_PROMPT,
             responseMimeType: "application/json",
             responseSchema: multiLogSchema as any,
             maxOutputTokens: 2048,
-          },
+          }),
         });
 
         const text = response.text;

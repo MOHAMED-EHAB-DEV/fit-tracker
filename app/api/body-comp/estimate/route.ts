@@ -3,7 +3,7 @@ import { getServerSession } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/mongoose";
 import User from "@/lib/db/models/User";
 import BodyComp from "@/lib/db/models/BodyComp";
-import genAI, { flashModel } from "@/lib/gemini/client";
+import genAI, { flashModel, createGeminiConfig } from "@/lib/gemini/client";
 import { bodyCompAnalysisSchema } from "@/lib/gemini/schemas";
 import { BODY_COMP_SYSTEM_PROMPT } from "@/lib/gemini/prompts";
 
@@ -108,12 +108,12 @@ export async function POST(request: NextRequest) {
     const response = await genAI.models.generateContent({
       model: flashModel,
       contents,
-      config: {
+      config: createGeminiConfig({
         systemInstruction: BODY_COMP_SYSTEM_PROMPT,
         responseMimeType: "application/json",
         responseSchema: bodyCompAnalysisSchema as any,
         maxOutputTokens: 2048,
-      },
+      }),
     });
 
     const text = response.text;

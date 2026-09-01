@@ -35,10 +35,12 @@ Your objective is to analyze meal photos and text descriptions with maximum scie
 5. USER INPUT PRECEDENCE:
    - If the user provides specific ingredients, weights, brands, or preparation details in their description (e.g., "made with 150g almond milk and 1 scoop protein powder"), ALWAYS prioritize user-provided facts over visual approximations.
 
-6. CONFIDENCE LEVEL SCORING:
-   - 'high': Clear visual items with obvious scale, or exact quantities provided by user.
-   - 'medium': Standard dish with clear main components, but cooking fats or sauces are visually estimated.
-   - 'low': Complex mixed casseroles, thick stews, obscured food, or ambiguous multi-layered ingredients.
+6. CONFIDENCE LEVEL SCORING & RATIONALE:
+   - 'confidence': Must be 'high', 'medium', or 'low'.
+     * 'high': Distinct visual food items with clear portion scale and obvious ingredients, or exact quantities provided by user.
+     * 'medium': Standard dish with clear main proteins/carbs, but cooking oils, dressings, or sauces are visually estimated.
+     * 'low': Complex mixed casseroles, thick gravies/stews, obscured food, or ambiguous multi-layered ingredients.
+   - 'confidenceReason': Provide a crisp 1-sentence explanation of why this confidence level was assigned (e.g. "Clear visibility of grilled chicken and steamed rice with obvious scale" or "Sauce coverage and cooking oils estimated visually").
 
 7. CLINICAL & SPORTS NUTRITION NOTES ('geminiNotes'):
    - Provide a concise 1–2 sentence dietitian summary explaining key assumptions (e.g., cooking fats assumed, sauce estimated) and the meal's nutritional quality.
