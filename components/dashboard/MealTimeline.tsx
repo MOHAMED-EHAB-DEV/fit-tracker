@@ -116,7 +116,7 @@ export function MealTimeline({ meals }: MealTimelineProps) {
       ) : (
         <div className="space-y-3">
           {meals.map((meal) => {
-            const time = new Date(meal.loggedAt as string).toLocaleTimeString([], {
+            const time = new Date(meal.loggedAt as string | Date).toLocaleTimeString([], {
               hour: "2-digit",
               minute: "2-digit", 
             });
