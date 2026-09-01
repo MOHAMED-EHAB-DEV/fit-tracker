@@ -2,7 +2,7 @@
 
 import React, { useState, useRef } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Camera, Upload, Sparkles, Check, AlertCircle, Loader2, ImageIcon } from "lucide-react";
 import { useClientResize } from "@/hooks/useClientResize";
 import { MealType } from "@/types/fitness";
@@ -10,6 +10,8 @@ import { MEAL_TYPE_OPTIONS } from "@/constants/nutrition";
 
 export function PhotoAnalyzer() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const dateParam = searchParams.get("date");
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const { resizeImage, isResizing } = useClientResize();
@@ -53,6 +55,9 @@ export function PhotoAnalyzer() {
       }
       formData.append("description", description);
       formData.append("mealType", mealType);
+      if (dateParam) {
+        formData.append("dateString", dateParam);
+      }
 
       const res = await fetch("/api/meals/analyze", {
         method: "POST",
@@ -73,7 +78,11 @@ export function PhotoAnalyzer() {
   };
 
   const handleDone = () => {
-    router.push("/nutrition");
+    if (dateParam) {
+      router.push(`/nutrition?date=${dateParam}`);
+    } else {
+      router.push("/nutrition");
+    }
     router.refresh();
   };
 
@@ -134,7 +143,7 @@ export function PhotoAnalyzer() {
                 <button
                   type="button"
                   onClick={() => cameraInputRef.current?.click()}
-                  className="px-3 py-2 min-h-[36px] bg-zinc-800/90 hover:bg-zinc-700 rounded-lg flex items-center gap-1.5 text-xs transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                  className="px-3 py-2 min-h-9 bg-zinc-800/90 hover:bg-zinc-700 rounded-lg flex items-center gap-1.5 text-xs transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
                 >
                   <Camera className="w-4 h-4 text-emerald-400" aria-hidden="true" />
                   <span>Camera</span>
@@ -142,7 +151,7 @@ export function PhotoAnalyzer() {
                 <button
                   type="button"
                   onClick={() => galleryInputRef.current?.click()}
-                  className="px-3 py-2 min-h-[36px] bg-zinc-800/90 hover:bg-zinc-700 rounded-lg flex items-center gap-1.5 text-xs transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                  className="px-3 py-2 min-h-9 bg-zinc-800/90 hover:bg-zinc-700 rounded-lg flex items-center gap-1.5 text-xs transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
                 >
                   <ImageIcon className="w-4 h-4 text-emerald-400" aria-hidden="true" />
                   <span>Gallery</span>
@@ -167,7 +176,7 @@ export function PhotoAnalyzer() {
                 <button
                   type="button"
                   onClick={() => cameraInputRef.current?.click()}
-                  className="px-4 py-2 min-h-[40px] bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 font-semibold rounded-xl text-xs flex items-center gap-2 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-95"
+                  className="px-4 py-2 min-h-10 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 font-semibold rounded-xl text-xs flex items-center gap-2 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-95"
                 >
                   <Camera className="w-4 h-4 text-emerald-400" aria-hidden="true" />
                   <span>Take Photo</span>
@@ -175,7 +184,7 @@ export function PhotoAnalyzer() {
                 <button
                   type="button"
                   onClick={() => galleryInputRef.current?.click()}
-                  className="px-4 py-2 min-h-[40px] bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/60 text-zinc-200 font-semibold rounded-xl text-xs flex items-center gap-2 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-95"
+                  className="px-4 py-2 min-h-10 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/60 text-zinc-200 font-semibold rounded-xl text-xs flex items-center gap-2 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-95"
                 >
                   <Upload className="w-4 h-4 text-zinc-400" aria-hidden="true" />
                   <span>Choose from Gallery</span>
@@ -195,7 +204,7 @@ export function PhotoAnalyzer() {
               id="meal-type-select"
               value={mealType}
               onChange={(e) => setMealType(e.target.value as MealType)}
-              className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-800/80 border border-zinc-700/60 rounded-xl text-zinc-200 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 cursor-pointer"
+              className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-800/80 border border-zinc-700/60 rounded-xl text-zinc-200 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 cursor-pointer"
             >
               {MEAL_TYPE_OPTIONS.map((t) => (
                 <option key={t.value} value={t.value}>
@@ -215,7 +224,7 @@ export function PhotoAnalyzer() {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="e.g. 200g chicken breast, 1 cup white rice"
-              className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-800/80 border border-zinc-700/60 rounded-xl text-zinc-200 text-sm placeholder-zinc-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-800/80 border border-zinc-700/60 rounded-xl text-zinc-200 text-sm placeholder-zinc-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             />
           </div>
         </div>
@@ -227,7 +236,7 @@ export function PhotoAnalyzer() {
             onClick={handleAnalyze}
             disabled={isAnalyzing || isResizing || (!selectedBlob && !description.trim())}
             aria-busy={isAnalyzing || isResizing}
-            className="w-full py-3.5 px-4 min-h-[44px] bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-bold rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-98"
+            className="w-full py-3.5 px-4 min-h-11 bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-bold rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-98"
           >
             {isAnalyzing || isResizing ? (
               <>
@@ -320,7 +329,7 @@ export function PhotoAnalyzer() {
             <button
               type="button"
               onClick={handleDone}
-              className="flex-1 py-3 px-4 min-h-[44px] bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold rounded-xl transition shadow-lg shadow-emerald-500/20 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-98"
+              className="flex-1 py-3 px-4 min-h-11 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold rounded-xl transition shadow-lg shadow-emerald-500/20 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-98"
             >
               Done & View Log
             </button>
@@ -332,7 +341,7 @@ export function PhotoAnalyzer() {
                 setPreviewUrl(null);
                 setDescription("");
               }}
-              className="py-3 px-4 min-h-[44px] bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold rounded-xl text-xs transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 active:scale-98"
+              className="py-3 px-4 min-h-11 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold rounded-xl text-xs transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 active:scale-98"
             >
               Log Another
             </button>

@@ -3,8 +3,11 @@ import { getServerSession } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/mongoose";
 import Workout from "@/lib/db/models/Workout";
 import DailyLog from "@/lib/db/models/DailyLog";
+import User from "@/lib/db/models/User";
+import ExerciseCatalog from "@/lib/db/models/ExerciseCatalog";
 import { calculateOneRM } from "@/lib/fitness/one-rm";
 import { getTodayDateString, getWeekStartDateString } from "@/lib/fitness/timezone";
+import { calculateSessionDoneCalories, calculateRoutinePlannedCalories } from "@/lib/fitness/workout-calories";
 
 export async function GET(
   request: NextRequest,
@@ -54,6 +57,9 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: "Workout not found" }, { status: 404 });
     }
 
+    const prevStatus: string = existing.status;
+    const prevCalories = existing.estimatedCalories || 0;
+
     if (body.name !== undefined && typeof body.name === "string") {
       existing.name = body.name.trim();
     }
@@ -90,20 +96,36 @@ export async function PATCH(
       );
     }
 
+    // Retrieve user weight for accurate calorie expenditure
+    const userDoc = await User.findById(session.userId).select("fitnessProfile.weightKg").lean();
+    const userWeightKg = userDoc?.fitnessProfile?.weightKg ?? 0;
+
     if (Array.isArray(body.exercises)) {
       let totalVol = 0;
 
+      // Ensure metValue is populated from ExerciseCatalog in DB
+      const catalogIds = body.exercises.map((e: any) => e.catalogId).filter(Boolean);
+      const catalogDocs = await ExerciseCatalog.find({ _id: { $in: catalogIds } }).select("_id metValue").lean();
+      const metMap = new Map(catalogDocs.map((c: any) => [c._id.toString(), c.metValue]));
+
       for (const ex of body.exercises) {
+        if (!ex.metValue && ex.catalogId) {
+          ex.metValue = metMap.get(ex.catalogId.toString());
+        }
+
         let maxWorkingOneRM = 0;
         const isLbs = ex.weightUnit === "lbs";
         if (Array.isArray(ex.sets)) {
           for (const s of ex.sets) {
             const isSetWarmup = !!s.isWarmup;
-            if (s.completedReps && s.weight) {
-              const setVol = s.completedReps * s.weight;
+            const reps = s.completedReps || (existing.status !== "completed" ? s.targetReps : null);
+            const weight = s.weight !== null && s.weight !== undefined ? s.weight : (existing.status !== "completed" ? s.targetWeight : null);
+
+            if (reps && weight) {
+              const setVol = reps * weight;
               totalVol += isLbs ? Math.round(setVol / 2.20462) : setVol;
 
-              if (!isSetWarmup) {
+              if (s.completedReps && s.weight && !isSetWarmup) {
                 const oneRM = calculateOneRM(s.weight, s.completedReps);
                 if (oneRM > maxWorkingOneRM) maxWorkingOneRM = oneRM;
 
@@ -133,26 +155,59 @@ export async function PATCH(
 
       existing.exercises = body.exercises;
       existing.totalVolume = totalVol;
-      // Approximate calories burned: ~5.5 kcal per min of training
-      const durationMins = (existing.durationSeconds || 3600) / 60;
-      existing.estimatedCalories = Math.round(durationMins * 5.5);
+
+      if (existing.status === "completed") {
+        // Calculate calories strictly based on what was DONE in the session
+        existing.estimatedCalories = calculateSessionDoneCalories(body.exercises, userWeightKg);
+      } else {
+        // Calculate total planned calories directly on routine update
+        existing.estimatedCalories = calculateRoutinePlannedCalories(body.exercises, userWeightKg);
+      }
     }
 
     await existing.save();
 
-    // If completed, add burned calories to DailyLog
-    if (existing.status === "completed" && existing.estimatedCalories > 0) {
-      const todayStr = getTodayDateString();
-      await DailyLog.findOneAndUpdate(
-        { userId: session.userId, dateString: todayStr },
-        {
-          $inc: {
-            "caloriesOut.workouts": existing.estimatedCalories,
-            "caloriesOut.total": existing.estimatedCalories,
+    // If session is completed, accurately sync calories burned to DailyLog
+    if (existing.status === "completed") {
+      const currentCal = existing.estimatedCalories || 0;
+      const caloriesToApply = prevStatus === "completed" ? currentCal - prevCalories : currentCal;
+
+      if (caloriesToApply !== 0) {
+        const logDateStr = getTodayDateString(existing.completedAt || existing.date || existing.startedAt);
+        const logDate = existing.completedAt || existing.date || existing.startedAt || new Date();
+        await DailyLog.findOneAndUpdate(
+          { userId: session.userId, dateString: logDateStr },
+          {
+            $inc: {
+              "caloriesOut.workouts": caloriesToApply,
+              "caloriesOut.total": caloriesToApply,
+            },
+            $setOnInsert: {
+              date: logDate,
+            },
           },
-        },
-        { upsert: true }
-      );
+          { upsert: true, setDefaultsOnInsert: true }
+        );
+      }
+    } else if (prevStatus === "completed") {
+      // Reverted from completed back to active/routine: deduct previously logged calories
+      if (prevCalories > 0) {
+        const logDateStr = getTodayDateString(existing.completedAt || existing.date || existing.startedAt);
+        const logDate = existing.completedAt || existing.date || existing.startedAt || new Date();
+        await DailyLog.findOneAndUpdate(
+          { userId: session.userId, dateString: logDateStr },
+          {
+            $inc: {
+              "caloriesOut.workouts": -prevCalories,
+              "caloriesOut.total": -prevCalories,
+            },
+            $setOnInsert: {
+              date: logDate,
+            },
+          },
+          { upsert: true, setDefaultsOnInsert: true }
+        );
+      }
     }
 
     return NextResponse.json({ success: true, workout: existing });
@@ -175,7 +230,22 @@ export async function DELETE(
     const { id } = await context.params;
     await getDb();
 
-    await Workout.deleteOne({ _id: id, userId: session.userId });
+    const existing = await Workout.findOne({ _id: id, userId: session.userId });
+    if (existing) {
+      if (existing.status === "completed" && existing.estimatedCalories > 0) {
+        const logDateStr = getTodayDateString(existing.completedAt || existing.date || existing.startedAt);
+        await DailyLog.findOneAndUpdate(
+          { userId: session.userId, dateString: logDateStr },
+          {
+            $inc: {
+              "caloriesOut.workouts": -existing.estimatedCalories,
+              "caloriesOut.total": -existing.estimatedCalories,
+            },
+          }
+        );
+      }
+      await Workout.deleteOne({ _id: id, userId: session.userId });
+    }
     return NextResponse.json({ success: true, message: "Workout deleted" });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });

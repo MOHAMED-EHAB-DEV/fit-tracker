@@ -16,6 +16,7 @@ export interface DefaultExerciseItem {
   catalogId: string;
   name: string;
   muscleGroup: string;
+  metValue?: number;
   targetSets?: number;
   targetReps?: number;
   targetWeight?: number | null;

@@ -25,6 +25,9 @@ export interface IUser extends Document {
     goal: "cut" | "maintain" | "bulk" | null;
     targetCalories: number | null;
     targetProteinG: number | null;
+    targetCarbsG: number | null;
+    targetFatG: number | null;
+    targetFiberG: number | null;
   };
   preferences: {
     stepGoal: number | null;
@@ -39,6 +42,9 @@ export interface IUser extends Document {
     bmr: number | null;
     tdee: number | null;
     proteinTargetG: number | null;
+    carbsTargetG: number | null;
+    fatTargetG: number | null;
+    fiberTargetG: number | null;
     lastComputedAt: Date | null;
   };
   lastLoginAt: Date | null;
@@ -79,6 +85,9 @@ const UserSchema = new Schema<IUser>(
       goal: { type: String, enum: ["cut", "maintain", "bulk"], default: null },
       targetCalories: { type: Number, default: null },
       targetProteinG: { type: Number, default: null },
+      targetCarbsG: { type: Number, default: null },
+      targetFatG: { type: Number, default: null },
+      targetFiberG: { type: Number, default: null },
     },
     preferences: {
       stepGoal: { type: Number, default: null },
@@ -108,6 +117,9 @@ const UserSchema = new Schema<IUser>(
       bmr: { type: Number, default: null },
       tdee: { type: Number, default: null },
       proteinTargetG: { type: Number, default: null },
+      carbsTargetG: { type: Number, default: null },
+      fatTargetG: { type: Number, default: null },
+      fiberTargetG: { type: Number, default: null },
       lastComputedAt: { type: Date, default: null },
     },
     lastLoginAt: { type: Date, default: null },

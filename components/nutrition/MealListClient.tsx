@@ -27,6 +27,7 @@ const EditMealModal = dynamic(
 
 interface MealListClientProps {
   initialMeals: MealData[];
+  selectedDate?: string;
 }
 
 function MealImageThumbnail({
@@ -60,7 +61,7 @@ function MealImageThumbnail({
   );
 }
 
-export function MealListClient({ initialMeals }: MealListClientProps) {
+export function MealListClient({ initialMeals, selectedDate }: MealListClientProps) {
   const router = useRouter();
   const [meals, setMeals] = useState<MealData[]>(initialMeals);
   const [editingMeal, setEditingMeal] = useState<MealData | null>(null);
@@ -89,6 +90,8 @@ export function MealListClient({ initialMeals }: MealListClientProps) {
     }
   };
 
+  const analyzeUrl = selectedDate ? `/nutrition/analyze?date=${selectedDate}` : "/nutrition/analyze";
+
   return (
     <div className="p-6 rounded-[28px] bg-zinc-900/80 backdrop-blur-2xl border border-white/10 shadow-xl space-y-4">
       <div className="flex items-center justify-between">
@@ -99,12 +102,14 @@ export function MealListClient({ initialMeals }: MealListClientProps) {
       {meals.length === 0 ? (
         <div className="text-center py-12 border border-dashed border-white/10 rounded-2xl bg-zinc-950/40">
           <UtensilsCrossed className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
-          <p className="text-sm font-bold text-zinc-300">No meals recorded today</p>
+          <p className="text-sm font-bold text-zinc-300">
+            {selectedDate ? `No meals recorded for ${selectedDate}` : "No meals recorded today"}
+          </p>
           <p className="text-xs text-zinc-500 mt-1 max-w-sm mx-auto">
-            Snap a meal photo or use voice input to log your nutrition with instant AI breakdown
+            Snap a meal photo or upload an image to log nutrition with instant AI breakdown
           </p>
           <Link
-            href="/nutrition/analyze"
+            href={analyzeUrl}
             className="inline-flex items-center gap-2 mt-4 px-4 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs shadow-md shadow-emerald-500/20 transition active:scale-95 cursor-pointer"
           >
             <Camera className="w-4 h-4" />

@@ -10,6 +10,7 @@ export interface ActiveExerciseItem {
   catalogId: string;
   name: string;
   muscleGroup: string;
+  metValue?: number;
   weightUnit?: "kg" | "lbs";
   isWarmup?: boolean;
   sets: SetData[];

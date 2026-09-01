@@ -1,4 +1,6 @@
+import React, { Suspense } from "react";
 import { PhotoAnalyzer } from "@/components/nutrition/PhotoAnalyzer";
+import { Loader2 } from "lucide-react";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -9,7 +11,17 @@ export const metadata: Metadata = {
 export default function AnalyzeMealPage() {
   return (
     <div className="space-y-6">
-      <PhotoAnalyzer />
+      <Suspense
+        fallback={
+          <div className="flex items-center justify-center min-h-[40vh] text-zinc-500 gap-2">
+            <Loader2 className="w-5 h-5 animate-spin text-emerald-400" />
+            <span>Loading food analyzer...</span>
+          </div>
+        }
+      >
+        <PhotoAnalyzer />
+      </Suspense>
     </div>
   );
 }
+

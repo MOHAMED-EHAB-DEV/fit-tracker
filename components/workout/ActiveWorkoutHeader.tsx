@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { ArrowLeft, Check, Loader2 } from "lucide-react";
+import { ArrowLeft, Check, Loader2, Flame } from "lucide-react";
 import { formatWeight } from "@/lib/fitness/units";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +16,7 @@ interface ActiveWorkoutHeaderProps {
   completedSetsCount: number;
   totalSetsCount: number;
   exercisesCount: number;
+  burnedCalories: number;
   onWeightUnitChange: (unit: "kg" | "lbs") => void;
   onFinish: () => Promise<void>;
 }
@@ -30,6 +31,7 @@ export function ActiveWorkoutHeader({
   completedSetsCount,
   totalSetsCount,
   exercisesCount,
+  burnedCalories,
   onWeightUnitChange,
   onFinish,
 }: ActiveWorkoutHeaderProps) {
@@ -114,7 +116,7 @@ export function ActiveWorkoutHeader({
       </div>
 
       {/* Live In-Gym Stats Strip */}
-      <div className="grid grid-cols-3 gap-3 pt-3 border-t border-white/6 text-center">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 pt-3 border-t border-white/6 text-center">
         <div className="p-3 rounded-2xl bg-zinc-950/60 border border-white/8">
           <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block">
             Lifted Volume
@@ -126,10 +128,20 @@ export function ActiveWorkoutHeader({
 
         <div className="p-3 rounded-2xl bg-zinc-950/60 border border-white/8">
           <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block">
-            Sets Completed
+            Sets Done
           </span>
           <span className="text-base sm:text-lg font-black text-white">
             {completedSetsCount} <span className="text-xs font-semibold text-zinc-500">/ {totalSetsCount}</span>
+          </span>
+        </div>
+
+        <div className="p-3 rounded-2xl bg-zinc-950/60 border border-white/8">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-orange-400 flex items-center justify-center gap-1">
+            <Flame className="w-3 h-3" />
+            <span>Calories Burned</span>
+          </span>
+          <span className="text-base sm:text-lg font-black text-orange-400">
+            {burnedCalories} <span className="text-xs font-semibold text-zinc-500">kcal</span>
           </span>
         </div>
 

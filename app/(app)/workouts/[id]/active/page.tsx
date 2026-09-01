@@ -59,6 +59,7 @@ async function ActiveWorkoutDataLoader({
       catalogId: ex.catalogId ? ex.catalogId.toString() : "",
       name: ex.name || "Exercise",
       muscleGroup: ex.muscleGroup || "Other",
+      metValue: ex.metValue,
       weightUnit: (ex.weightUnit || workoutDoc.weightUnit || "kg") as "kg" | "lbs",
       isWarmup: !!ex.isWarmup || sets.some((s) => s.isWarmup),
       sets: sets.length > 0 ? sets : [
@@ -84,6 +85,7 @@ async function ActiveWorkoutDataLoader({
     name: workoutDoc.name || "Gym Session",
     dayOfWeek: workoutDoc.dayOfWeek || "saturday",
     weightUnit: (workoutDoc.weightUnit || "kg") as "kg" | "lbs",
+    userWeightKg: user.fitnessProfile?.weightKg ?? 0,
     exercises: mappedExercises,
   };
 

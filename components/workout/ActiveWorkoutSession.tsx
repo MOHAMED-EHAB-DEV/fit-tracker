@@ -7,7 +7,9 @@ import { SetData } from "@/components/workout/SetRow";
 import { ActiveWorkoutHeader } from "@/components/workout/ActiveWorkoutHeader";
 import { ActiveExerciseCard, ActiveExerciseItem } from "@/components/workout/ActiveExerciseCard";
 import { ExerciseSearch } from "@/components/workout/ExerciseSearch";
+import { useUser } from "@/context/UserContext";
 import { WorkoutFloatingToolbar } from "@/components/workout/WorkoutFloatingToolbar";
+import { calculateSessionDoneCalories } from "@/lib/fitness/workout-calories";
 
 interface ActiveWorkoutSessionProps {
   initialWorkout: {
@@ -15,12 +17,15 @@ interface ActiveWorkoutSessionProps {
     name: string;
     dayOfWeek: string;
     weightUnit?: "kg" | "lbs";
+    userWeightKg?: number;
     exercises: ActiveExerciseItem[];
   };
 }
 
 export function ActiveWorkoutSession({ initialWorkout }: ActiveWorkoutSessionProps) {
   const router = useRouter();
+  const { user } = useUser();
+  const userWeightKg = initialWorkout.userWeightKg || user?.fitnessProfile?.weightKg || 0;
   const [name] = useState(initialWorkout.name);
   const [dayOfWeek] = useState(initialWorkout.dayOfWeek);
   const [weightUnit, setWeightUnit] = useState<"kg" | "lbs">(initialWorkout.weightUnit || "kg");
@@ -137,11 +142,13 @@ export function ActiveWorkoutSession({ initialWorkout }: ActiveWorkoutSessionPro
     _id: string;
     name: string;
     primaryMuscle: string;
+    metValue?: number;
   }) => {
     const newEx: ActiveExerciseItem = {
       catalogId: exercise._id,
       name: exercise.name,
       muscleGroup: exercise.primaryMuscle,
+      metValue: exercise.metValue,
       weightUnit: "kg",
       isWarmup: false,
       sets: [
@@ -248,6 +255,8 @@ export function ActiveWorkoutSession({ initialWorkout }: ActiveWorkoutSessionPro
     });
   });
 
+  const burnedCalories = calculateSessionDoneCalories(exercises, userWeightKg);
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-20">
       {/* Telemetry Header with manual Save & Finish */}
@@ -262,6 +271,7 @@ export function ActiveWorkoutSession({ initialWorkout }: ActiveWorkoutSessionPro
           completedSetsCount={completedSetsCount}
           totalSetsCount={totalSetsCount}
           exercisesCount={exercises.length}
+          burnedCalories={burnedCalories}
           onWeightUnitChange={setWeightUnit}
           onFinish={handleFinishWorkout}
         />

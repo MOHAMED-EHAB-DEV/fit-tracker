@@ -21,11 +21,13 @@ import { WorkoutFloatingToolbar } from "@/components/workout/WorkoutFloatingTool
 import { ExerciseInstructionsModal } from "@/components/workout/ExerciseInstructionsModal";
 import { useUser } from "@/context/UserContext";
 import { DAYS_OF_WEEK } from "@/constants/workout";
+import { calculateSessionDoneCalories } from "@/lib/fitness/workout-calories";
 
 export interface ExerciseState {
   catalogId: string;
   name: string;
   muscleGroup: string;
+  metValue?: number;
   weightUnit?: "kg" | "lbs";
   isWarmup?: boolean;
   warmupSets?: number;
@@ -88,11 +90,13 @@ export function RecordWorkoutClient() {
     _id: string;
     name: string;
     primaryMuscle: string;
+    metValue?: number;
   }) => {
     const newEx: ExerciseState = {
       catalogId: exercise._id,
       name: exercise.name,
       muscleGroup: exercise.primaryMuscle,
+      metValue: exercise.metValue,
       weightUnit: "kg",
       isWarmup: false,
       sets: [
@@ -328,7 +332,7 @@ export function RecordWorkoutClient() {
     }
   };
 
-  // Compute live total lifted volume
+  // Compute live total lifted volume and burned calories for completed sets
   const totalVolume = exercises.reduce((sum, ex) => {
     return (
       sum +
@@ -338,6 +342,9 @@ export function RecordWorkoutClient() {
     );
   }, 0);
 
+  const userWeightKg = user?.fitnessProfile?.weightKg ?? 0;
+  const burnedCalories = calculateSessionDoneCalories(exercises, userWeightKg);
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-16">
       {/* Top Header with scroll observer */}
@@ -346,7 +353,7 @@ export function RecordWorkoutClient() {
           <div className="flex items-center gap-3">
             <Link
               href="/"
-              className="p-2.5 min-h-[40px] min-w-[40px] rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white transition flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+              className="p-2.5 min-h-10 min-w-10 rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white transition flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
             >
               <ArrowLeft className="w-4 h-4" aria-hidden="true" />
             </Link>
@@ -365,7 +372,7 @@ export function RecordWorkoutClient() {
             disabled={isSaving}
             aria-busy={isSaving}
             onClick={handleSaveWorkout}
-            className="px-5 py-3 min-h-[44px] rounded-2xl bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-black text-xs shadow-lg shadow-emerald-500/20 transition active:scale-95 flex items-center gap-2 disabled:opacity-50 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+            className="px-5 py-3 min-h-11 rounded-2xl bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-black text-xs shadow-lg shadow-emerald-500/20 transition active:scale-95 flex items-center gap-2 disabled:opacity-50 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
           >
             {isSaving ? (
               <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
@@ -408,13 +415,13 @@ export function RecordWorkoutClient() {
                   type="button"
                   aria-pressed={isSelected}
                   onClick={() => setDayOfWeek(d.key)}
-                  className={`py-2 px-1 min-h-[40px] rounded-xl text-xs font-bold transition text-center border cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
+                  className={`py-2 px-1 min-h-10 rounded-xl text-xs font-bold transition text-center border cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
                     isSelected
                       ? "bg-emerald-500 text-zinc-950 border-emerald-500 shadow-md shadow-emerald-500/20"
                       : "bg-zinc-950/60 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-white"
                   }`}
                 >
-                  {d.label}
+                  {d.label.slice(0, 3)}
                 </button>
               );
             })}
@@ -432,14 +439,15 @@ export function RecordWorkoutClient() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Push Day (Chest & Triceps)"
-            className="w-full px-4 py-3 min-h-[44px] bg-zinc-950 border border-zinc-800 rounded-2xl text-white font-extrabold text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+            className="w-full px-4 py-3 min-h-11 bg-zinc-950 border border-zinc-800 rounded-2xl text-white font-extrabold text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
           />
         </div>
 
         {/* Summary Stats */}
-        <div className="flex items-center justify-between pt-2 border-t border-zinc-800/60 text-xs text-zinc-400">
+        <div className="flex items-center justify-between pt-2 border-t border-zinc-800/60 text-xs text-zinc-400 flex-wrap gap-2">
           <span>Exercises: <strong className="text-white tabular-nums">{exercises.length}</strong></span>
           <span>Lifted Volume: <strong className="text-emerald-400 tabular-nums">{totalVolume.toLocaleString()} kg</strong></span>
+          <span>Calories Burned: <strong className="text-orange-400 tabular-nums">{burnedCalories} kcal</strong></span>
         </div>
       </div>
 
@@ -457,7 +465,7 @@ export function RecordWorkoutClient() {
             <button
               type="button"
               onClick={() => setShowSearch(true)}
-              className="inline-flex items-center gap-2 px-5 py-2.5 min-h-[40px] rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs shadow-md shadow-emerald-500/20 transition active:scale-95 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+              className="inline-flex items-center gap-2 px-5 py-2.5 min-h-10 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs shadow-md shadow-emerald-500/20 transition active:scale-95 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
             >
               <Plus className="w-4 h-4" aria-hidden="true" />
               <span>Add Exercise</span>
@@ -512,7 +520,7 @@ export function RecordWorkoutClient() {
                   <button
                     type="button"
                     onClick={() => handleToggleWarmup(exIdx)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 min-h-[36px] rounded-xl text-xs font-bold transition cursor-pointer border focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
+                    className={`flex items-center gap-1.5 px-3 py-1.5 min-h-9 rounded-xl text-xs font-bold transition cursor-pointer border focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
                       isWarmup
                         ? "bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm shadow-amber-500/20"
                         : "bg-zinc-950/60 text-zinc-400 border-white/8 hover:text-zinc-200"
@@ -606,7 +614,7 @@ export function RecordWorkoutClient() {
                               warmupReps: parseInt(e.target.value, 10) || 12,
                             })
                           }
-                          className="w-full text-center py-1 px-2 min-h-[36px] bg-zinc-900 border border-amber-500/30 rounded-lg text-white font-extrabold text-sm tabular-nums focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-500"
+                          className="w-full text-center py-1 px-2 min-h-9 bg-zinc-900 border border-amber-500/30 rounded-lg text-white font-extrabold text-sm tabular-nums focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-500"
                         />
                         <span className="text-xs text-amber-300/70 font-bold">reps</span>
                       </div>
@@ -629,7 +637,7 @@ export function RecordWorkoutClient() {
                             })
                           }
                           placeholder="e.g. 20"
-                          className="w-full text-center py-1 px-2 min-h-[36px] bg-zinc-900 border border-amber-500/30 rounded-lg text-white font-extrabold text-sm tabular-nums focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-500"
+                          className="w-full text-center py-1 px-2 min-h-9 bg-zinc-900 border border-amber-500/30 rounded-lg text-white font-extrabold text-sm tabular-nums focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-500"
                         />
                         <span className="text-xs text-amber-300 font-extrabold uppercase shrink-0">
                           {exercise.weightUnit || "kg"}
@@ -671,7 +679,7 @@ export function RecordWorkoutClient() {
                 <button
                   type="button"
                   onClick={() => handleAddSet(exIdx)}
-                  className="flex-1 py-2.5 min-h-[40px] rounded-2xl bg-zinc-800/60 hover:bg-zinc-800 text-zinc-300 hover:text-white text-xs font-bold border border-dashed border-zinc-700/80 transition flex items-center justify-center gap-1.5 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                  className="flex-1 py-2.5 min-h-10 rounded-2xl bg-zinc-800/60 hover:bg-zinc-800 text-zinc-300 hover:text-white text-xs font-bold border border-dashed border-zinc-700/80 transition flex items-center justify-center gap-1.5 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
                 >
                   <Plus className="w-3.5 h-3.5" aria-hidden="true" />
                   <span>Add Working Set</span>
@@ -681,7 +689,7 @@ export function RecordWorkoutClient() {
                   <button
                     type="button"
                     onClick={() => handleAddWarmupSet(exIdx)}
-                    className="py-2.5 px-4 min-h-[40px] rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-xs font-bold border border-dashed border-amber-500/30 transition flex items-center justify-center gap-1.5 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+                    className="py-2.5 px-4 min-h-10 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-xs font-bold border border-dashed border-amber-500/30 transition flex items-center justify-center gap-1.5 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
                     title="Add another Warmup Set"
                   >
                     <Flame className="w-3.5 h-3.5 text-amber-400" aria-hidden="true" />
@@ -698,7 +706,7 @@ export function RecordWorkoutClient() {
           <button
             type="button"
             onClick={() => setShowSearch(true)}
-            className="w-full py-3.5 min-h-[44px] rounded-3xl bg-zinc-900 hover:bg-zinc-800/80 text-emerald-400 text-xs font-bold border border-zinc-800 transition flex items-center justify-center gap-2 shadow-sm cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+            className="w-full py-3.5 min-h-11 rounded-3xl bg-zinc-900 hover:bg-zinc-800/80 text-emerald-400 text-xs font-bold border border-zinc-800 transition flex items-center justify-center gap-2 shadow-sm cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
           >
             <Plus className="w-4 h-4" aria-hidden="true" />
             <span>Add Another Exercise</span>

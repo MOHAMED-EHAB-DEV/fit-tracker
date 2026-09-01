@@ -11,7 +11,9 @@ import {
   DefaultExerciseItem,
 } from "@/components/workout/RoutineExerciseCard";
 import { ExerciseSearch } from "@/components/workout/ExerciseSearch";
+import { useUser } from "@/context/UserContext";
 import { WorkoutFloatingToolbar } from "@/components/workout/WorkoutFloatingToolbar";
+import { calculateRoutinePlannedCalories } from "@/lib/fitness/workout-calories";
 
 interface RoutineBuilderClientProps {
   initialWorkout: {
@@ -19,12 +21,15 @@ interface RoutineBuilderClientProps {
     name: string;
     dayOfWeek: DayOfWeek;
     weightUnit?: "kg" | "lbs";
+    userWeightKg?: number;
     exercises: DefaultExerciseItem[];
   };
 }
 
 export function RoutineBuilderClient({ initialWorkout }: RoutineBuilderClientProps) {
   const router = useRouter();
+  const { user } = useUser();
+  const userWeightKg = initialWorkout.userWeightKg || user?.fitnessProfile?.weightKg || 0;
   const [name, setName] = useState(initialWorkout.name);
   const [dayOfWeek, setDayOfWeek] = useState<DayOfWeek>(initialWorkout.dayOfWeek);
   const [exercises, setExercises] = useState<DefaultExerciseItem[]>(initialWorkout.exercises);
@@ -188,11 +193,13 @@ export function RoutineBuilderClient({ initialWorkout }: RoutineBuilderClientPro
     _id: string;
     name: string;
     primaryMuscle: string;
+    metValue?: number;
   }) => {
     const newEx: DefaultExerciseItem = {
       catalogId: exercise._id,
       name: exercise.name,
       muscleGroup: exercise.primaryMuscle,
+      metValue: exercise.metValue,
       targetSets: 3,
       targetReps: 10,
       targetWeight: 50,
@@ -240,6 +247,8 @@ export function RoutineBuilderClient({ initialWorkout }: RoutineBuilderClientPro
     0
   );
 
+  const plannedCalories = calculateRoutinePlannedCalories(exercises, userWeightKg);
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-16">
       {/* Routine Header with scroll observer */}
@@ -252,6 +261,7 @@ export function RoutineBuilderClient({ initialWorkout }: RoutineBuilderClientPro
           hasUnsavedChanges={hasUnsavedChanges}
           exercisesCount={exercises.length}
           totalPlannedSets={totalPlannedSets}
+          plannedCalories={plannedCalories}
           onNameChange={handleNameChange}
           onDayOfWeekChange={handleDayOfWeekChange}
           onSave={() => saveRoutine(exercises, name, dayOfWeek)}

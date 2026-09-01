@@ -1,41 +1,74 @@
 import React, { Suspense } from "react";
 import Link from "next/link";
-import { Camera, Plus, UtensilsCrossed, Clock, Flame, Target, Loader2 } from "lucide-react";
+import { Camera, Loader2 } from "lucide-react";
 import { getFullUser } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/mongoose";
 import DailyLog from "@/lib/db/models/DailyLog";
 import Meal from "@/lib/db/models/Meal";
 import { getTodayDateString } from "@/lib/fitness/timezone";
+import { getUserCustomizedMacroTargets } from "@/lib/fitness/bmr";
 import { Metadata } from "next";
 
+import { NutritionDateNavigator } from "@/components/nutrition/NutritionDateNavigator";
+import { MacroRemainingCards, MacroStatsData } from "@/components/nutrition/MacroRemainingCards";
 import { MealListClient } from "@/components/nutrition/MealListClient";
 import { MealData } from "@/components/nutrition/EditMealModal";
 
 export const metadata: Metadata = {
-  title: "Nutrition & Macros — AI Fit Tracker",
-  description: "Track your daily calories, protein, carbs, and fat breakdown.",
+  title: "Nutrition & Macro Log — AI Fit Tracker",
+  description: "Track your daily calories, protein, carbs, fat, and fiber breakdown with customized targets.",
 };
 
-async function NutritionContent() {
+interface NutritionPageProps {
+  searchParams: Promise<{ date?: string }>;
+}
+
+async function NutritionContent({ searchParams }: NutritionPageProps) {
   const user = await getFullUser();
   await getDb();
 
+  const resolvedParams = await searchParams;
+  const rawDate = resolvedParams?.date;
   const todayStr = getTodayDateString();
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  const selectedDateStr = rawDate && dateRegex.test(rawDate) ? rawDate : todayStr;
 
   const [dailyLog, meals] = await Promise.all([
-    DailyLog.findOne({ userId: user?._id, dateString: todayStr }).lean(),
-    Meal.find({ userId: user?._id, dateString: todayStr }).sort({ loggedAt: -1 }).lean(),
+    DailyLog.findOne({ userId: user?._id, dateString: selectedDateStr }).lean(),
+    Meal.find({ userId: user?._id, dateString: selectedDateStr }).sort({ loggedAt: -1 }).lean(),
   ]);
 
+  // Derive targets strictly customized from user settings & biometric profile
+  const userTargets = getUserCustomizedMacroTargets(user);
+
   const caloriesIn = dailyLog?.caloriesIn || 0;
-  const targetCalories = user?.fitnessProfile?.targetCalories || user?.computed?.tdee || 2400;
   const protein = dailyLog?.macros?.protein || 0;
-  const targetProtein = user?.fitnessProfile?.targetProteinG || user?.computed?.proteinTargetG || 160;
   const carbs = dailyLog?.macros?.carbs || 0;
   const fat = dailyLog?.macros?.fat || 0;
+  const fiber = dailyLog?.macros?.fiber || 0;
 
-  const calPct = Math.min(100, Math.round((caloriesIn / targetCalories) * 100));
-  const proteinPct = Math.min(100, Math.round((protein / targetProtein) * 100));
+  const stats: MacroStatsData = {
+    calories: {
+      consumed: caloriesIn,
+      target: userTargets.calories,
+    },
+    protein: {
+      consumed: protein,
+      target: userTargets.protein,
+    },
+    carbs: {
+      consumed: carbs,
+      target: userTargets.carbs,
+    },
+    fat: {
+      consumed: fat,
+      target: userTargets.fat,
+    },
+    fiber: {
+      consumed: fiber,
+      target: userTargets.fiber,
+    },
+  };
 
   const mappedMeals: MealData[] = meals.map((m: any) => ({
     _id: m._id.toString(),
@@ -52,6 +85,10 @@ async function NutritionContent() {
     cloudinary: m.cloudinary?.secureUrl ? { secureUrl: m.cloudinary.secureUrl } : null,
   }));
 
+  const analyzeLinkUrl = selectedDateStr !== todayStr
+    ? `/nutrition/analyze?date=${selectedDateStr}`
+    : "/nutrition/analyze";
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -61,14 +98,14 @@ async function NutritionContent() {
             Nutrition & Macro Log
           </h1>
           <p className="text-sm text-zinc-400 mt-0.5">
-            Monitor today&apos;s caloric and macronutrient intake
+            Monitor caloric and macronutrient intake for any selected day
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <Link
-            href="/nutrition/analyze"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-bold text-xs shadow-lg shadow-emerald-500/20 transition active:scale-95"
+            href={analyzeLinkUrl}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-bold text-xs shadow-lg shadow-emerald-500/20 transition active:scale-95 cursor-pointer"
           >
             <Camera className="w-4 h-4" />
             <span>AI Food Photo</span>
@@ -76,88 +113,22 @@ async function NutritionContent() {
         </div>
       </div>
 
-      {/* Daily Macro Summary Banner */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Calories Progress */}
-        <div className="p-6 rounded-2xl bg-zinc-900/80 border border-zinc-800/80 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-              Total Energy
-            </span>
-            <Flame className="w-4 h-4 text-orange-400" />
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-extrabold text-white">{caloriesIn.toLocaleString()}</span>
-            <span className="text-xs text-zinc-500">/ {targetCalories.toLocaleString()} kcal</span>
-          </div>
-          <div className="w-full h-2.5 bg-zinc-800 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-linear-to-r from-orange-500 to-amber-400 rounded-full transition-all duration-500"
-              style={{ width: `${calPct}%` }}
-            />
-          </div>
-          <div className="flex justify-between text-xs text-zinc-400">
-            <span>{calPct}% of target</span>
-            <span>{Math.max(0, targetCalories - caloriesIn)} kcal remaining</span>
-          </div>
-        </div>
+      {/* Date Navigation & Picker Bar */}
+      <NutritionDateNavigator selectedDate={selectedDateStr} />
 
-        {/* Protein Progress */}
-        <div className="p-6 rounded-2xl bg-zinc-900/80 border border-zinc-800/80 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-              Protein Target
-            </span>
-            <Target className="w-4 h-4 text-emerald-400" />
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-extrabold text-emerald-400">{protein}g</span>
-            <span className="text-xs text-zinc-500">/ {targetProtein}g</span>
-          </div>
-          <div className="w-full h-2.5 bg-zinc-800 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-linear-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500"
-              style={{ width: `${proteinPct}%` }}
-            />
-          </div>
-          <div className="flex justify-between text-xs text-zinc-400">
-            <span>{proteinPct}% hit</span>
-            <span>{Math.max(0, targetProtein - protein)}g to go</span>
-          </div>
-        </div>
-
-        {/* Macro Distribution */}
-        <div className="p-6 rounded-2xl bg-zinc-900/80 border border-zinc-800/80 flex flex-col justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-            Macronutrient Ratio
-          </span>
-          <div className="grid grid-cols-3 gap-2 text-center my-2">
-            <div className="p-2 rounded-xl bg-zinc-950/60 border border-zinc-800/60">
-              <span className="text-[10px] uppercase text-emerald-400 font-semibold block">Protein</span>
-              <span className="text-base font-bold text-white block mt-0.5">{protein}g</span>
-            </div>
-            <div className="p-2 rounded-xl bg-zinc-950/60 border border-zinc-800/60">
-              <span className="text-[10px] uppercase text-amber-400 font-semibold block">Carbs</span>
-              <span className="text-base font-bold text-white block mt-0.5">{carbs}g</span>
-            </div>
-            <div className="p-2 rounded-xl bg-zinc-950/60 border border-zinc-800/60">
-              <span className="text-[10px] uppercase text-orange-400 font-semibold block">Fat</span>
-              <span className="text-base font-bold text-white block mt-0.5">{fat}g</span>
-            </div>
-          </div>
-          <p className="text-[11px] text-zinc-500 text-center">
-            Calculated from today&apos;s {meals.length} logged meal{meals.length === 1 ? "" : "s"}
-          </p>
-        </div>
-      </div>
+      {/* 5 Macro Target Cards with Remaining Calculations */}
+      <MacroRemainingCards stats={stats} />
 
       {/* Interactive Meals List with Edit & Delete */}
-      <MealListClient initialMeals={mappedMeals} />
+      <MealListClient
+        initialMeals={mappedMeals}
+        selectedDate={selectedDateStr}
+      />
     </div>
   );
 }
 
-export default function NutritionPage() {
+export default async function NutritionPage({ searchParams }: NutritionPageProps) {
   return (
     <Suspense
       fallback={
@@ -167,7 +138,7 @@ export default function NutritionPage() {
         </div>
       }
     >
-      <NutritionContent />
+      <NutritionContent searchParams={searchParams} />
     </Suspense>
   );
 }

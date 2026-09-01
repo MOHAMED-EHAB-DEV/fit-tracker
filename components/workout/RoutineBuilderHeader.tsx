@@ -16,6 +16,7 @@ interface RoutineBuilderHeaderProps {
   hasUnsavedChanges: boolean;
   exercisesCount: number;
   totalPlannedSets: number;
+  plannedCalories: number;
   onNameChange: (name: string) => void;
   onDayOfWeekChange: (day: DayOfWeek) => void;
   onSave: () => Promise<void>;
@@ -30,6 +31,7 @@ export function RoutineBuilderHeader({
   hasUnsavedChanges,
   exercisesCount,
   totalPlannedSets,
+  plannedCalories,
   onNameChange,
   onDayOfWeekChange,
   onSave,
@@ -152,10 +154,13 @@ export function RoutineBuilderHeader({
         </div>
 
         {/* Routine Summary */}
-        <div className="flex items-center justify-between pt-2 border-t border-white/6 text-xs text-zinc-400">
+        <div className="flex items-center justify-between pt-2 border-t border-white/6 text-xs text-zinc-400 flex-wrap gap-2">
           <span>Planned Exercises: <strong className="text-white">{exercisesCount}</strong></span>
           <span>
             Total Planned Sets: <strong className="text-emerald-400">{totalPlannedSets} sets</strong>
+          </span>
+          <span>
+            Total Routine Burn: <strong className="text-orange-400">{plannedCalories} kcal</strong>
           </span>
           <span className="hidden sm:inline text-zinc-500">
             Weight Units: <strong className="text-zinc-300">Custom per Exercise</strong>

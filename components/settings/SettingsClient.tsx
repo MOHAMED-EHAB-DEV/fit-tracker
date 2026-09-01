@@ -60,6 +60,13 @@ export function SettingsClient({ initialUser }: SettingsClientProps = {}) {
   const [waterGoalMl, setWaterGoalMl] = useState(user?.preferences?.waterGoalMl ? String(user.preferences.waterGoalMl) : "3000");
   const [restTimerDefaultSec, setRestTimerDefaultSec] = useState(user?.preferences?.restTimerDefaultSec ? String(user.preferences.restTimerDefaultSec) : "90");
 
+  // Macro Targets State
+  const [targetCalories, setTargetCalories] = useState(user?.fitnessProfile?.targetCalories ? String(user.fitnessProfile.targetCalories) : "");
+  const [targetProteinG, setTargetProteinG] = useState(user?.fitnessProfile?.targetProteinG ? String(user.fitnessProfile.targetProteinG) : "");
+  const [targetCarbsG, setTargetCarbsG] = useState(user?.fitnessProfile?.targetCarbsG ? String(user.fitnessProfile.targetCarbsG) : "");
+  const [targetFatG, setTargetFatG] = useState(user?.fitnessProfile?.targetFatG ? String(user.fitnessProfile.targetFatG) : "");
+  const [targetFiberG, setTargetFiberG] = useState(user?.fitnessProfile?.targetFiberG ? String(user.fitnessProfile.targetFiberG) : "");
+
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +86,21 @@ export function SettingsClient({ initialUser }: SettingsClientProps = {}) {
       if (user.preferences?.stepGoal) setStepGoal(String(user.preferences.stepGoal));
       if (user.preferences?.waterGoalMl) setWaterGoalMl(String(user.preferences.waterGoalMl));
       if (user.preferences?.restTimerDefaultSec) setRestTimerDefaultSec(String(user.preferences.restTimerDefaultSec));
+
+      if (user.fitnessProfile?.targetCalories) setTargetCalories(String(user.fitnessProfile.targetCalories));
+      else if (user.computed?.tdee) setTargetCalories(String(user.computed.tdee));
+
+      if (user.fitnessProfile?.targetProteinG) setTargetProteinG(String(user.fitnessProfile.targetProteinG));
+      else if (user.computed?.proteinTargetG) setTargetProteinG(String(user.computed.proteinTargetG));
+
+      if (user.fitnessProfile?.targetCarbsG) setTargetCarbsG(String(user.fitnessProfile.targetCarbsG));
+      else if (user.computed?.carbsTargetG) setTargetCarbsG(String(user.computed.carbsTargetG));
+
+      if (user.fitnessProfile?.targetFatG) setTargetFatG(String(user.fitnessProfile.targetFatG));
+      else if (user.computed?.fatTargetG) setTargetFatG(String(user.computed.fatTargetG));
+
+      if (user.fitnessProfile?.targetFiberG) setTargetFiberG(String(user.fitnessProfile.targetFiberG));
+      else if (user.computed?.fiberTargetG) setTargetFiberG(String(user.computed.fiberTargetG));
     }
   }, [user]);
 
@@ -97,6 +119,11 @@ export function SettingsClient({ initialUser }: SettingsClientProps = {}) {
           heightCm: parseFloat(heightCm) || null,
           activityLevel,
           goal,
+          targetCalories: targetCalories ? parseInt(targetCalories, 10) : null,
+          targetProteinG: targetProteinG ? parseInt(targetProteinG, 10) : null,
+          targetCarbsG: targetCarbsG ? parseInt(targetCarbsG, 10) : null,
+          targetFatG: targetFatG ? parseInt(targetFatG, 10) : null,
+          targetFiberG: targetFiberG ? parseInt(targetFiberG, 10) : null,
         },
         preferences: {
           stepGoal: parseInt(stepGoal, 10) || 10000,
@@ -245,6 +272,66 @@ export function SettingsClient({ initialUser }: SettingsClientProps = {}) {
                   value={restTimerDefaultSec}
                   onChange={(e) => setRestTimerDefaultSec(e.target.value)}
                   placeholder="e.g. 90"
+                />
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+
+        {/* Customized Macro Targets Card */}
+        <Card variant="default">
+          <CardHeader>
+            <div className="flex items-center gap-2 text-white font-bold text-base">
+              <Flame className="w-5 h-5 text-orange-400" aria-hidden="true" />
+              <span>Nutrition & Macro Targets</span>
+            </div>
+          </CardHeader>
+
+          <CardBody className="space-y-4">
+            <p className="text-xs text-zinc-400">
+              Customize your exact daily nutrition goals. These settings directly power your daily logs and remaining-macro trackers.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input
+                label="Target Calories (kcal)"
+                type="number"
+                value={targetCalories}
+                onChange={(e) => setTargetCalories(e.target.value)}
+                placeholder="e.g. 2400"
+              />
+
+              <Input
+                label="Target Protein (g)"
+                type="number"
+                value={targetProteinG}
+                onChange={(e) => setTargetProteinG(e.target.value)}
+                placeholder="e.g. 160"
+              />
+
+              <Input
+                label="Target Carbohydrates (g)"
+                type="number"
+                value={targetCarbsG}
+                onChange={(e) => setTargetCarbsG(e.target.value)}
+                placeholder="e.g. 270"
+              />
+
+              <Input
+                label="Target Fats (g)"
+                type="number"
+                value={targetFatG}
+                onChange={(e) => setTargetFatG(e.target.value)}
+                placeholder="e.g. 65"
+              />
+
+              <div className="sm:col-span-2">
+                <Input
+                  label="Target Dietary Fiber (g)"
+                  type="number"
+                  value={targetFiberG}
+                  onChange={(e) => setTargetFiberG(e.target.value)}
+                  placeholder="e.g. 35"
                 />
               </div>
             </div>

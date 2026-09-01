@@ -19,6 +19,7 @@ interface IExercise {
   catalogId: mongoose.Types.ObjectId;
   name: string;
   muscleGroup: string;
+  metValue?: number;
   weightUnit?: "kg" | "lbs";
   isWarmup?: boolean;
   warmupSets?: number;
@@ -69,6 +70,7 @@ const ExerciseSchema = new Schema<IExercise>(
     catalogId: { type: Schema.Types.ObjectId, ref: "ExerciseCatalog", required: true },
     name: { type: String, required: true },
     muscleGroup: { type: String, required: true },
+    metValue: { type: Number, default: null },
     weightUnit: { type: String, enum: ["kg", "lbs"], default: "kg" },
     isWarmup: { type: Boolean, default: false },
     warmupSets: { type: Number, default: null },

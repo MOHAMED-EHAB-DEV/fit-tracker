@@ -48,10 +48,23 @@ export async function deleteWorkoutAction(workoutId: string): Promise<{ success:
     await getDb();
     const Workout = (await import("@/lib/db/models/Workout")).default;
 
-    await Workout.deleteOne({ _id: workoutId, userId: user._id });
+    const deleted = await Workout.findOneAndDelete({ _id: workoutId, userId: user._id });
+    if (deleted && deleted.status === "completed" && deleted.estimatedCalories > 0) {
+      const dateStr = getTodayDateString(deleted.completedAt || deleted.date || deleted.startedAt || deleted.createdAt);
+      await DailyLog.findOneAndUpdate(
+        { userId: user._id, dateString: dateStr },
+        {
+          $inc: {
+            "caloriesOut.workouts": -deleted.estimatedCalories,
+            "caloriesOut.total": -deleted.estimatedCalories,
+          },
+        }
+      );
+    }
 
     revalidatePath("/");
     revalidatePath("/workouts");
+    revalidatePath("/workouts/sessions");
     return { success: true };
   } catch (err: any) {
     console.error("deleteWorkoutAction Error:", err);
@@ -81,6 +94,7 @@ export async function deleteMealAction(mealId: string): Promise<{ success: boole
       const p = deletedMeal.macros?.protein || 0;
       const c = deletedMeal.macros?.carbs || 0;
       const f = deletedMeal.macros?.fat || 0;
+      const fib = deletedMeal.macros?.fiber || 0;
 
       if (dateString) {
         await DailyLog.findOneAndUpdate(
@@ -91,6 +105,7 @@ export async function deleteMealAction(mealId: string): Promise<{ success: boole
               "macros.protein": -p,
               "macros.carbs": -c,
               "macros.fat": -f,
+              "macros.fiber": -fib,
             },
           }
         );
@@ -142,40 +157,60 @@ export async function updateProfileSettingsAction(payload: {
 
     await getDb();
     const User = (await import("@/lib/db/models/User")).default;
-    const { calculateBMR, calculateTDEE, calculateTargetCalories, calculateProteinTarget } = await import("@/lib/fitness/bmr");
+    const {
+      calculateBMR,
+      calculateTDEE,
+      calculateTargetCalories,
+      calculateProteinTarget,
+      calculateFatTarget,
+      calculateCarbsTarget,
+      calculateFiberTarget,
+    } = await import("@/lib/fitness/bmr");
 
     const sex = payload.fitnessProfile.sex || user.fitnessProfile?.sex || "male";
-    const weightKg = payload.fitnessProfile.weightKg || user.fitnessProfile?.weightKg;
-    const heightCm = payload.fitnessProfile.heightCm || user.fitnessProfile?.heightCm;
+    const weightKg = payload.fitnessProfile.weightKg ?? user.fitnessProfile?.weightKg;
+    const heightCm = payload.fitnessProfile.heightCm ?? user.fitnessProfile?.heightCm;
     const age = payload.fitnessProfile.age || user.fitnessProfile?.age || 25;
     const activityLevel = payload.fitnessProfile.activityLevel || user.fitnessProfile?.activityLevel || "moderate";
     const goal = payload.fitnessProfile.goal || user.fitnessProfile?.goal || "maintain";
 
     let bmr = null;
     let tdee = null;
-    let targetCalories = null;
-    let proteinTargetG = null;
+    let computedCalories = null;
+    let computedProtein = null;
 
     if (weightKg && heightCm && age) {
       bmr = calculateBMR(weightKg, heightCm, age, sex);
       tdee = calculateTDEE(bmr, activityLevel);
-      targetCalories = calculateTargetCalories(tdee, goal);
-      proteinTargetG = calculateProteinTarget(weightKg, goal);
+      computedCalories = calculateTargetCalories(tdee, goal);
+      computedProtein = calculateProteinTarget(weightKg, goal);
     }
+
+    const targetCalories = payload.fitnessProfile.targetCalories ?? user.fitnessProfile?.targetCalories ?? computedCalories;
+    const targetProteinG = payload.fitnessProfile.targetProteinG ?? user.fitnessProfile?.targetProteinG ?? computedProtein;
+    const targetFatG = payload.fitnessProfile.targetFatG ?? user.fitnessProfile?.targetFatG ?? (targetCalories ? calculateFatTarget(targetCalories) : null);
+    const targetCarbsG = payload.fitnessProfile.targetCarbsG ?? user.fitnessProfile?.targetCarbsG ?? (targetCalories && targetProteinG && targetFatG ? calculateCarbsTarget(targetCalories, targetProteinG, targetFatG) : null);
+    const targetFiberG = payload.fitnessProfile.targetFiberG ?? user.fitnessProfile?.targetFiberG ?? (targetCalories ? calculateFiberTarget(targetCalories) : null);
 
     await User.findByIdAndUpdate(user._id, {
       name: payload.name,
       fitnessProfile: {
         ...payload.fitnessProfile,
-        targetCalories: targetCalories || user.fitnessProfile?.targetCalories,
-        targetProteinG: proteinTargetG || user.fitnessProfile?.targetProteinG,
+        targetCalories,
+        targetProteinG,
+        targetCarbsG,
+        targetFatG,
+        targetFiberG,
       },
       preferences: payload.preferences,
       computed: {
         bmr,
         tdee,
-        targetCalories,
-        proteinTargetG,
+        proteinTargetG: targetProteinG,
+        carbsTargetG: targetCarbsG,
+        fatTargetG: targetFatG,
+        fiberTargetG: targetFiberG,
+        lastComputedAt: new Date(),
       },
     });
 

@@ -85,6 +85,7 @@ async function RoutineBuilderDataLoader({
       catalogId: ex.catalogId ? ex.catalogId.toString() : "",
       name: ex.name || "Exercise",
       muscleGroup: ex.muscleGroup || "Other",
+      metValue: ex.metValue,
       targetSets: workingSetsList.length || 3,
       targetReps: firstWorking?.targetReps || 10,
       targetWeight: firstWorking?.targetWeight ?? 50,
@@ -106,6 +107,7 @@ async function RoutineBuilderDataLoader({
     name: workoutDoc.name || "Workout Routine",
     dayOfWeek: ((workoutDoc.dayOfWeek || "saturday").toLowerCase()) as DayOfWeek,
     weightUnit: (workoutDoc.weightUnit || "kg") as "kg" | "lbs",
+    userWeightKg: user.fitnessProfile?.weightKg ?? 0,
     exercises: mappedExercises,
   };
 

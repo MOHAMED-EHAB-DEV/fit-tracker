@@ -22,6 +22,7 @@ export async function POST(request: NextRequest) {
     const file = formData.get("file") as File | null;
     const description = (formData.get("description") as string) || "";
     const mealType = ((formData.get("mealType") as string) || "lunch") as MealType;
+    const dateStringParam = (formData.get("dateString") as string) || null;
 
     let cloudinaryResult: UploadApiResponse | null = null;
     let base64Image: string | null = null;
@@ -137,13 +138,13 @@ export async function POST(request: NextRequest) {
     }
 
     await getDb();
-    const todayStr = getTodayDateString();
+    const targetDateStr = dateStringParam || getTodayDateString();
 
     // Create Meal in MongoDB
     const meal = await Meal.create({
       userId: session.userId,
       loggedAt: new Date(),
-      dateString: todayStr,
+      dateString: targetDateStr,
       mealType,
       description: analysis.mealDescription || description || "Logged Meal",
       imageSource: cloudinaryResult ? "photo" : "text_only",
@@ -179,7 +180,7 @@ export async function POST(request: NextRequest) {
 
     // Update DailyLog totals atomically via $inc
     await DailyLog.findOneAndUpdate(
-      { userId: session.userId, dateString: todayStr },
+      { userId: session.userId, dateString: targetDateStr },
       {
         $inc: {
           caloriesIn: analysis.totals.calories,

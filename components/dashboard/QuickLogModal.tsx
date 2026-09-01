@@ -42,6 +42,7 @@ export function QuickLogModal({
   const [mealProtein, setMealProtein] = useState("");
   const [mealCarbs, setMealCarbs] = useState("");
   const [mealFat, setMealFat] = useState("");
+  const [mealFiber, setMealFiber] = useState("");
   const [mealType, setMealType] = useState<MealType>("snack");
 
   // Weight Form State
@@ -73,6 +74,7 @@ export function QuickLogModal({
             protein: parseFloat(mealProtein) || 0,
             carbs: parseFloat(mealCarbs) || 0,
             fat: parseFloat(mealFat) || 0,
+            fiber: parseFloat(mealFiber) || 0,
           },
         }),
       });
@@ -87,6 +89,9 @@ export function QuickLogModal({
         setMealDescription("");
         setMealCalories("");
         setMealProtein("");
+        setMealCarbs("");
+        setMealFat("");
+        setMealFiber("");
       }, 1000);
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to log meal");
@@ -218,7 +223,7 @@ export function QuickLogModal({
             role="tab"
             aria-selected={activeTab === "food"}
             onClick={() => setActiveTab("food")}
-            className={`py-2 px-2 min-h-[40px] rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
+            className={`py-2 px-2 min-h-10 rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
               activeTab === "food"
                 ? "bg-zinc-800 text-emerald-400 shadow-sm"
                 : "text-zinc-400 hover:text-zinc-200"
@@ -233,7 +238,7 @@ export function QuickLogModal({
             role="tab"
             aria-selected={activeTab === "water"}
             onClick={() => setActiveTab("water")}
-            className={`py-2 px-2 min-h-[40px] rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${
+            className={`py-2 px-2 min-h-10 rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${
               activeTab === "water"
                 ? "bg-zinc-800 text-cyan-400 shadow-sm"
                 : "text-zinc-400 hover:text-zinc-200"
@@ -248,7 +253,7 @@ export function QuickLogModal({
             role="tab"
             aria-selected={activeTab === "weight"}
             onClick={() => setActiveTab("weight")}
-            className={`py-2 px-2 min-h-[40px] rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
+            className={`py-2 px-2 min-h-10 rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
               activeTab === "weight"
                 ? "bg-zinc-800 text-amber-400 shadow-sm"
                 : "text-zinc-400 hover:text-zinc-200"
@@ -263,7 +268,7 @@ export function QuickLogModal({
             role="tab"
             aria-selected={activeTab === "steps"}
             onClick={() => setActiveTab("steps")}
-            className={`py-2 px-2 min-h-[40px] rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
+            className={`py-2 px-2 min-h-10 rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
               activeTab === "steps"
                 ? "bg-zinc-800 text-blue-400 shadow-sm"
                 : "text-zinc-400 hover:text-zinc-200"
@@ -302,7 +307,7 @@ export function QuickLogModal({
                 placeholder="e.g. Protein shake + 1 Banana"
                 value={mealDescription}
                 onChange={(e) => setMealDescription(e.target.value)}
-                className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               />
             </div>
 
@@ -318,7 +323,7 @@ export function QuickLogModal({
                   placeholder="350"
                   value={mealCalories}
                   onChange={(e) => setMealCalories(e.target.value)}
-                  className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                  className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 />
               </div>
               <div>
@@ -332,7 +337,7 @@ export function QuickLogModal({
                   placeholder="30"
                   value={mealProtein}
                   onChange={(e) => setMealProtein(e.target.value)}
-                  className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                  className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 />
               </div>
             </div>
@@ -346,10 +351,11 @@ export function QuickLogModal({
                   id="quick-food-carbs"
                   type="number"
                   step="0.1"
+                  min="0"
                   placeholder="25"
                   value={mealCarbs}
                   onChange={(e) => setMealCarbs(e.target.value)}
-                  className="w-full px-3 py-2 min-h-[40px] bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                  className="w-full px-3 py-2 min-h-10 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
                 />
               </div>
               <div>
@@ -360,36 +366,53 @@ export function QuickLogModal({
                   id="quick-food-fat"
                   type="number"
                   step="0.1"
+                  min="0"
                   placeholder="5"
                   value={mealFat}
                   onChange={(e) => setMealFat(e.target.value)}
-                  className="w-full px-3 py-2 min-h-[40px] bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
+                  className="w-full px-3 py-2 min-h-10 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
                 />
               </div>
               <div>
-                <label htmlFor="quick-food-type" className="block text-[10px] font-semibold text-zinc-400 mb-1 select-none">
-                  Meal Type
+                <label htmlFor="quick-food-fiber" className="block text-[10px] font-semibold text-teal-400 mb-1 select-none">
+                  Fiber (g)
                 </label>
-                <select
-                  id="quick-food-type"
-                  value={mealType}
-                  onChange={(e) => setMealType(e.target.value as MealType)}
-                  className="w-full px-2 py-2 min-h-[40px] bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 cursor-pointer"
-                >
-                  {MEAL_TYPE_OPTIONS.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
+                <input
+                  id="quick-food-fiber"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  placeholder="5"
+                  value={mealFiber}
+                  onChange={(e) => setMealFiber(e.target.value)}
+                  className="w-full px-3 py-2 min-h-10 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+                />
               </div>
+            </div>
+
+            <div>
+              <label htmlFor="quick-food-type" className="block text-xs font-semibold text-zinc-400 mb-1 select-none">
+                Meal Type
+              </label>
+              <select
+                id="quick-food-type"
+                value={mealType}
+                onChange={(e) => setMealType(e.target.value as MealType)}
+                className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 cursor-pointer"
+              >
+                {MEAL_TYPE_OPTIONS.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <button
               type="submit"
               disabled={isSubmitting}
               aria-busy={isSubmitting}
-              className="w-full py-3 min-h-[44px] bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-bold rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-98 disabled:opacity-50"
+              className="w-full py-3 min-h-11 bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-bold rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-98 disabled:opacity-50"
             >
               {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <span>Log Food</span>}
             </button>
@@ -412,7 +435,7 @@ export function QuickLogModal({
                   disabled={isSubmitting}
                   aria-busy={isSubmitting}
                   aria-label={`Add ${ml} milliliters of water`}
-                  className="py-4 px-3 min-h-[48px] rounded-2xl bg-zinc-950 border border-cyan-500/20 hover:border-cyan-500/60 hover:bg-cyan-500/10 text-cyan-400 font-bold transition flex flex-col items-center gap-1 group active:scale-95 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:opacity-50"
+                  className="py-4 px-3 min-h-12 rounded-2xl bg-zinc-950 border border-cyan-500/20 hover:border-cyan-500/60 hover:bg-cyan-500/10 text-cyan-400 font-bold transition flex flex-col items-center gap-1 group active:scale-95 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:opacity-50"
                 >
                   <Droplets className="w-5 h-5 group-hover:scale-110 transition-transform text-cyan-400" aria-hidden="true" />
                   <span className="text-base text-white tabular-nums">+{ml} ml</span>
@@ -440,7 +463,7 @@ export function QuickLogModal({
                 placeholder="e.g. 74.8"
                 value={weightKg}
                 onChange={(e) => setWeightKg(e.target.value)}
-                className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
               />
             </div>
 
@@ -455,7 +478,7 @@ export function QuickLogModal({
                 placeholder="e.g. 14.5"
                 value={bodyFat}
                 onChange={(e) => setBodyFat(e.target.value)}
-                className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
               />
             </div>
 
@@ -463,7 +486,7 @@ export function QuickLogModal({
               type="submit"
               disabled={isSubmitting}
               aria-busy={isSubmitting}
-              className="w-full py-3 min-h-[44px] bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-zinc-950 font-bold rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 active:scale-98 disabled:opacity-50"
+              className="w-full py-3 min-h-11 bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-zinc-950 font-bold rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 active:scale-98 disabled:opacity-50"
             >
               {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <span>Record Weigh-In</span>}
             </button>
@@ -495,7 +518,7 @@ export function QuickLogModal({
                 placeholder="e.g. 8500"
                 value={stepsCount}
                 onChange={(e) => setStepsCount(e.target.value)}
-                className="w-full px-3.5 py-2.5 min-h-[44px] bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               />
             </div>
 
@@ -503,7 +526,7 @@ export function QuickLogModal({
               type="submit"
               disabled={isSubmitting}
               aria-busy={isSubmitting}
-              className="w-full py-3 min-h-[44px] bg-linear-to-r from-blue-500 to-cyan-500 hover:from-blue-400 hover:to-cyan-400 text-zinc-950 font-bold rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 active:scale-98 disabled:opacity-50"
+              className="w-full py-3 min-h-11 bg-linear-to-r from-blue-500 to-cyan-500 hover:from-blue-400 hover:to-cyan-400 text-zinc-950 font-bold rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 active:scale-98 disabled:opacity-50"
             >
               {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <span>Sync Steps</span>}
             </button>

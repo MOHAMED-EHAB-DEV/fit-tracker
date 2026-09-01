@@ -25,6 +25,7 @@ export interface ExerciseItem {
   secondaryMuscles?: string[];
   equipment: string;
   category: string;
+  metValue?: number;
   level?: string;
   force?: string | null;
   mechanic?: string | null;
