@@ -158,6 +158,7 @@ export function PhotoAnalyzer() {
               confidence: analysisResult.confidence || "medium",
               confidenceReason: analysisResult.confidenceReason || "",
               geminiNotes: editNotes || analysisResult.geminiNotes || "",
+              modelUsed: analysisResult.modelUsed || "gemini-3.7-flash",
             }
           : null,
         cloudinary: cloudinaryData,

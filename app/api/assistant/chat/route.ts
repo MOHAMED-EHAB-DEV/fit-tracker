@@ -5,7 +5,13 @@ import Meal from "@/lib/db/models/Meal";
 import DailyLog from "@/lib/db/models/DailyLog";
 import User from "@/lib/db/models/User";
 import BodyComp from "@/lib/db/models/BodyComp";
-import genAI, { flashModel, resolveGeminiModel, createGeminiConfig } from "@/lib/gemini/client";
+import genAI, {
+  flashModel,
+  fallbackFlashModel,
+  resolveGeminiModel,
+  createGeminiConfig,
+  generateContentWithFallback,
+} from "@/lib/gemini/client";
 import { multiLogSchema } from "@/lib/gemini/schemas";
 import { MULTI_LOG_SYSTEM_PROMPT, AI_COACH_SYSTEM_PROMPT } from "@/lib/gemini/prompts";
 import { getTodayDateString } from "@/lib/fitness/timezone";
@@ -168,6 +174,7 @@ export async function POST(request: NextRequest) {
       });
 
       let reply = "I analyzed your data!";
+      let modelUsedToReturn = targetModel;
 
       if (process.env.GEMINI_API_KEY) {
         try {
@@ -201,8 +208,9 @@ export async function POST(request: NextRequest) {
 
           const contents: any[] = [...validatedInlineParts, promptParts.filter(Boolean).join("\n")];
 
-          const response = await genAI.models.generateContent({
-            model: targetModel,
+          const { text, modelUsed: actualModel } = await generateContentWithFallback({
+            primaryModel: targetModel,
+            fallbackModel: fallbackFlashModel,
             contents,
             config: createGeminiConfig({
               systemInstruction: AI_COACH_SYSTEM_PROMPT,
@@ -210,9 +218,10 @@ export async function POST(request: NextRequest) {
             }),
           });
 
-          if (response.text) {
-            reply = response.text.trim();
+          if (text) {
+            reply = text.trim();
           }
+          modelUsedToReturn = actualModel;
         } catch (geminiErr: any) {
           console.error("Gemini Coach Command Error:", geminiErr);
           const { status, message: errDetail } = extractGeminiErrorMessage(geminiErr);
@@ -225,7 +234,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         chatReply: reply,
-        modelUsed: targetModel,
+        modelUsed: modelUsedToReturn,
         commandDetected: parsedCmd.commandName || null,
         dataContext: summary,
       });
@@ -269,8 +278,9 @@ export async function POST(request: NextRequest) {
 
         const contents: any[] = [...validatedInlineParts, promptParts.join("\n")];
 
-        const response = await genAI.models.generateContent({
-          model: targetModel,
+        const { text } = await generateContentWithFallback({
+          primaryModel: targetModel,
+          fallbackModel: fallbackFlashModel,
           contents,
           config: createGeminiConfig({
             systemInstruction: MULTI_LOG_SYSTEM_PROMPT,
@@ -280,7 +290,6 @@ export async function POST(request: NextRequest) {
           }),
         });
 
-        const text = response.text;
         if (text) {
           const cleaned = text.replace(/```json\s*|```/g, "").trim();
           const parsed = JSON.parse(cleaned);

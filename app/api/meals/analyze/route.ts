@@ -4,7 +4,12 @@ import { getDb } from "@/lib/db/mongoose";
 import Meal from "@/lib/db/models/Meal";
 import DailyLog from "@/lib/db/models/DailyLog";
 import cloudinary from "@/lib/cloudinary";
-import genAI, { flashModel, createGeminiConfig } from "@/lib/gemini/client";
+import genAI, {
+  flashModel,
+  fallbackFlashModel,
+  createGeminiConfig,
+  generateContentWithFallback,
+} from "@/lib/gemini/client";
 import { mealAnalysisSchema } from "@/lib/gemini/schemas";
 import { MEAL_ANALYZER_SYSTEM_PROMPT } from "@/lib/gemini/prompts";
 import { getTodayDateString } from "@/lib/fitness/timezone";
@@ -148,6 +153,7 @@ export async function POST(request: NextRequest) {
       confidence: "high" | "medium" | "low";
       confidenceReason: string;
       geminiNotes: string;
+      modelUsed: string;
     };
 
     try {
@@ -181,8 +187,9 @@ export async function POST(request: NextRequest) {
       ].join("\n");
       contents.push(promptText);
 
-      const response = await genAI.models.generateContent({
-        model: flashModel,
+      const { text, modelUsed } = await generateContentWithFallback({
+        primaryModel: flashModel,
+        fallbackModel: fallbackFlashModel,
         contents,
         config: createGeminiConfig({
           systemInstruction: MEAL_ANALYZER_SYSTEM_PROMPT,
@@ -192,7 +199,6 @@ export async function POST(request: NextRequest) {
         }),
       });
 
-      const text = response.text;
       if (!text) {
         throw new Error("No response received from Gemini AI.");
       }
@@ -234,6 +240,7 @@ export async function POST(request: NextRequest) {
             ? "Complex mixed dish or obscured ingredients requiring portion estimation."
             : "Standard dish with estimated cooking fats or sauces."),
         geminiNotes: parsed.geminiNotes || "",
+        modelUsed,
       };
     } catch (geminiErr: any) {
       console.error("Gemini meal analysis error:", geminiErr);
@@ -284,7 +291,7 @@ export async function POST(request: NextRequest) {
         confidence: analysis.confidence,
         confidenceReason: analysis.confidenceReason,
         geminiNotes: analysis.geminiNotes || "",
-        modelUsed: flashModel,
+        modelUsed: analysis.modelUsed || flashModel,
       },
       macros: {
         calories: analysis.totals.calories,

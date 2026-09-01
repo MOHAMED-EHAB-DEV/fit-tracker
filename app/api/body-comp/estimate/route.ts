@@ -3,7 +3,12 @@ import { getServerSession } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/mongoose";
 import User from "@/lib/db/models/User";
 import BodyComp from "@/lib/db/models/BodyComp";
-import genAI, { flashModel, createGeminiConfig } from "@/lib/gemini/client";
+import genAI, {
+  flashModel,
+  fallbackFlashModel,
+  createGeminiConfig,
+  generateContentWithFallback,
+} from "@/lib/gemini/client";
 import { bodyCompAnalysisSchema } from "@/lib/gemini/schemas";
 import { BODY_COMP_SYSTEM_PROMPT } from "@/lib/gemini/prompts";
 
@@ -105,8 +110,9 @@ export async function POST(request: NextRequest) {
     }
     contents.push(promptText);
 
-    const response = await genAI.models.generateContent({
-      model: flashModel,
+    const { text, modelUsed } = await generateContentWithFallback({
+      primaryModel: flashModel,
+      fallbackModel: fallbackFlashModel,
       contents,
       config: createGeminiConfig({
         systemInstruction: BODY_COMP_SYSTEM_PROMPT,
@@ -116,9 +122,8 @@ export async function POST(request: NextRequest) {
       }),
     });
 
-    const text = response.text;
     if (!text) {
-      throw new Error("No response received from Gemini Flash model");
+      throw new Error("No response received from Gemini AI model");
     }
 
     const cleaned = text.replace(/```json\s*|```/g, "").trim();

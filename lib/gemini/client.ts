@@ -10,6 +10,11 @@ const genAI = new GoogleGenAI({ apiKey });
 export const flashModel = "gemini-3.7-flash";
 
 /**
+ * Fallback Flash model if 3.7 experiences high demand (503), quota limits, or execution failure.
+ */
+export const fallbackFlashModel = "gemini-3.6-flash";
+
+/**
  * Ultra-fast lightweight model for rapid daily briefs and fast multi-log parsing.
  */
 export const flashLiteModel = "gemini-2.5-flash-lite";
@@ -109,6 +114,56 @@ export function resolveGeminiModel(choice?: string): string {
     return flashModel;
   }
   return flashLiteModel;
+}
+
+/**
+ * Executes generateContent with automatic failover/switch between models.
+ * If the primary model fails (e.g. 503 high demand, rate limits, or error),
+ * it seamlessly switches to the fallback model (gemini-3.6-flash).
+ */
+export async function generateContentWithFallback(options: {
+  contents: any[];
+  config?: any;
+  primaryModel?: string;
+  fallbackModel?: string;
+}): Promise<{ text: string | undefined; modelUsed: string; response: any }> {
+  const primary = options.primaryModel || flashModel;
+  const fallback = options.fallbackModel || fallbackFlashModel;
+
+  try {
+    const response = await genAI.models.generateContent({
+      model: primary,
+      contents: options.contents,
+      config: options.config,
+    });
+    return {
+      text: response.text,
+      modelUsed: primary,
+      response,
+    };
+  } catch (primaryErr: any) {
+    console.warn(
+      `[Gemini Auto-Switch] Primary model (${primary}) failed (status: ${primaryErr?.status || primaryErr?.statusCode || "error"}). Switching to fallback model (${fallback})...`,
+      primaryErr?.message || primaryErr
+    );
+
+    try {
+      const fallbackResponse = await genAI.models.generateContent({
+        model: fallback,
+        contents: options.contents,
+        config: options.config,
+      });
+
+      return {
+        text: fallbackResponse.text,
+        modelUsed: fallback,
+        response: fallbackResponse,
+      };
+    } catch (fallbackErr: any) {
+      console.error(`[Gemini Auto-Switch] Fallback model (${fallback}) also failed:`, fallbackErr);
+      throw fallbackErr;
+    }
+  }
 }
 
 export default genAI;

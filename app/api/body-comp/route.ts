@@ -4,7 +4,12 @@ import { getDb } from "@/lib/db/mongoose";
 import BodyComp from "@/lib/db/models/BodyComp";
 import User from "@/lib/db/models/User";
 import cloudinary from "@/lib/cloudinary";
-import genAI, { flashModel, createGeminiConfig } from "@/lib/gemini/client";
+import genAI, {
+  flashModel,
+  fallbackFlashModel,
+  createGeminiConfig,
+  generateContentWithFallback,
+} from "@/lib/gemini/client";
 import { bodyCompAnalysisSchema } from "@/lib/gemini/schemas";
 import { BODY_COMP_SYSTEM_PROMPT } from "@/lib/gemini/prompts";
 import { getTodayDateString } from "@/lib/fitness/timezone";
@@ -133,8 +138,9 @@ export async function POST(request: NextRequest) {
           "4. Deliver 3–4 practical, actionable recommendations for nutrition phase and progressive training in 'recommendations'.",
         ].filter(Boolean).join("\n");
 
-        const response = await genAI.models.generateContent({
-          model: flashModel,
+        const { text, modelUsed } = await generateContentWithFallback({
+          primaryModel: flashModel,
+          fallbackModel: fallbackFlashModel,
           contents: [
             {
               inlineData: {
@@ -152,7 +158,6 @@ export async function POST(request: NextRequest) {
           }),
         });
 
-        const text = response.text;
         if (text) {
           const cleaned = text.replace(/```json\s*|```/g, "").trim();
           const parsed = JSON.parse(cleaned);
