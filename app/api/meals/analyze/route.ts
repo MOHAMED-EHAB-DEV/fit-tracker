@@ -133,101 +133,114 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    if (!process.env.GEMINI_API_KEY) {
+      return NextResponse.json(
+        { success: false, error: "GEMINI_API_KEY is not configured on the server." },
+        { status: 500 }
+      );
+    }
+
     // Call Gemini for structured nutritional estimation
-    let analysis = {
-      mealDescription: description || "Logged meal",
-      items: [] as any[],
-      totals: { calories: 450, protein: 30, carbs: 45, fat: 15, fiber: 5 },
-      confidence: "medium" as const,
-      confidenceReason: "Standard dish with estimated portion scale and seasoning.",
-      geminiNotes: "",
+    let analysis: {
+      mealDescription: string;
+      items: any[];
+      totals: { calories: number; protein: number; carbs: number; fat: number; fiber: number };
+      confidence: "high" | "medium" | "low";
+      confidenceReason: string;
+      geminiNotes: string;
     };
 
-    if (process.env.GEMINI_API_KEY) {
-      try {
-        const contents: any[] = [];
+    try {
+      const contents: any[] = [];
 
-        if (base64Image) {
-          contents.push({
-            inlineData: {
-              data: base64Image,
-              mimeType: "image/webp",
-            },
-          });
-        }
-
-        const promptText = [
-          `Target Meal Category: ${mealType}`,
-          description.trim()
-            ? `User Provided Notes / Ingredients: "${description.trim()}"`
-            : `User Provided Notes: None (Perform visual plate analysis).`,
-          `Input Modality: ${base64Image ? "Photo + text description" : "Text description only"}.`,
-          "",
-          "Evaluation Protocol:",
-          "1. Deconstruct every visible or described food item into specific ingredients (proteins, carbs, fats, vegetables, dairy, sauces, cooking oils).",
-          "2. Estimate realistic portion sizes using metric units (grams 'g' or milliliters 'ml') and specify cooked vs raw state.",
-          "3. Account for cooking fats (e.g., 5g–10g oil/butter for pan-searing or roasting) unless explicitly oil-free.",
-          "4. Calculate scientific macronutrients (Calories, Protein, Carbs, Fat, Fiber) per ingredient using USDA nutritional standards.",
-          "5. If the user provided explicit weights or ingredients in their description, prioritize them over visual guesses.",
-          "6. Ensure strict mathematical sum consistency: totals MUST equal the sum of all individual items.",
-          "7. Specify accurate confidence rating ('high', 'medium', or 'low') and provide a clear 'confidenceReason' explaining visibility, lighting, ingredients, and portion certainty.",
-          "8. Provide a concise, professional dietitian note in 'geminiNotes' summarizing key assumptions (cooking oils, sauces) and nutritional balance.",
-        ].join("\n");
-        contents.push(promptText);
-
-        const response = await genAI.models.generateContent({
-          model: flashModel,
-          contents,
-          config: createGeminiConfig({
-            systemInstruction: MEAL_ANALYZER_SYSTEM_PROMPT,
-            responseMimeType: "application/json",
-            responseSchema: mealAnalysisSchema as any,
-            maxOutputTokens: 2048,
-          }),
+      if (base64Image) {
+        contents.push({
+          inlineData: {
+            data: base64Image,
+            mimeType: "image/webp",
+          },
         });
-
-        const text = response.text;
-        if (text) {
-          const cleanedText = text.replace(/```json\s*|```/g, "").trim();
-          const parsed = JSON.parse(cleanedText);
-          if (parsed && typeof parsed === "object") {
-            const items = Array.isArray(parsed.items) ? parsed.items : [];
-            let { calories = 0, protein = 0, carbs = 0, fat = 0, fiber = 0 } = parsed.totals || {};
-
-            // If totals are missing or 0 while items exist, sum up from items
-            if ((!calories || calories <= 0) && items.length > 0) {
-              calories = items.reduce((sum: number, it: any) => sum + (Number(it.calories) || 0), 0);
-              protein = items.reduce((sum: number, it: any) => sum + (Number(it.protein) || 0), 0);
-              carbs = items.reduce((sum: number, it: any) => sum + (Number(it.carbs) || 0), 0);
-              fat = items.reduce((sum: number, it: any) => sum + (Number(it.fat) || 0), 0);
-              fiber = items.reduce((sum: number, it: any) => sum + (Number(it.fiber) || 0), 0);
-            }
-
-            analysis = {
-              mealDescription: parsed.mealDescription || description || "Logged Meal",
-              items,
-              totals: {
-                calories: Math.round(Number(calories) || 0),
-                protein: Number((Number(protein) || 0).toFixed(1)),
-                carbs: Number((Number(carbs) || 0).toFixed(1)),
-                fat: Number((Number(fat) || 0).toFixed(1)),
-                fiber: Number((Number(fiber) || 0).toFixed(1)),
-              },
-              confidence: parsed.confidence || "medium",
-              confidenceReason:
-                parsed.confidenceReason ||
-                (parsed.confidence === "high"
-                  ? "Clear visibility with distinct ingredients and standard scale."
-                  : parsed.confidence === "low"
-                  ? "Complex mixed dish or obscured ingredients requiring portion estimation."
-                  : "Standard dish with estimated cooking fats or sauces."),
-              geminiNotes: parsed.geminiNotes || "",
-            };
-          }
-        }
-      } catch (geminiErr) {
-        console.error("Gemini meal analysis error:", geminiErr);
       }
+
+      const promptText = [
+        `Target Meal Category: ${mealType}`,
+        description.trim()
+          ? `User Provided Notes / Ingredients: "${description.trim()}"`
+          : `User Provided Notes: None (Perform visual plate analysis).`,
+        `Input Modality: ${base64Image ? "Photo + text description" : "Text description only"}.`,
+        "",
+        "Evaluation Protocol:",
+        "1. Deconstruct every visible or described food item into specific ingredients (proteins, carbs, fats, vegetables, dairy, sauces, cooking oils).",
+        "2. Estimate realistic portion sizes using metric units (grams 'g' or milliliters 'ml') and specify cooked vs raw state.",
+        "3. Account for cooking fats (e.g., 5g–10g oil/butter for pan-searing or roasting) unless explicitly oil-free.",
+        "4. Calculate scientific macronutrients (Calories, Protein, Carbs, Fat, Fiber) per ingredient using USDA nutritional standards.",
+        "5. If the user provided explicit weights or ingredients in their description, prioritize them over visual guesses.",
+        "6. Ensure strict mathematical sum consistency: totals MUST equal the sum of all individual items.",
+        "7. Specify accurate confidence rating ('high', 'medium', or 'low') and provide a clear 'confidenceReason' explaining visibility, lighting, ingredients, and portion certainty.",
+        "8. Provide a concise, professional dietitian note in 'geminiNotes' summarizing key assumptions (cooking oils, sauces) and nutritional balance.",
+      ].join("\n");
+      contents.push(promptText);
+
+      const response = await genAI.models.generateContent({
+        model: flashModel,
+        contents,
+        config: createGeminiConfig({
+          systemInstruction: MEAL_ANALYZER_SYSTEM_PROMPT,
+          responseMimeType: "application/json",
+          responseSchema: mealAnalysisSchema as any,
+          maxOutputTokens: 2048,
+        }),
+      });
+
+      const text = response.text;
+      if (!text) {
+        throw new Error("No response received from Gemini AI.");
+      }
+
+      const cleanedText = text.replace(/```json\s*|```/g, "").trim();
+      const parsed = JSON.parse(cleanedText);
+      if (!parsed || typeof parsed !== "object") {
+        throw new Error("Invalid JSON received from Gemini AI.");
+      }
+
+      const items = Array.isArray(parsed.items) ? parsed.items : [];
+      let { calories = 0, protein = 0, carbs = 0, fat = 0, fiber = 0 } = parsed.totals || {};
+
+      // If totals are missing or 0 while items exist, sum up from items
+      if ((!calories || calories <= 0) && items.length > 0) {
+        calories = items.reduce((sum: number, it: any) => sum + (Number(it.calories) || 0), 0);
+        protein = items.reduce((sum: number, it: any) => sum + (Number(it.protein) || 0), 0);
+        carbs = items.reduce((sum: number, it: any) => sum + (Number(it.carbs) || 0), 0);
+        fat = items.reduce((sum: number, it: any) => sum + (Number(it.fat) || 0), 0);
+        fiber = items.reduce((sum: number, it: any) => sum + (Number(it.fiber) || 0), 0);
+      }
+
+      analysis = {
+        mealDescription: parsed.mealDescription || description || "Logged Meal",
+        items,
+        totals: {
+          calories: Math.round(Number(calories) || 0),
+          protein: Number((Number(protein) || 0).toFixed(1)),
+          carbs: Number((Number(carbs) || 0).toFixed(1)),
+          fat: Number((Number(fat) || 0).toFixed(1)),
+          fiber: Number((Number(fiber) || 0).toFixed(1)),
+        },
+        confidence: parsed.confidence || "medium",
+        confidenceReason:
+          parsed.confidenceReason ||
+          (parsed.confidence === "high"
+            ? "Clear visibility with distinct ingredients and standard scale."
+            : parsed.confidence === "low"
+            ? "Complex mixed dish or obscured ingredients requiring portion estimation."
+            : "Standard dish with estimated cooking fats or sauces."),
+        geminiNotes: parsed.geminiNotes || "",
+      };
+    } catch (geminiErr: any) {
+      console.error("Gemini meal analysis error:", geminiErr);
+      return NextResponse.json(
+        { success: false, error: geminiErr.message || "Failed to analyze meal with AI." },
+        { status: 500 }
+      );
     }
 
     const cloudinaryPayload = cloudinaryResult
