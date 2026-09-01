@@ -7,6 +7,9 @@ import {
   calculateTDEE,
   calculateTargetCalories,
   calculateProteinTarget,
+  calculateFatTarget,
+  calculateCarbsTarget,
+  calculateFiberTarget,
 } from "@/lib/fitness/bmr";
 
 export async function GET() {
@@ -69,13 +72,19 @@ export async function PATCH(request: NextRequest) {
       if (weight && height) {
         const bmr = calculateBMR(weight, height, age, sex);
         const tdee = calculateTDEE(bmr, activity);
-        const targetCal = calculateTargetCalories(tdee, goal);
-        const targetProtein = calculateProteinTarget(weight, goal);
+        const targetCal = user.fitnessProfile.targetCalories || calculateTargetCalories(tdee, goal);
+        const targetProtein = user.fitnessProfile.targetProteinG || calculateProteinTarget(weight, goal);
+        const targetFat = user.fitnessProfile.targetFatG || calculateFatTarget(targetCal);
+        const targetCarbs = user.fitnessProfile.targetCarbsG || calculateCarbsTarget(targetCal, targetProtein, targetFat);
+        const targetFiber = user.fitnessProfile.targetFiberG || calculateFiberTarget(targetCal);
 
         user.computed = {
           bmr,
           tdee,
           proteinTargetG: targetProtein,
+          carbsTargetG: targetCarbs,
+          fatTargetG: targetFat,
+          fiberTargetG: targetFiber,
           lastComputedAt: new Date(),
         };
 
@@ -84,6 +93,15 @@ export async function PATCH(request: NextRequest) {
         }
         if (!user.fitnessProfile.targetProteinG) {
           user.fitnessProfile.targetProteinG = targetProtein;
+        }
+        if (!user.fitnessProfile.targetCarbsG) {
+          user.fitnessProfile.targetCarbsG = targetCarbs;
+        }
+        if (!user.fitnessProfile.targetFatG) {
+          user.fitnessProfile.targetFatG = targetFat;
+        }
+        if (!user.fitnessProfile.targetFiberG) {
+          user.fitnessProfile.targetFiberG = targetFiber;
         }
       }
     }
