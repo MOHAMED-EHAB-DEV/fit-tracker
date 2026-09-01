@@ -122,7 +122,7 @@ export function WorkoutHeader({
 
         {/* Quick Weekday Switcher Strip */}
         <div className="flex items-center gap-1 sm:gap-1.5 pt-2 border-t border-zinc-800/60 overflow-x-auto">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mr-1 shrink-0">Assigned Day:</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 me-1 shrink-0">Assigned Day:</span>
           {DAYS_OF_WEEK.map((d) => {
             const isSelected = currentDayKey === d.key;
             return (

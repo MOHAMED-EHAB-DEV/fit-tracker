@@ -23,6 +23,7 @@ import {
   Activity,
   ArrowLeft,
   X,
+  History,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { deleteWorkoutAction } from "@/lib/fitness/actions";
@@ -84,6 +85,7 @@ interface GymSessionsClientProps {
 export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
   const [sessions, setSessions] = useState<SerializedWorkoutSession[]>(initialSessions);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedTimeframe, setSelectedTimeframe] = useState<"all" | "today" | "week" | "month">("all");
   const [selectedDay, setSelectedDay] = useState<string>("all");
   const [selectedMuscle, setSelectedMuscle] = useState<string>("all");
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "volume" | "duration">("newest");
@@ -129,6 +131,20 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
     }
   };
 
+  // Helper to extract true session date
+  const getSessionDateObj = (session: SerializedWorkoutSession): Date => {
+    const dateStr = session.completedAt || session.date || session.startedAt || session.createdAt;
+    try {
+      const d = parseISO(dateStr);
+      if (isValid(d)) return d;
+      const rawD = new Date(dateStr);
+      if (isValid(rawD)) return rawD;
+    } catch {
+      // fallback
+    }
+    return new Date();
+  };
+
   // Compute Overall Telemetry
   const aggregateStats = useMemo(() => {
     let totalVolume = 0;
@@ -151,7 +167,8 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
       });
     });
 
-    const avgDurationMins = sessionsWithDuration > 0 ? Math.round(totalDurationSeconds / sessionsWithDuration / 60) : 0;
+    const avgDurationMins =
+      sessionsWithDuration > 0 ? Math.round(totalDurationSeconds / sessionsWithDuration / 60) : 0;
 
     return {
       totalSessions: sessions.length,
@@ -162,18 +179,38 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
     };
   }, [sessions]);
 
-  // Filter and Sort Sessions
+  // Filter and Sort Sessions (Strictly Latest-First by default)
   const filteredSessions = useMemo(() => {
+    const now = new Date();
+    const todayStr = now.toDateString();
+
     return sessions
       .filter((session) => {
+        const sessionDate = getSessionDateObj(session);
+
         // Search Filter
         if (searchQuery.trim()) {
           const query = searchQuery.toLowerCase();
           const nameMatch = session.name.toLowerCase().includes(query);
-          const exerciseMatch = session.exercises.some((ex) =>
-            ex.name.toLowerCase().includes(query) || ex.muscleGroup.toLowerCase().includes(query)
+          const exerciseMatch = session.exercises.some(
+            (ex) =>
+              ex.name.toLowerCase().includes(query) ||
+              ex.muscleGroup.toLowerCase().includes(query)
           );
           if (!nameMatch && !exerciseMatch) return false;
+        }
+
+        // Timeframe Recency Filter
+        if (selectedTimeframe !== "all") {
+          if (selectedTimeframe === "today") {
+            if (sessionDate.toDateString() !== todayStr) return false;
+          } else if (selectedTimeframe === "week") {
+            const diffDays = (now.getTime() - sessionDate.getTime()) / (1000 * 60 * 60 * 24);
+            if (diffDays > 7) return false;
+          } else if (selectedTimeframe === "month") {
+            const diffDays = (now.getTime() - sessionDate.getTime()) / (1000 * 60 * 60 * 24);
+            if (diffDays > 30) return false;
+          }
         }
 
         // Day Filter
@@ -194,15 +231,14 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
         return true;
       })
       .sort((a, b) => {
+        const timeA = getSessionDateObj(a).getTime();
+        const timeB = getSessionDateObj(b).getTime();
+
         if (sortBy === "newest") {
-          const dateA = new Date(a.date || a.startedAt || a.createdAt).getTime();
-          const dateB = new Date(b.date || b.startedAt || b.createdAt).getTime();
-          return dateB - dateA;
+          return timeB - timeA;
         }
         if (sortBy === "oldest") {
-          const dateA = new Date(a.date || a.startedAt || a.createdAt).getTime();
-          const dateB = new Date(b.date || b.startedAt || b.createdAt).getTime();
-          return dateA - dateB;
+          return timeA - timeB;
         }
         if (sortBy === "volume") {
           return (b.totalVolume || 0) - (a.totalVolume || 0);
@@ -212,7 +248,7 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
         }
         return 0;
       });
-  }, [sessions, searchQuery, selectedDay, selectedMuscle, sortBy]);
+  }, [sessions, searchQuery, selectedTimeframe, selectedDay, selectedMuscle, sortBy]);
 
   const muscleGroupsList = ["Chest", "Back", "Legs", "Shoulders", "Arms", "Core"];
   const daysList = [
@@ -225,36 +261,41 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
     { key: "friday", label: "Friday" },
   ];
 
-  const formatSessionDate = (dateStr: string) => {
+  const formatSessionDate = (session: SerializedWorkoutSession) => {
+    const d = getSessionDateObj(session);
     try {
-      const d = parseISO(dateStr);
-      if (isValid(d)) {
-        return format(d, "EEE, MMM d, yyyy");
-      }
-      const rawD = new Date(dateStr);
-      if (isValid(rawD)) {
-        return format(rawD, "EEE, MMM d, yyyy");
-      }
+      return format(d, "EEEE, MMMM d, yyyy");
     } catch {
-      // fallback
+      return session.date || session.startedAt;
     }
-    return dateStr;
   };
 
-  const formatSessionTime = (dateStr: string) => {
+  const formatSessionTime = (session: SerializedWorkoutSession) => {
+    const d = getSessionDateObj(session);
     try {
-      const d = parseISO(dateStr);
-      if (isValid(d)) {
-        return format(d, "h:mm a");
-      }
-      const rawD = new Date(dateStr);
-      if (isValid(rawD)) {
-        return format(rawD, "h:mm a");
-      }
+      return format(d, "h:mm a");
     } catch {
-      // fallback
+      return "";
     }
-    return "";
+  };
+
+  const getRelativeTimeBadge = (session: SerializedWorkoutSession) => {
+    const target = getSessionDateObj(session);
+    const now = new Date();
+
+    if (target.toDateString() === now.toDateString()) return "Today";
+
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (target.toDateString() === yesterday.toDateString()) return "Yesterday";
+
+    const diffDays = Math.floor((now.getTime() - target.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays > 0 && diffDays < 7) return `${diffDays}d ago`;
+    if (diffDays >= 7 && diffDays < 14) return `1w ago`;
+    if (diffDays >= 14 && diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+    if (diffDays >= 30) return format(target, "MMM d, yyyy");
+
+    return null;
   };
 
   return (
@@ -278,7 +319,7 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
             </h1>
           </div>
           <p className="text-sm text-zinc-400 ps-10">
-            Review detailed weights, completed reps, RPE, volume, and personal records from all your gym training logs.
+            Chronological log of all recorded workouts across past days with weights, reps, volume, and PRs.
           </p>
         </div>
 
@@ -390,7 +431,7 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
               <button
                 type="button"
                 onClick={() => setSearchQuery("")}
-                className="absolute inset-e-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white p-1"
+                className="absolute inset-e-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white p-1 cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -405,7 +446,7 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
               onChange={(e) => setSortBy(e.target.value as any)}
               className="px-3 py-2.5 rounded-2xl bg-zinc-950/80 border border-white/10 text-zinc-200 text-xs font-semibold focus:outline-none focus:border-emerald-500/60 cursor-pointer"
             >
-              <option value="newest">Newest First</option>
+              <option value="newest">Latest Recorded First</option>
               <option value="oldest">Oldest First</option>
               <option value="volume">Highest Volume</option>
               <option value="duration">Longest Duration</option>
@@ -415,7 +456,7 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
               <button
                 type="button"
                 onClick={expandAll}
-                className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700/80 text-zinc-300 text-[11px] font-bold border border-white/5 transition"
+                className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700/80 text-zinc-300 text-[11px] font-bold border border-white/5 transition cursor-pointer"
                 title="Expand all session logs"
               >
                 Expand All
@@ -423,7 +464,7 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
               <button
                 type="button"
                 onClick={collapseAll}
-                className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700/80 text-zinc-300 text-[11px] font-bold border border-white/5 transition"
+                className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700/80 text-zinc-300 text-[11px] font-bold border border-white/5 transition cursor-pointer"
                 title="Collapse all session logs"
               >
                 Collapse
@@ -432,40 +473,62 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
           </div>
         </div>
 
-        {/* Filter Pills (Days & Muscles) */}
+        {/* Filter Pills (Timeframe, Days & Muscles) */}
         <div className="space-y-2.5 pt-2 border-t border-white/6">
-          {/* Day of week filter */}
+          {/* Timeframe / Recency filter */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500 me-1 shrink-0">
-              Day:
+            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 me-1 shrink-0 flex items-center gap-1">
+              <History className="w-3.5 h-3.5" />
+              <span>Timeframe:</span>
             </span>
             <button
               type="button"
-              onClick={() => setSelectedDay("all")}
+              onClick={() => setSelectedTimeframe("all")}
               className={cn(
                 "px-3 py-1.5 rounded-xl font-bold text-xs transition shrink-0 cursor-pointer",
-                selectedDay === "all"
+                selectedTimeframe === "all"
                   ? "bg-emerald-500 text-zinc-950 shadow-md shadow-emerald-500/20"
                   : "bg-zinc-950/60 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-white/5"
               )}
             >
-              All Days
+              All Recorded Sessions
             </button>
-            {daysList.map((day) => (
-              <button
-                key={day.key}
-                type="button"
-                onClick={() => setSelectedDay(day.key)}
-                className={cn(
-                  "px-3 py-1.5 rounded-xl font-bold text-xs transition shrink-0 cursor-pointer",
-                  selectedDay === day.key
-                    ? "bg-emerald-500 text-zinc-950 shadow-md shadow-emerald-500/20"
-                    : "bg-zinc-950/60 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-white/5"
-                )}
-              >
-                {day.label}
-              </button>
-            ))}
+            <button
+              type="button"
+              onClick={() => setSelectedTimeframe("today")}
+              className={cn(
+                "px-3 py-1.5 rounded-xl font-bold text-xs transition shrink-0 cursor-pointer",
+                selectedTimeframe === "today"
+                  ? "bg-emerald-500 text-zinc-950 shadow-md shadow-emerald-500/20"
+                  : "bg-zinc-950/60 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-white/5"
+              )}
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedTimeframe("week")}
+              className={cn(
+                "px-3 py-1.5 rounded-xl font-bold text-xs transition shrink-0 cursor-pointer",
+                selectedTimeframe === "week"
+                  ? "bg-emerald-500 text-zinc-950 shadow-md shadow-emerald-500/20"
+                  : "bg-zinc-950/60 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-white/5"
+              )}
+            >
+              Past 7 Days
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedTimeframe("month")}
+              className={cn(
+                "px-3 py-1.5 rounded-xl font-bold text-xs transition shrink-0 cursor-pointer",
+                selectedTimeframe === "month"
+                  ? "bg-emerald-500 text-zinc-950 shadow-md shadow-emerald-500/20"
+                  : "bg-zinc-950/60 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-white/5"
+              )}
+            >
+              Past 30 Days
+            </button>
           </div>
 
           {/* Muscle group filter */}
@@ -501,6 +564,40 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
               </button>
             ))}
           </div>
+
+          {/* Day of week filter */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500 me-1 shrink-0">
+              Day:
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectedDay("all")}
+              className={cn(
+                "px-3 py-1.5 rounded-xl font-bold text-xs transition shrink-0 cursor-pointer",
+                selectedDay === "all"
+                  ? "bg-zinc-700 text-white shadow-xs"
+                  : "bg-zinc-950/60 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-white/5"
+              )}
+            >
+              All Days
+            </button>
+            {daysList.map((day) => (
+              <button
+                key={day.key}
+                type="button"
+                onClick={() => setSelectedDay(day.key)}
+                className={cn(
+                  "px-3 py-1.5 rounded-xl font-bold text-xs transition shrink-0 cursor-pointer",
+                  selectedDay === day.key
+                    ? "bg-zinc-700 text-white shadow-xs"
+                    : "bg-zinc-950/60 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-white/5"
+                )}
+              >
+                {day.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -532,10 +629,11 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
                 type="button"
                 onClick={() => {
                   setSearchQuery("");
+                  setSelectedTimeframe("all");
                   setSelectedDay("all");
                   setSelectedMuscle("all");
                 }}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-xs transition"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-xs transition cursor-pointer"
               >
                 <span>Clear All Filters</span>
               </button>
@@ -544,8 +642,9 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
         ) : (
           filteredSessions.map((session) => {
             const isExpanded = !!expandedSessionIds[session._id];
-            const sessionDateFormatted = formatSessionDate(session.date || session.startedAt || session.createdAt);
-            const sessionTimeFormatted = formatSessionTime(session.startedAt || session.createdAt);
+            const sessionDateFormatted = formatSessionDate(session);
+            const sessionTimeFormatted = formatSessionTime(session);
+            const relativeBadge = getRelativeTimeBadge(session);
 
             // Compute session statistics
             let completedSetsCount = 0;
@@ -590,9 +689,19 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
                           >
                             {session.name}
                           </Link>
-                          <span className="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 shrink-0">
+
+                          {/* Relative / Exact Date Badge */}
+                          {relativeBadge && (
+                            <span className="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 shrink-0 flex items-center gap-1">
+                              <Calendar className="w-3 h-3 text-emerald-400" />
+                              <span>{relativeBadge}</span>
+                            </span>
+                          )}
+
+                          <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-zinc-800 border border-white/8 text-zinc-400 shrink-0">
                             {dayCapitalized}
                           </span>
+
                           {session.status === "completed" && (
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-500/15 border border-teal-500/30 text-teal-300 flex items-center gap-1 shrink-0">
                               <CheckCircle2 className="w-3 h-3 text-teal-400" />
@@ -610,23 +719,23 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
                         <div className="flex items-center gap-3 text-xs text-zinc-400 mt-1.5 flex-wrap">
                           <div className="flex items-center gap-1">
                             <Calendar className="w-3.5 h-3.5 text-zinc-500" />
-                            <span>{sessionDateFormatted}</span>
+                            <span className="text-zinc-300 font-medium">{sessionDateFormatted}</span>
                           </div>
                           {sessionTimeFormatted && (
-                            <div className="flex items-center gap-1 text-zinc-500">
+                            <div className="flex items-center gap-1 text-zinc-400">
                               <span>•</span>
                               <span>{sessionTimeFormatted}</span>
                             </div>
                           )}
                           {durationMins && (
-                            <div className="flex items-center gap-1 text-zinc-300">
+                            <div className="flex items-center gap-1 text-purple-300">
                               <span>•</span>
                               <Clock className="w-3.5 h-3.5 text-purple-400" />
                               <span>{durationMins} min</span>
                             </div>
                           )}
                           {session.estimatedCalories > 0 && (
-                            <div className="flex items-center gap-1 text-zinc-300">
+                            <div className="flex items-center gap-1 text-orange-300">
                               <span>•</span>
                               <Flame className="w-3.5 h-3.5 text-orange-400" />
                               <span>{session.estimatedCalories} kcal</span>
@@ -659,59 +768,83 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
                         </span>
                       </div>
 
-                      {/* Action buttons */}
-                      <div className="flex items-center gap-1.5 ps-2 border-s border-white/8">
-                        <Link
-                          href={`/workouts/sessions/${session._id}`}
-                          className="p-2 rounded-xl bg-zinc-950/80 hover:bg-zinc-800 border border-white/10 text-zinc-400 hover:text-white transition cursor-pointer"
-                          title="View Full Session Details"
+                      <div className="flex items-center gap-1.5 ps-2 border-s border-white/6">
+                        {/* Quick View Modal */}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSessionForModal(session)}
+                          className="p-2 rounded-xl bg-zinc-950/60 hover:bg-zinc-800 border border-white/8 text-zinc-400 hover:text-white transition cursor-pointer"
+                          title="Quick view session breakdown"
                         >
                           <Eye className="w-4 h-4" />
-                        </Link>
+                        </button>
 
+                        {/* Full Detail Page */}
                         <Link
-                          href={`/workouts/${session._id}/active`}
-                          className="p-2 rounded-xl bg-zinc-950/80 hover:bg-emerald-500/15 border border-white/10 hover:border-emerald-500/30 text-emerald-400 transition cursor-pointer"
-                          title="Record / Update Session Stats"
+                          href={`/workouts/sessions/${session._id}`}
+                          className="p-2 rounded-xl bg-zinc-950/60 hover:bg-emerald-500/15 border border-white/8 hover:border-emerald-500/30 text-zinc-400 hover:text-emerald-300 transition"
+                          title="View complete session telemetry & analysis"
                         >
-                          <Play className="w-4 h-4" />
+                          <Sparkles className="w-4 h-4" />
                         </Link>
 
+                        {/* Delete Session */}
                         <button
                           type="button"
                           onClick={() => setSessionToDelete(session)}
-                          className="p-2 rounded-xl bg-zinc-950/80 hover:bg-red-500/15 border border-white/10 hover:border-red-500/30 text-zinc-500 hover:text-red-400 transition cursor-pointer"
-                          title="Delete Recorded Session"
+                          className="p-2 rounded-xl bg-zinc-950/60 hover:bg-red-500/15 border border-white/8 hover:border-red-500/30 text-zinc-400 hover:text-red-400 transition cursor-pointer"
+                          title="Delete recorded session"
                         >
                           <Trash2 className="w-4 h-4" />
+                        </button>
+
+                        {/* Expand / Collapse Accordion */}
+                        <button
+                          type="button"
+                          onClick={() => toggleExpand(session._id)}
+                          className="p-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition cursor-pointer"
+                          title={isExpanded ? "Collapse sets" : "Expand sets"}
+                        >
+                          {isExpanded ? (
+                            <ChevronUp className="w-4 h-4" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4" />
+                          )}
                         </button>
                       </div>
                     </div>
                   </div>
 
-                  {/* Toggle Accordion Button */}
-                  <button
-                    type="button"
-                    onClick={() => toggleExpand(session._id)}
-                    className="w-full flex items-center justify-between py-2 px-3 rounded-xl bg-zinc-950/50 hover:bg-zinc-950 text-xs font-bold text-zinc-300 border border-white/5 transition cursor-pointer"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Layers className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>
-                        {isExpanded ? "Hide Recorded Exercise Log" : `View ${session.exercises.length} Exercises & Logged Sets`}
+                  {/* Muscle Tags Preview Strip */}
+                  <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                    {Array.from(new Set(session.exercises.map((e) => e.muscleGroup).filter(Boolean))).map((mg) => (
+                      <span
+                        key={mg}
+                        className="text-[10px] font-semibold px-2.5 py-0.5 rounded-lg bg-zinc-950/60 border border-white/5 text-zinc-400"
+                      >
+                        {mg}
                       </span>
-                    </div>
-                    {isExpanded ? (
-                      <ChevronUp className="w-4 h-4 text-zinc-400" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4 text-zinc-400" />
-                    )}
-                  </button>
+                    ))}
+                  </div>
                 </div>
 
-                {/* Collapsible Exercise Sets Breakdown */}
+                {/* Expanded Exercises & Sets Breakdown */}
                 {isExpanded && (
-                  <div className="px-5 pb-6 pt-1 space-y-4 border-t border-white/6 bg-zinc-950/40">
+                  <div className="px-5 pb-6 pt-2 border-t border-white/6 space-y-4 bg-zinc-950/40">
+                    <div className="flex items-center justify-between pt-2">
+                      <span className="text-xs font-extrabold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Logged Exercises & Sets</span>
+                      </span>
+                      <Link
+                        href={`/workouts/sessions/${session._id}`}
+                        className="text-xs font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
+                      >
+                        <span>Open Full Session Report</span>
+                        <span>&rarr;</span>
+                      </Link>
+                    </div>
+
                     {session.exercises.map((exercise, exIdx) => {
                       const exUnit = exercise.weightUnit || unit;
                       return (
@@ -719,25 +852,22 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
                           key={exercise.catalogId + exIdx}
                           className="p-4 rounded-2xl bg-zinc-900/90 border border-white/8 space-y-3"
                         >
-                          {/* Exercise Header */}
-                          <div className="flex items-center justify-between gap-3 flex-wrap">
-                            <div className="flex items-center gap-2.5">
-                              <span className="w-6 h-6 rounded-lg bg-zinc-800 text-zinc-300 font-black text-xs flex items-center justify-center">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="w-6 h-6 rounded-lg bg-zinc-800 text-zinc-300 font-bold text-xs flex items-center justify-center">
                                 {exIdx + 1}
                               </span>
-                              <h4 className="font-extrabold text-sm text-white">
-                                {exercise.name}
-                              </h4>
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-400 border border-white/5">
+                              <h4 className="font-bold text-sm text-white">{exercise.name}</h4>
+                              <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-emerald-400 font-semibold">
                                 {exercise.muscleGroup}
                               </span>
                             </div>
 
                             {exercise.oneRM && exercise.oneRM > 0 && (
-                              <div className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] font-bold">
+                              <span className="text-[11px] font-bold text-amber-300 flex items-center gap-1">
                                 <Sparkles className="w-3 h-3 text-amber-400" />
-                                <span>1RM Peak: {exercise.oneRM} {exUnit}</span>
-                              </div>
+                                <span>1RM: {exercise.oneRM} {exUnit}</span>
+                              </span>
                             )}
                           </div>
 
@@ -847,7 +977,7 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
                   {selectedSessionForModal.name}
                 </h3>
                 <span className="text-xs text-zinc-400 font-normal">
-                  {formatSessionDate(selectedSessionForModal.date || selectedSessionForModal.startedAt || selectedSessionForModal.createdAt)}
+                  {formatSessionDate(selectedSessionForModal)}
                 </span>
               </div>
             </div>

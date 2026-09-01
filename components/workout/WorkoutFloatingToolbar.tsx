@@ -60,7 +60,7 @@ export function WorkoutFloatingToolbar({
       >
         <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full bg-zinc-950/90 backdrop-blur-2xl border border-white/15 shadow-2xl shadow-black/80 ring-1 ring-white/10">
           {/* Status Indicator Dot */}
-          <div className="hidden md:flex items-center gap-2 pl-1 pr-2 border-r border-white/10 text-xs">
+          <div className="hidden md:flex items-center gap-2 ps-1 pe-2 border-e border-white/10 text-xs">
             <span
               className={cn(
                 "w-2 h-2 rounded-full",

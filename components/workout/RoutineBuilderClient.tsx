@@ -6,7 +6,10 @@ import Link from "next/link";
 import { Plus, Dumbbell, Play } from "lucide-react";
 import { DayOfWeek } from "@/lib/db/models/Workout";
 import { RoutineBuilderHeader } from "@/components/workout/RoutineBuilderHeader";
-import { RoutineExerciseCard, DefaultExerciseItem } from "@/components/workout/RoutineExerciseCard";
+import {
+  RoutineExerciseCard,
+  DefaultExerciseItem,
+} from "@/components/workout/RoutineExerciseCard";
 import { ExerciseSearch } from "@/components/workout/ExerciseSearch";
 import { WorkoutFloatingToolbar } from "@/components/workout/WorkoutFloatingToolbar";
 
@@ -67,65 +70,83 @@ export function RoutineBuilderClient({ initialWorkout }: RoutineBuilderClientPro
       setIsSaving(true);
       try {
         const structuredExercises = exs.map((ex) => {
-          const isWarmupActive = !!ex.isWarmup;
-          const warmupSetsCount = isWarmupActive ? ex.warmupSets || 1 : 0;
-          const workingSetsCount = ex.targetSets || 3;
+          const rawSets = ex.sets && ex.sets.length > 0 ? ex.sets : [];
+          let setsList: any[] = [];
 
-          const setsList: any[] = [];
-          let setIdx = 1;
+          if (rawSets.length > 0) {
+            setsList = rawSets.map((s, idx) => ({
+              setNumber: idx + 1,
+              targetReps: s.targetReps || 10,
+              targetWeight:
+                s.targetWeight !== undefined && s.targetWeight !== null
+                  ? s.targetWeight
+                  : null,
+              completedReps: null,
+              weight: null,
+              rpe: null,
+              isWarmup: !!s.isWarmup,
+              isPR: false,
+              completedAt: null,
+            }));
+          } else {
+            const isWarmupActive = !!ex.isWarmup;
+            const warmupSetsCount = isWarmupActive ? ex.warmupSets || 1 : 0;
+            const workingSetsCount = ex.targetSets || 3;
+            let setIdx = 1;
 
-          // 1. Generate Warmup sets if warmup is activated
-          if (isWarmupActive && warmupSetsCount > 0) {
-            const warmupReps = ex.warmupReps || 12;
-            const warmupWeight =
-              ex.warmupWeight !== undefined && ex.warmupWeight !== null
-                ? ex.warmupWeight
-                : ex.targetWeight
-                ? Math.round(ex.targetWeight * 0.5)
-                : 20;
+            // 1. Generate Warmup sets if warmup is activated
+            if (isWarmupActive && warmupSetsCount > 0) {
+              const warmupReps = ex.warmupReps || 12;
+              const warmupWeight =
+                ex.warmupWeight !== undefined && ex.warmupWeight !== null
+                  ? ex.warmupWeight
+                  : ex.targetWeight
+                  ? Math.round(ex.targetWeight * 0.5)
+                  : 20;
 
-            for (let i = 0; i < warmupSetsCount; i++) {
+              for (let i = 0; i < warmupSetsCount; i++) {
+                setsList.push({
+                  setNumber: setIdx++,
+                  targetReps: warmupReps,
+                  targetWeight: warmupWeight,
+                  completedReps: null,
+                  weight: null,
+                  rpe: null,
+                  isWarmup: true,
+                  isPR: false,
+                  completedAt: null,
+                });
+              }
+            }
+
+            // 2. Generate Main Working sets
+            for (let i = 0; i < workingSetsCount; i++) {
               setsList.push({
                 setNumber: setIdx++,
-                targetReps: warmupReps,
-                targetWeight: warmupWeight,
+                targetReps: ex.targetReps || 10,
+                targetWeight: ex.targetWeight ?? 50,
                 completedReps: null,
                 weight: null,
                 rpe: null,
-                isWarmup: true,
+                isWarmup: false,
                 isPR: false,
                 completedAt: null,
               });
             }
           }
 
-          // 2. Generate Main Working sets
-          for (let i = 0; i < workingSetsCount; i++) {
-            setsList.push({
-              setNumber: setIdx++,
-              targetReps: ex.targetReps || 10,
-              targetWeight: ex.targetWeight || 50,
-              completedReps: null,
-              weight: null,
-              rpe: null,
-              isWarmup: false,
-              isPR: false,
-              completedAt: null,
-            });
-          }
+          const warmupSetsList = setsList.filter((s) => s.isWarmup);
+          const firstWarmup = warmupSetsList[0];
 
           return {
             catalogId: ex.catalogId,
             name: ex.name,
             muscleGroup: ex.muscleGroup,
             weightUnit: ex.weightUnit || "kg",
-            isWarmup: isWarmupActive,
-            warmupSets: isWarmupActive ? warmupSetsCount : null,
-            warmupReps: isWarmupActive ? ex.warmupReps || 12 : null,
-            warmupWeight:
-              isWarmupActive
-                ? ex.warmupWeight ?? (ex.targetWeight ? Math.round(ex.targetWeight * 0.5) : 20)
-                : null,
+            isWarmup: warmupSetsList.length > 0,
+            warmupSets: warmupSetsList.length > 0 ? warmupSetsList.length : null,
+            warmupReps: firstWarmup?.targetReps || null,
+            warmupWeight: firstWarmup?.targetWeight ?? null,
             notes: ex.notes || null,
             sets: setsList,
           };
@@ -177,6 +198,11 @@ export function RoutineBuilderClient({ initialWorkout }: RoutineBuilderClientPro
       targetWeight: 50,
       weightUnit: "kg",
       isWarmup: false,
+      sets: [
+        { setNumber: 1, targetWeight: 50, targetReps: 10, isWarmup: false },
+        { setNumber: 2, targetWeight: 50, targetReps: 10, isWarmup: false },
+        { setNumber: 3, targetWeight: 50, targetReps: 10, isWarmup: false },
+      ],
     };
     const next = [...exercises, newEx];
     setExercises(next);
@@ -206,7 +232,11 @@ export function RoutineBuilderClient({ initialWorkout }: RoutineBuilderClientPro
   };
 
   const totalPlannedSets = exercises.reduce(
-    (sum, e) => sum + (e.targetSets || 3) + (e.isWarmup ? e.warmupSets || 1 : 0),
+    (sum, e) =>
+      sum +
+      (e.sets && e.sets.length > 0
+        ? e.sets.length
+        : (e.targetSets || 3) + (e.isWarmup ? e.warmupSets || 1 : 0)),
     0
   );
 

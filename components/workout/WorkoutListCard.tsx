@@ -84,17 +84,17 @@ export function WorkoutListCard({ workout }: WorkoutListCardProps) {
         </Link>
 
         <div className="flex items-center justify-between sm:justify-end gap-4 text-xs text-zinc-400 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-white/6">
-          <div className="text-right">
+          <div className="text-end">
             <span className="text-[10px] text-zinc-500 uppercase block">Exercises</span>
             <span className="font-bold text-white text-sm">{workout.exercisesCount}</span>
           </div>
-          <div className="text-right">
+          <div className="text-end">
             <span className="text-[10px] text-zinc-500 uppercase block">Total Volume</span>
             <span className="font-bold text-emerald-400 text-sm">{workout.totalVolume.toLocaleString()} {unit}</span>
           </div>
 
           {/* Quick Actions: Edit Routine, Record Gym Session, Delete */}
-          <div className="flex items-center gap-2 pl-2 border-l border-white/6">
+          <div className="flex items-center gap-2 ps-2 border-s border-white/6">
             <Link
               href={`/workouts/${workout.id}/active`}
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-black text-xs shadow-md shadow-emerald-500/20 transition active:scale-95 shrink-0"

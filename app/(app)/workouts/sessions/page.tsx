@@ -26,8 +26,8 @@ async function GymSessionsDataLoader() {
   await getDb();
 
   const rawWorkouts = await Workout.find({ userId: user._id })
-    .sort({ date: -1, createdAt: -1 })
-    .limit(100)
+    .sort({ completedAt: -1, date: -1, startedAt: -1, createdAt: -1 })
+    .limit(250)
     .lean();
 
   const initialSessions: SerializedWorkoutSession[] = rawWorkouts.map((w: any) => {
@@ -60,13 +60,19 @@ async function GymSessionsDataLoader() {
       };
     });
 
+    const sessionDate = w.completedAt || w.date || w.startedAt || w.createdAt;
+
     return {
       _id: w._id.toString(),
       name: w.name || "Workout Session",
       dayOfWeek: w.dayOfWeek || "saturday",
       templateId: w.templateId ? w.templateId.toString() : null,
       status: (w.status || "completed") as "active" | "completed" | "abandoned",
-      startedAt: w.startedAt ? new Date(w.startedAt).toISOString() : new Date().toISOString(),
+      startedAt: w.startedAt
+        ? new Date(w.startedAt).toISOString()
+        : w.createdAt
+        ? new Date(w.createdAt).toISOString()
+        : new Date().toISOString(),
       completedAt: w.completedAt ? new Date(w.completedAt).toISOString() : null,
       durationSeconds: w.durationSeconds ?? null,
       weekStartDate: w.weekStartDate || "",
@@ -74,7 +80,7 @@ async function GymSessionsDataLoader() {
       weightUnit: (w.weightUnit || "kg") as "kg" | "lbs",
       totalVolume: w.totalVolume || 0,
       estimatedCalories: w.estimatedCalories || 0,
-      date: w.date ? new Date(w.date).toISOString() : new Date().toISOString(),
+      date: sessionDate ? new Date(sessionDate).toISOString() : new Date().toISOString(),
       createdAt: w.createdAt ? new Date(w.createdAt).toISOString() : new Date().toISOString(),
     };
   });
