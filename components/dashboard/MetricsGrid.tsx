@@ -96,9 +96,9 @@ export function MetricsGrid({ stats }: MetricsGridProps) {
           </div>
           <div className="flex items-baseline gap-1 sm:gap-2 mb-2">
             <span className="text-xl sm:text-2xl md:text-3xl font-extrabold text-white truncate">
-              {stats.proteinG}g
+              {Number(stats.proteinG).toFixed(1)}g
             </span>
-            <span className="text-[10px] sm:text-xs text-zinc-500 truncate">/ {proteinGoal}g</span>
+            <span className="text-[10px] sm:text-xs text-zinc-500 truncate">/ {Number(proteinGoal).toFixed(1)}g</span>
           </div>
         </div>
         <div>
@@ -116,8 +116,8 @@ export function MetricsGrid({ stats }: MetricsGridProps) {
             />
           </div>
           <div className="flex justify-between items-center text-[10px] sm:text-[11px] text-zinc-400 mt-2">
-            <span>C: {stats.carbsG}g</span>
-            <span>F: {stats.fatG}g</span>
+            <span>C: {Number(stats.carbsG).toFixed(1)}g</span>
+            <span>F: {Number(stats.fatG).toFixed(1)}g</span>
           </div>
         </div>
       </article>

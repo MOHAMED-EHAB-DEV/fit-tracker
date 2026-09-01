@@ -72,9 +72,9 @@ const CustomTooltip = ({ active, payload }: any) => {
           </div>
 
           <div className="flex justify-between items-center text-[10px] text-zinc-400 pt-1 tabular-nums">
-            <span>P: {d.protein}g</span>
-            <span>C: {d.carbs}g</span>
-            <span>F: {d.fat}g</span>
+            <span>P: {Number(d.protein).toFixed(1)}g</span>
+            <span>C: {Number(d.carbs).toFixed(1)}g</span>
+            <span>F: {Number(d.fat).toFixed(1)}g</span>
           </div>
         </div>
       </div>

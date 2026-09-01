@@ -154,9 +154,9 @@ export function MealTimeline({ meals }: MealTimelineProps) {
                       {meal.macros.calories} kcal
                     </span>
                     <div className="flex items-center gap-1.5 text-[10px] text-zinc-400 mt-0.5 flex-wrap">
-                      <span className="text-emerald-400 font-medium tabular-nums">P: {meal.macros.protein}g</span>
-                      <span className="text-amber-400 font-medium tabular-nums">C: {meal.macros.carbs}g</span>
-                      <span className="text-orange-400 font-medium tabular-nums">F: {meal.macros.fat}g</span>
+                      <span className="text-emerald-400 font-medium tabular-nums">P: {Number(meal.macros.protein).toFixed(1)}g</span>
+                      <span className="text-amber-400 font-medium tabular-nums">C: {Number(meal.macros.carbs).toFixed(1)}g</span>
+                      <span className="text-orange-400 font-medium tabular-nums">F: {Number(meal.macros.fat).toFixed(1)}g</span>
                     </div>
                   </div>
 

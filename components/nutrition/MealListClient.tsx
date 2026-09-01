@@ -159,9 +159,9 @@ export function MealListClient({ initialMeals, selectedDate }: MealListClientPro
                       {m.macros.calories} <span className="text-xs font-semibold text-zinc-400">kcal</span>
                     </span>
                     <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-zinc-400 mt-0.5 flex-wrap">
-                      <span className="text-emerald-400 font-bold tabular-nums">P: {m.macros.protein}g</span>
-                      <span className="text-amber-400 font-bold tabular-nums">C: {m.macros.carbs}g</span>
-                      <span className="text-orange-400 font-bold tabular-nums">F: {m.macros.fat}g</span>
+                      <span className="text-emerald-400 font-bold tabular-nums">P: {Number(m.macros.protein).toFixed(1)}g</span>
+                      <span className="text-amber-400 font-bold tabular-nums">C: {Number(m.macros.carbs).toFixed(1)}g</span>
+                      <span className="text-orange-400 font-bold tabular-nums">F: {Number(m.macros.fat).toFixed(1)}g</span>
                     </div>
                   </div>
 
