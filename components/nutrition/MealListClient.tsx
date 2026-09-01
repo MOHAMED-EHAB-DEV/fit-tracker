@@ -129,58 +129,64 @@ export function MealListClient({ initialMeals, selectedDate }: MealListClientPro
             return (
               <div
                 key={m._id}
-                className="flex items-center gap-4 p-4 rounded-2xl bg-zinc-950/60 border border-white/6 hover:border-white/15 transition group"
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 p-3.5 sm:p-4 rounded-2xl bg-zinc-950/60 border border-white/6 hover:border-white/15 transition group"
               >
-                <MealImageThumbnail
-                  src={m.cloudinary?.secureUrl}
-                  alt={m.description || "Meal"}
-                />
+                <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+                  <MealImageThumbnail
+                    src={m.cloudinary?.secureUrl}
+                    alt={m.description || "Meal"}
+                  />
 
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-md border border-emerald-500/20">
-                      {m.mealType.replace("_", " ")}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-md border border-emerald-500/20 shrink-0">
+                        {m.mealType.replace("_", " ")}
+                      </span>
+                      <div className="flex items-center gap-1 text-xs text-zinc-500 shrink-0">
+                        <Clock className="w-3 h-3" />
+                        <span>{time}</span>
+                      </div>
+                    </div>
+                    <p className="font-bold text-sm text-zinc-100 mt-1 truncate">
+                      {m.description || "Logged Meal"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-white/6 shrink-0">
+                  <div className="text-start sm:text-end">
+                    <span className="block font-black text-sm sm:text-base text-white tabular-nums">
+                      {m.macros.calories} <span className="text-xs font-semibold text-zinc-400">kcal</span>
                     </span>
-                    <div className="flex items-center gap-1 text-xs text-zinc-500">
-                      <Clock className="w-3 h-3" />
-                      <span>{time}</span>
+                    <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-zinc-400 mt-0.5 flex-wrap">
+                      <span className="text-emerald-400 font-bold tabular-nums">P: {m.macros.protein}g</span>
+                      <span className="text-amber-400 font-bold tabular-nums">C: {m.macros.carbs}g</span>
+                      <span className="text-orange-400 font-bold tabular-nums">F: {m.macros.fat}g</span>
                     </div>
                   </div>
-                  <p className="font-bold text-sm text-zinc-100 mt-1 truncate">
-                    {m.description || "Logged Meal"}
-                  </p>
-                </div>
 
-                <div className="text-right shrink-0">
-                  <span className="block font-black text-base text-white">
-                    {m.macros.calories} <span className="text-xs font-semibold text-zinc-400">kcal</span>
-                  </span>
-                  <div className="flex items-center gap-2 text-xs text-zinc-400 mt-0.5">
-                    <span className="text-emerald-400 font-bold">P: {m.macros.protein}g</span>
-                    <span className="text-amber-400 font-bold">C: {m.macros.carbs}g</span>
-                    <span className="text-orange-400 font-bold">F: {m.macros.fat}g</span>
+                  {/* Edit & Delete Action Buttons */}
+                  <div className="flex items-center gap-1.5 ps-2 border-s border-white/6 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setEditingMeal(m)}
+                      className="p-2 sm:p-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/8 hover:border-white/15 transition cursor-pointer"
+                      title="Edit meal details & macros"
+                      aria-label={`Edit ${m.description || "meal"}`}
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setDeletingMeal(m)}
+                      className="p-2 sm:p-2.5 rounded-xl bg-zinc-900 hover:bg-red-500/15 text-zinc-500 hover:text-red-400 border border-white/8 hover:border-red-500/30 transition cursor-pointer"
+                      title="Delete meal"
+                      aria-label={`Delete ${m.description || "meal"}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                </div>
-
-                {/* Edit & Delete Action Buttons */}
-                <div className="flex items-center gap-1.5 pl-2 border-l border-white/6 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setEditingMeal(m)}
-                    className="p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/8 hover:border-white/15 transition cursor-pointer"
-                    title="Edit meal details & macros"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setDeletingMeal(m)}
-                    className="p-2 rounded-xl bg-zinc-900 hover:bg-red-500/15 text-zinc-500 hover:text-red-400 border border-white/8 hover:border-red-500/30 transition cursor-pointer"
-                    title="Delete meal"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
                 </div>
               </div>
             );

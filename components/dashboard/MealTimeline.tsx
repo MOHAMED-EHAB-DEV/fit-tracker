@@ -141,58 +141,64 @@ export function MealTimeline({ meals }: MealTimelineProps) {
             return (
               <div
                 key={meal._id}
-                className="flex items-center gap-4 p-3.5 rounded-xl bg-zinc-950/60 border border-zinc-800/60 hover:border-zinc-700/60 transition group"
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-zinc-950/60 border border-zinc-800/60 hover:border-zinc-700/60 transition group"
               >
-                <MealImageThumbnail
-                  src={meal.cloudinary?.secureUrl}
-                  alt={meal.description || "Meal photo"}
-                />
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <MealImageThumbnail
+                    src={meal.cloudinary?.secureUrl}
+                    alt={meal.description || "Meal photo"}
+                  />
 
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-md border border-emerald-500/20">
-                      {meal.mealType.replace("_", " ")}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-md border border-emerald-500/20 shrink-0">
+                        {meal.mealType.replace("_", " ")}
+                      </span>
+                      <div className="flex items-center gap-1 text-[11px] text-zinc-500 shrink-0">
+                        <Clock className="w-3 h-3" />
+                        <span>{time}</span>
+                      </div>
+                    </div>
+                    <p className="font-semibold text-sm text-zinc-200 truncate mt-1">
+                      {meal.description || "Logged Meal"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-800/60 shrink-0">
+                  <div className="text-start sm:text-end">
+                    <span className="block font-bold text-sm text-white tabular-nums">
+                      {meal.macros.calories} kcal
                     </span>
-                    <div className="flex items-center gap-1 text-[11px] text-zinc-500">
-                      <Clock className="w-3 h-3" />
-                      <span>{time}</span>
+                    <div className="flex items-center gap-1.5 text-[10px] text-zinc-400 mt-0.5 flex-wrap">
+                      <span className="text-emerald-400 font-medium tabular-nums">P: {meal.macros.protein}g</span>
+                      <span className="text-amber-400 font-medium tabular-nums">C: {meal.macros.carbs}g</span>
+                      <span className="text-orange-400 font-medium tabular-nums">F: {meal.macros.fat}g</span>
                     </div>
                   </div>
-                  <p className="font-semibold text-sm text-zinc-200 truncate mt-1">
-                    {meal.description || "Logged Meal"}
-                  </p>
-                </div>
 
-                <div className="text-right shrink-0">
-                  <span className="block font-bold text-sm text-white">
-                    {meal.macros.calories} kcal
-                  </span>
-                  <div className="flex items-center gap-1.5 text-[10px] text-zinc-400 mt-0.5">
-                    <span className="text-emerald-400 font-medium">P: {meal.macros.protein}g</span>
-                    <span className="text-amber-400 font-medium">C: {meal.macros.carbs}g</span>
-                    <span className="text-orange-400 font-medium">F: {meal.macros.fat}g</span>
+                  {/* Edit & Delete Action Buttons */}
+                  <div className="flex items-center gap-1 ps-2 border-s border-zinc-800/60 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setEditingMeal(meal as any)}
+                      className="p-1.5 sm:p-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 transition cursor-pointer"
+                      title="Edit meal"
+                      aria-label={`Edit ${meal.description || "meal"}`}
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setDeletingMeal(meal)}
+                      className="p-1.5 sm:p-2 rounded-lg bg-zinc-900 hover:bg-red-500/15 text-zinc-500 hover:text-red-400 border border-zinc-800 hover:border-red-500/30 transition cursor-pointer"
+                      title="Delete meal"
+                      aria-label={`Delete ${meal.description || "meal"}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                </div>
-
-                {/* Edit & Delete Action Buttons */}
-                <div className="flex items-center gap-1 pl-2 border-l border-zinc-800/60 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setEditingMeal(meal as any)}
-                    className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 transition cursor-pointer"
-                    title="Edit meal"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setDeletingMeal(meal)}
-                    className="p-1.5 rounded-lg bg-zinc-900 hover:bg-red-500/15 text-zinc-500 hover:text-red-400 border border-zinc-800 hover:border-red-500/30 transition cursor-pointer"
-                    title="Delete meal"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
                 </div>
               </div>
             );

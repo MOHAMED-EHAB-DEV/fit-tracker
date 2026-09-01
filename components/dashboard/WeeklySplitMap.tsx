@@ -404,7 +404,7 @@ export function WeeklySplitMap({
               <button
                 type="button"
                 onClick={() => setSelectedDay(d)}
-                className={`w-full text-left p-2 sm:p-3 rounded-2xl border flex flex-col justify-between transition min-w-0 relative overflow-hidden group cursor-pointer hover:border-emerald-500/60 active:scale-95 ${
+                className={`w-full text-start p-2 sm:p-3 rounded-2xl border flex flex-col justify-between transition min-w-0 relative overflow-hidden group cursor-pointer hover:border-emerald-500/60 active:scale-95 ${
                   d.isToday
                     ? "bg-zinc-800/90 border-emerald-500/50 shadow-md shadow-emerald-500/10 ring-1 ring-emerald-500/40"
                     : d.isCompletedThisWeek
@@ -415,7 +415,7 @@ export function WeeklySplitMap({
                 }`}
               >
                 {d.isToday && (
-                  <span aria-hidden="true" className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span aria-hidden="true" className="absolute top-1.5 inset-e-1.5 w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 )}
 
                 <div>

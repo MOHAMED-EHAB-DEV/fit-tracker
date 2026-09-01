@@ -26,11 +26,22 @@ async function BodyCompDataLoader() {
     initialCheckIns = rawCheckIns.map((doc: any) => ({
       _id: doc._id.toString(),
       checkInDate: doc.checkInDate ? new Date(doc.checkInDate).toISOString() : new Date().toISOString(),
+      dateString: doc.dateString || "",
       weight: doc.weight ?? null,
       bodyFatPercent: doc.bodyFatPercent ?? null,
+      measurements: doc.measurements
+        ? {
+            chest: doc.measurements.chest ?? null,
+            waist: doc.measurements.waist ?? null,
+            hips: doc.measurements.hips ?? null,
+            arms: doc.measurements.arms ?? null,
+            thighs: doc.measurements.thighs ?? null,
+          }
+        : null,
       photos: Array.isArray(doc.photos)
         ? doc.photos.map((p: any) => ({
             cloudinaryPublicId: p.cloudinaryPublicId || "",
+            angle: p.angle || "front",
             signedUrl: p.signedUrl || "",
           }))
         : [],
@@ -39,11 +50,15 @@ async function BodyCompDataLoader() {
             qualitativeNotes: doc.aiAnalysis.qualitativeNotes || "",
             estimatedBodyFatPercent: doc.aiAnalysis.estimatedBodyFatPercent ?? null,
             estimatedBodyFatRange: doc.aiAnalysis.estimatedBodyFatRange || "",
+            comparedToPrevious: doc.aiAnalysis.comparedToPrevious || "",
             muscleGroupHighlights: doc.aiAnalysis.muscleGroupHighlights || [],
             recommendations: doc.aiAnalysis.recommendations || [],
+            modelUsed: doc.aiAnalysis.modelUsed || "Gemini Flash AI",
+            generatedAt: doc.aiAnalysis.generatedAt ? new Date(doc.aiAnalysis.generatedAt).toISOString() : null,
           }
         : null,
       notes: doc.notes || "",
+      createdAt: doc.createdAt ? new Date(doc.createdAt).toISOString() : undefined,
     }));
   }
 

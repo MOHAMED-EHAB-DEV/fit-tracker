@@ -807,35 +807,38 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
                     </div>
 
                     {/* High-level telemetry summary */}
-                    <div className="flex items-center justify-between sm:justify-end gap-3 text-xs text-zinc-400 shrink-0 pt-3 sm:pt-0 border-t sm:border-t-0 border-white/6">
-                      <div className="text-start sm:text-end bg-zinc-950/60 sm:bg-transparent px-3 py-2 sm:p-0 rounded-xl sm:rounded-none">
-                        <span className="text-[10px] text-zinc-500 uppercase block font-semibold">Exercises</span>
-                        <span className="font-extrabold text-white text-sm sm:text-base">
-                          {session.exercises.length}
-                        </span>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between sm:justify-end gap-3 text-xs text-zinc-400 shrink-0 pt-3 sm:pt-0 border-t sm:border-t-0 border-white/6">
+                      <div className="grid grid-cols-3 sm:flex items-center gap-2 sm:gap-3">
+                        <div className="text-start sm:text-end bg-zinc-950/60 sm:bg-transparent px-2.5 py-2 sm:p-0 rounded-xl sm:rounded-none">
+                          <span className="text-[10px] text-zinc-500 uppercase block font-semibold">Exercises</span>
+                          <span className="font-extrabold text-white text-xs sm:text-base">
+                            {session.exercises.length}
+                          </span>
+                        </div>
+
+                        <div className="text-start sm:text-end bg-zinc-950/60 sm:bg-transparent px-2.5 py-2 sm:p-0 rounded-xl sm:rounded-none">
+                          <span className="text-[10px] text-zinc-500 uppercase block font-semibold">Sets Done</span>
+                          <span className="font-extrabold text-white text-xs sm:text-base">
+                            {completedSetsCount} <span className="text-[10px] sm:text-xs text-zinc-500 font-normal">/ {totalSetsCount}</span>
+                          </span>
+                        </div>
+
+                        <div className="text-start sm:text-end bg-zinc-950/60 sm:bg-transparent px-2.5 py-2 sm:p-0 rounded-xl sm:rounded-none">
+                          <span className="text-[10px] text-zinc-500 uppercase block font-semibold">Volume</span>
+                          <span className="font-extrabold text-emerald-400 text-xs sm:text-base tabular-nums">
+                            {session.totalVolume.toLocaleString()} <span className="text-[10px] sm:text-xs font-normal text-zinc-500">{unit}</span>
+                          </span>
+                        </div>
                       </div>
 
-                      <div className="text-start sm:text-end bg-zinc-950/60 sm:bg-transparent px-3 py-2 sm:p-0 rounded-xl sm:rounded-none">
-                        <span className="text-[10px] text-zinc-500 uppercase block font-semibold">Sets Done</span>
-                        <span className="font-extrabold text-white text-sm sm:text-base">
-                          {completedSetsCount} <span className="text-xs text-zinc-500 font-normal">/ {totalSetsCount}</span>
-                        </span>
-                      </div>
-
-                      <div className="text-start sm:text-end bg-zinc-950/60 sm:bg-transparent px-3 py-2 sm:p-0 rounded-xl sm:rounded-none">
-                        <span className="text-[10px] text-zinc-500 uppercase block font-semibold">Total Volume</span>
-                        <span className="font-extrabold text-emerald-400 text-sm sm:text-base">
-                          {session.totalVolume.toLocaleString()} <span className="text-xs font-normal text-zinc-500">{unit}</span>
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-1.5 ps-2 border-s border-white/6">
+                      <div className="flex items-center justify-end gap-1.5 ps-0 sm:ps-2 border-t sm:border-t-0 sm:border-s border-white/6 pt-2 sm:pt-0">
                         {/* Quick View Modal */}
                         <button
                           type="button"
                           onClick={() => setSelectedSessionForModal(session)}
-                          className="p-2 rounded-xl bg-zinc-950/60 hover:bg-zinc-800 border border-white/8 text-zinc-400 hover:text-white transition cursor-pointer"
+                          className="p-2 sm:p-2.5 rounded-xl bg-zinc-950/60 hover:bg-zinc-800 border border-white/8 text-zinc-400 hover:text-white transition cursor-pointer"
                           title="Quick view session breakdown"
+                          aria-label={`Quick view ${session.name}`}
                         >
                           <Eye className="w-4 h-4" />
                         </button>
@@ -843,8 +846,9 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
                         {/* Full Detail Page */}
                         <Link
                           href={`/workouts/sessions/${session._id}`}
-                          className="p-2 rounded-xl bg-zinc-950/60 hover:bg-emerald-500/15 border border-white/8 hover:border-emerald-500/30 text-zinc-400 hover:text-emerald-300 transition"
+                          className="p-2 sm:p-2.5 rounded-xl bg-zinc-950/60 hover:bg-emerald-500/15 border border-white/8 hover:border-emerald-500/30 text-zinc-400 hover:text-emerald-300 transition"
                           title="View complete session telemetry & analysis"
+                          aria-label={`View full report for ${session.name}`}
                         >
                           <Sparkles className="w-4 h-4" />
                         </Link>
@@ -853,8 +857,9 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
                         <button
                           type="button"
                           onClick={() => setSessionToDelete(session)}
-                          className="p-2 rounded-xl bg-zinc-950/60 hover:bg-red-500/15 border border-white/8 hover:border-red-500/30 text-zinc-400 hover:text-red-400 transition cursor-pointer"
+                          className="p-2 sm:p-2.5 rounded-xl bg-zinc-950/60 hover:bg-red-500/15 border border-white/8 hover:border-red-500/30 text-zinc-400 hover:text-red-400 transition cursor-pointer"
                           title="Delete recorded session"
+                          aria-label={`Delete session ${session.name}`}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -863,8 +868,9 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
                         <button
                           type="button"
                           onClick={() => toggleExpand(session._id)}
-                          className="p-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition cursor-pointer"
+                          className="p-2 sm:p-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition cursor-pointer"
                           title={isExpanded ? "Collapse sets" : "Expand sets"}
+                          aria-label={isExpanded ? `Collapse sets for ${session.name}` : `Expand sets for ${session.name}`}
                         >
                           {isExpanded ? (
                             <ChevronUp className="w-4 h-4" />

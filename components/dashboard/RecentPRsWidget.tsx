@@ -79,7 +79,7 @@ export function RecentPRsWidget({ prs }: RecentPRsWidgetProps) {
                   </div>
                 </div>
 
-                <div className="text-right shrink-0 ml-3">
+                <div className="text-end shrink-0 ms-3">
                   <span className="text-[10px] text-zinc-500 uppercase block font-semibold">1RM Est.</span>
                   <span className="text-sm font-extrabold text-amber-300 tabular-nums">
                     {pr.oneRM} kg
