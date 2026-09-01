@@ -3,19 +3,30 @@
 import React, { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Calendar, Sparkles, Loader2 } from "lucide-react";
-import { format, parseISO, addDays, subDays, isToday as checkIsToday, isYesterday as checkIsYesterday } from "date-fns";
+import { format, parseISO, isToday as checkIsToday, isYesterday as checkIsYesterday } from "date-fns";
 import { getTodayDateString } from "@/lib/fitness/timezone";
 
 interface NutritionDateNavigatorProps {
   selectedDate: string; // "YYYY-MM-DD"
+  availableDates?: string[]; // Sorted list of dates with recorded data
+  minDate?: string;
+  maxDate?: string;
 }
 
-export function NutritionDateNavigator({ selectedDate }: NutritionDateNavigatorProps) {
+export function NutritionDateNavigator({
+  selectedDate,
+  availableDates = [],
+  minDate,
+  maxDate,
+}: NutritionDateNavigatorProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   const todayStr = getTodayDateString();
-  const isCurrentToday = selectedDate === todayStr;
+  const effectiveMaxDate = maxDate || todayStr;
+  const effectiveMinDate = minDate || (availableDates.length > 0 ? availableDates[0] : todayStr);
+
+  const isCurrentToday = selectedDate >= effectiveMaxDate;
 
   let parsedDate: Date;
   try {
@@ -30,24 +41,42 @@ export function NutritionDateNavigator({ selectedDate }: NutritionDateNavigatorP
   const isYesterday = checkIsYesterday(parsedDate);
   const isToday = checkIsToday(parsedDate);
 
+  // Calculate previous and next available dates with data
+  const prevAvailableDate = availableDates.length > 0
+    ? [...availableDates].reverse().find((d) => d < selectedDate) || null
+    : null;
+
+  const nextAvailableDate = availableDates.length > 0
+    ? availableDates.find((d) => d > selectedDate && d <= effectiveMaxDate) || null
+    : null;
+
+  const isPrevDisabled = isPending || (availableDates.length > 0 ? !prevAvailableDate : selectedDate <= effectiveMinDate);
+  const isNextDisabled = isPending || selectedDate >= effectiveMaxDate || (availableDates.length > 0 ? !nextAvailableDate : false);
+
   const navigateToDate = (targetDateStr: string) => {
+    let clampedDate = targetDateStr;
+    if (clampedDate > effectiveMaxDate) clampedDate = effectiveMaxDate;
+    if (effectiveMinDate && clampedDate < effectiveMinDate) clampedDate = effectiveMinDate;
+
     startTransition(() => {
-      if (targetDateStr === todayStr) {
+      if (clampedDate === todayStr) {
         router.push("/nutrition");
       } else {
-        router.push(`/nutrition?date=${targetDateStr}`);
+        router.push(`/nutrition?date=${clampedDate}`);
       }
     });
   };
 
   const handlePrevDay = () => {
-    const prev = format(subDays(parsedDate, 1), "yyyy-MM-dd");
-    navigateToDate(prev);
+    if (prevAvailableDate) {
+      navigateToDate(prevAvailableDate);
+    }
   };
 
   const handleNextDay = () => {
-    const next = format(addDays(parsedDate, 1), "yyyy-MM-dd");
-    navigateToDate(next);
+    if (nextAvailableDate) {
+      navigateToDate(nextAvailableDate);
+    }
   };
 
   const handleDateInput = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -109,19 +138,25 @@ export function NutritionDateNavigator({ selectedDate }: NutritionDateNavigatorP
         <button
           type="button"
           onClick={handlePrevDay}
-          disabled={isPending}
-          aria-label="Previous day"
-          className="p-2 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-white/10 transition active:scale-95 cursor-pointer disabled:opacity-50"
+          disabled={isPrevDisabled}
+          aria-label="Previous day with data"
+          title={isPrevDisabled ? "No earlier data recorded" : `Go to previous log (${prevAvailableDate || ""})`}
+          className="p-2 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-white/10 transition active:scale-95 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
         >
           <ChevronLeft className="w-4 h-4" />
         </button>
 
-        {/* Hidden/Custom Date Picker button */}
-        <label className="relative p-2 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-white/10 transition active:scale-95 cursor-pointer">
+        {/* Date Picker Button with min/max limit */}
+        <label
+          className="relative p-2 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-white/10 transition active:scale-95 cursor-pointer"
+          title="Pick a date"
+        >
           <Calendar className="w-4 h-4" />
           <input
             type="date"
             value={selectedDate}
+            min={effectiveMinDate}
+            max={effectiveMaxDate}
             onChange={handleDateInput}
             disabled={isPending}
             className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
@@ -132,9 +167,10 @@ export function NutritionDateNavigator({ selectedDate }: NutritionDateNavigatorP
         <button
           type="button"
           onClick={handleNextDay}
-          disabled={isPending}
-          aria-label="Next day"
-          className="p-2 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-white/10 transition active:scale-95 cursor-pointer disabled:opacity-50"
+          disabled={isNextDisabled}
+          aria-label="Next day with data"
+          title={isNextDisabled ? "Cannot navigate past today or no newer data" : `Go to next log (${nextAvailableDate || ""})`}
+          className="p-2 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-white/10 transition active:scale-95 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
         >
           <ChevronRight className="w-4 h-4" />
         </button>

@@ -71,11 +71,22 @@ export function SessionDetailClient({ session }: SessionDetailClientProps) {
     return "";
   };
 
+  const rawDateObj = (() => {
+    const raw = session.completedAt || session.date || session.startedAt || session.createdAt;
+    try {
+      const d = parseISO(raw);
+      if (isValid(d)) return d;
+      const parsed = new Date(raw);
+      if (isValid(parsed)) return parsed;
+    } catch {
+      // fallback
+    }
+    return new Date();
+  })();
+
+  const recordedDayName = format(rawDateObj, "EEEE");
   const sessionDateStr = formatSessionDate(session.date || session.startedAt || session.createdAt);
   const sessionTimeStr = formatSessionTime(session.startedAt || session.createdAt);
-  const dayCapitalized = session.dayOfWeek
-    ? session.dayOfWeek.charAt(0).toUpperCase() + session.dayOfWeek.slice(1)
-    : "Saturday";
 
   const durationMins = session.durationSeconds
     ? Math.round(session.durationSeconds / 60)
@@ -209,7 +220,7 @@ export function SessionDetailClient({ session }: SessionDetailClientProps) {
                   {session.name}
                 </h1>
                 <span className="text-xs font-extrabold px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300">
-                  {dayCapitalized}
+                  {recordedDayName}
                 </span>
                 {session.status === "completed" && (
                   <span className="text-xs font-bold px-3 py-1 rounded-full bg-teal-500/15 border border-teal-500/30 text-teal-300 flex items-center gap-1.5">

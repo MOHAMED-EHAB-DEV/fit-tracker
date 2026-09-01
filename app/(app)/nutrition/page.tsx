@@ -27,11 +27,36 @@ async function NutritionContent({ searchParams }: NutritionPageProps) {
   const user = await getFullUser();
   await getDb();
 
+  const todayStr = getTodayDateString();
+
+  // Fetch all distinct dates for this user that have recorded meals or non-zero macro logs
+  const [mealDates, logDates] = await Promise.all([
+    Meal.distinct("dateString", { userId: user?._id }),
+    DailyLog.distinct("dateString", {
+      userId: user?._id,
+      $or: [
+        { caloriesIn: { $gt: 0 } },
+        { "macros.protein": { $gt: 0 } },
+        { "macros.carbs": { $gt: 0 } },
+        { "macros.fat": { $gt: 0 } },
+        { "macros.fiber": { $gt: 0 } },
+      ],
+    }),
+  ]);
+
+  const distinctDatesSet = new Set<string>([...mealDates, ...logDates, todayStr]);
+  const availableDates = Array.from(distinctDatesSet).filter(Boolean).sort();
+  const minDate = availableDates[0] || todayStr;
+  const maxDate = todayStr;
+
   const resolvedParams = await searchParams;
   const rawDate = resolvedParams?.date;
-  const todayStr = getTodayDateString();
   const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-  const selectedDateStr = rawDate && dateRegex.test(rawDate) ? rawDate : todayStr;
+  let selectedDateStr = rawDate && dateRegex.test(rawDate) ? rawDate : todayStr;
+
+  // Clamp date: cannot exceed today or precede minDate
+  if (selectedDateStr > maxDate) selectedDateStr = maxDate;
+  if (minDate && selectedDateStr < minDate) selectedDateStr = minDate;
 
   const [dailyLog, meals] = await Promise.all([
     DailyLog.findOne({ userId: user?._id, dateString: selectedDateStr }).lean(),
@@ -113,8 +138,13 @@ async function NutritionContent({ searchParams }: NutritionPageProps) {
         </div>
       </div>
 
-      {/* Date Navigation & Picker Bar */}
-      <NutritionDateNavigator selectedDate={selectedDateStr} />
+      {/* Date Navigation & Picker Bar with Limits */}
+      <NutritionDateNavigator
+        selectedDate={selectedDateStr}
+        availableDates={availableDates}
+        minDate={minDate}
+        maxDate={maxDate}
+      />
 
       {/* 5 Macro Target Cards with Remaining Calculations */}
       <MacroRemainingCards stats={stats} />

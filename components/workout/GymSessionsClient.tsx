@@ -87,6 +87,7 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTimeframe, setSelectedTimeframe] = useState<"all" | "today" | "week" | "month">("all");
   const [selectedDay, setSelectedDay] = useState<string>("all");
+  const [selectedDate, setSelectedDate] = useState<string>("");
   const [selectedMuscle, setSelectedMuscle] = useState<string>("all");
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "volume" | "duration">("newest");
   const [expandedSessionIds, setExpandedSessionIds] = useState<Record<string, boolean>>({});
@@ -200,6 +201,16 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
           if (!nameMatch && !exerciseMatch) return false;
         }
 
+        // Exact Date of Recording Filter
+        if (selectedDate) {
+          try {
+            const sessionDateStr = format(sessionDate, "yyyy-MM-dd");
+            if (sessionDateStr !== selectedDate) return false;
+          } catch {
+            return false;
+          }
+        }
+
         // Timeframe Recency Filter
         if (selectedTimeframe !== "all") {
           if (selectedTimeframe === "today") {
@@ -213,9 +224,14 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
           }
         }
 
-        // Day Filter
+        // Day of Recording Filter (matching day of week the session was recorded)
         if (selectedDay !== "all") {
-          if ((session.dayOfWeek || "").toLowerCase() !== selectedDay.toLowerCase()) {
+          try {
+            const recordedDayOfWeek = format(sessionDate, "EEEE").toLowerCase();
+            if (recordedDayOfWeek !== selectedDay.toLowerCase()) {
+              return false;
+            }
+          } catch {
             return false;
           }
         }
@@ -248,7 +264,7 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
         }
         return 0;
       });
-  }, [sessions, searchQuery, selectedTimeframe, selectedDay, selectedMuscle, sortBy]);
+  }, [sessions, searchQuery, selectedTimeframe, selectedDay, selectedDate, selectedMuscle, sortBy]);
 
   const muscleGroupsList = ["Chest", "Back", "Legs", "Shoulders", "Arms", "Core"];
   const daysList = [
@@ -473,20 +489,23 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
           </div>
         </div>
 
-        {/* Filter Pills (Timeframe, Days & Muscles) */}
+        {/* Filter Pills (Timeframe, Exact Date, Recording Day & Muscles) */}
         <div className="space-y-2.5 pt-2 border-t border-white/6">
-          {/* Timeframe / Recency filter */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
+          {/* Timeframe / Recency & Exact Date filter */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar flex-wrap sm:flex-nowrap">
             <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 me-1 shrink-0 flex items-center gap-1">
               <History className="w-3.5 h-3.5" />
               <span>Timeframe:</span>
             </span>
             <button
               type="button"
-              onClick={() => setSelectedTimeframe("all")}
+              onClick={() => {
+                setSelectedTimeframe("all");
+                setSelectedDate("");
+              }}
               className={cn(
                 "px-3 py-1.5 rounded-xl font-bold text-xs transition shrink-0 cursor-pointer",
-                selectedTimeframe === "all"
+                selectedTimeframe === "all" && !selectedDate
                   ? "bg-emerald-500 text-zinc-950 shadow-md shadow-emerald-500/20"
                   : "bg-zinc-950/60 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-white/5"
               )}
@@ -495,10 +514,13 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
             </button>
             <button
               type="button"
-              onClick={() => setSelectedTimeframe("today")}
+              onClick={() => {
+                setSelectedTimeframe("today");
+                setSelectedDate("");
+              }}
               className={cn(
                 "px-3 py-1.5 rounded-xl font-bold text-xs transition shrink-0 cursor-pointer",
-                selectedTimeframe === "today"
+                selectedTimeframe === "today" && !selectedDate
                   ? "bg-emerald-500 text-zinc-950 shadow-md shadow-emerald-500/20"
                   : "bg-zinc-950/60 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-white/5"
               )}
@@ -507,10 +529,13 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
             </button>
             <button
               type="button"
-              onClick={() => setSelectedTimeframe("week")}
+              onClick={() => {
+                setSelectedTimeframe("week");
+                setSelectedDate("");
+              }}
               className={cn(
                 "px-3 py-1.5 rounded-xl font-bold text-xs transition shrink-0 cursor-pointer",
-                selectedTimeframe === "week"
+                selectedTimeframe === "week" && !selectedDate
                   ? "bg-emerald-500 text-zinc-950 shadow-md shadow-emerald-500/20"
                   : "bg-zinc-950/60 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-white/5"
               )}
@@ -519,16 +544,53 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
             </button>
             <button
               type="button"
-              onClick={() => setSelectedTimeframe("month")}
+              onClick={() => {
+                setSelectedTimeframe("month");
+                setSelectedDate("");
+              }}
               className={cn(
                 "px-3 py-1.5 rounded-xl font-bold text-xs transition shrink-0 cursor-pointer",
-                selectedTimeframe === "month"
+                selectedTimeframe === "month" && !selectedDate
                   ? "bg-emerald-500 text-zinc-950 shadow-md shadow-emerald-500/20"
                   : "bg-zinc-950/60 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-white/5"
               )}
             >
               Past 30 Days
             </button>
+
+            {/* Exact Recording Date Selector */}
+            <div className="flex items-center gap-1.5 ms-auto shrink-0">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 shrink-0">
+                Date:
+              </span>
+              <input
+                type="date"
+                value={selectedDate}
+                max={format(new Date(), "yyyy-MM-dd")}
+                onChange={(e) => {
+                  setSelectedDate(e.target.value);
+                  if (e.target.value) {
+                    setSelectedTimeframe("all");
+                  }
+                }}
+                className={cn(
+                  "px-2.5 py-1 rounded-xl text-xs font-semibold border transition cursor-pointer focus:outline-none focus:ring-1 focus:ring-emerald-400",
+                  selectedDate
+                    ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
+                    : "bg-zinc-950/60 border-white/10 text-zinc-400 hover:text-zinc-200"
+                )}
+              />
+              {selectedDate && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedDate("")}
+                  className="p-1 text-zinc-400 hover:text-white cursor-pointer"
+                  title="Clear date filter"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Muscle group filter */}
@@ -565,10 +627,10 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
             ))}
           </div>
 
-          {/* Day of week filter */}
+          {/* Recording Day of week filter */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
             <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500 me-1 shrink-0">
-              Day:
+              Recording Day:
             </span>
             <button
               type="button"
@@ -631,6 +693,7 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
                   setSearchQuery("");
                   setSelectedTimeframe("all");
                   setSelectedDay("all");
+                  setSelectedDate("");
                   setSelectedMuscle("all");
                 }}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-xs transition cursor-pointer"
@@ -642,9 +705,11 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
         ) : (
           filteredSessions.map((session) => {
             const isExpanded = !!expandedSessionIds[session._id];
+            const sessionDateObj = getSessionDateObj(session);
             const sessionDateFormatted = formatSessionDate(session);
             const sessionTimeFormatted = formatSessionTime(session);
             const relativeBadge = getRelativeTimeBadge(session);
+            const recordedDayName = format(sessionDateObj, "EEEE");
 
             // Compute session statistics
             let completedSetsCount = 0;
@@ -658,10 +723,6 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
                 if (s.isPR) prCount++;
               });
             });
-
-            const dayCapitalized = session.dayOfWeek
-              ? session.dayOfWeek.charAt(0).toUpperCase() + session.dayOfWeek.slice(1)
-              : "Saturday";
 
             const unit = session.weightUnit || "kg";
             const durationMins = session.durationSeconds
@@ -698,8 +759,8 @@ export function GymSessionsClient({ initialSessions }: GymSessionsClientProps) {
                             </span>
                           )}
 
-                          <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-zinc-800 border border-white/8 text-zinc-400 shrink-0">
-                            {dayCapitalized}
+                          <span className="text-xs font-bold px-2.5 py-0.5 rounded-md bg-zinc-800 border border-white/8 text-zinc-300 shrink-0">
+                            {recordedDayName}
                           </span>
 
                           {session.status === "completed" && (
