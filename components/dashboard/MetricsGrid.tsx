@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Flame, Footprints, Droplets, Target, RefreshCw, Cpu } from "lucide-react";
+import { Flame, Footprints, Droplets, Target, RefreshCw } from "lucide-react";
 import { useUser } from "@/context/UserContext";
 import { useNativeStepTracker } from "@/hooks/useNativeStepTracker";
 

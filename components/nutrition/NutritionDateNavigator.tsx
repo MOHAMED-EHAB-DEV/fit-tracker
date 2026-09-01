@@ -2,7 +2,7 @@
 
 import React, { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Calendar, Sparkles, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles, Loader2 } from "lucide-react";
 import { format, parseISO, isToday as checkIsToday, isYesterday as checkIsYesterday } from "date-fns";
 import { getTodayDateString } from "@/lib/fitness/timezone";
 
@@ -89,35 +89,40 @@ export function NutritionDateNavigator({
 
   return (
     <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 sm:p-4 rounded-2xl bg-zinc-900/80 backdrop-blur-xl border border-white/10 shadow-lg">
-      {/* Left / Date Label */}
-      <div className="flex items-center gap-2.5">
-        <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shrink-0">
-          <Calendar className="w-4 h-4" />
-        </div>
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-bold text-white tracking-tight">
-              {formattedDateTitle}
-            </span>
-            {isCurrentToday && (
-              <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-extrabold uppercase tracking-wider">
-                Today
-              </span>
-            )}
-            {isYesterday && (
-              <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[10px] font-extrabold uppercase tracking-wider">
-                Yesterday
-              </span>
-            )}
-            {isPending && (
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
-            )}
-          </div>
-          <span className="text-xs text-zinc-400">
-            {isCurrentToday ? "Inspect and track today's nutrition log" : `Daily log entry for ${selectedDate}`}
+      {/* Left / Date Label (clickable to pick a date) */}
+      <label className="relative cursor-pointer group flex flex-col justify-center select-none">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-bold text-white tracking-tight group-hover:text-emerald-400 transition">
+            {formattedDateTitle}
           </span>
+          {isCurrentToday && (
+            <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-extrabold uppercase tracking-wider">
+              Today
+            </span>
+          )}
+          {isYesterday && (
+            <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[10px] font-extrabold uppercase tracking-wider">
+              Yesterday
+            </span>
+          )}
+          {isPending && (
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+          )}
         </div>
-      </div>
+        <span className="text-xs text-zinc-400 group-hover:text-zinc-300 transition">
+          {isCurrentToday ? "Inspect and track today's nutrition log" : `Daily log entry for ${selectedDate}`}
+        </span>
+        <input
+          type="date"
+          value={selectedDate}
+          min={effectiveMinDate}
+          max={effectiveMaxDate}
+          onChange={handleDateInput}
+          disabled={isPending}
+          className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+          title="Click to pick a date"
+        />
+      </label>
 
       {/* Right / Controls */}
       <div className="flex items-center gap-1.5 self-end sm:self-auto">
@@ -145,23 +150,6 @@ export function NutritionDateNavigator({
         >
           <ChevronLeft className="w-4 h-4" />
         </button>
-
-        {/* Date Picker Button with min/max limit */}
-        <label
-          className="relative p-2 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-white/10 transition active:scale-95 cursor-pointer"
-          title="Pick a date"
-        >
-          <Calendar className="w-4 h-4" />
-          <input
-            type="date"
-            value={selectedDate}
-            min={effectiveMinDate}
-            max={effectiveMaxDate}
-            onChange={handleDateInput}
-            disabled={isPending}
-            className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-          />
-        </label>
 
         {/* Next Day */}
         <button

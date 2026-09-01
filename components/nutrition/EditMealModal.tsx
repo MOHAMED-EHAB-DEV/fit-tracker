@@ -17,11 +17,7 @@ import {
   Info,
   Clock,
   Calendar,
-  Camera,
-  ShieldCheck,
   AlertCircle,
-  Plus,
-  Minus,
 } from "lucide-react";
 import { MealType } from "@/types/fitness";
 import { Modal } from "@/components/ui/Modal";
@@ -82,7 +78,9 @@ export function EditMealModal({
   const [carbs, setCarbs] = useState("");
   const [fat, setFat] = useState("");
   const [fiber, setFiber] = useState("");
+  const [aiMacros, setAiMacros] = useState<MealData["aiMacros"]>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -95,6 +93,7 @@ export function EditMealModal({
       setCarbs(meal.macros?.carbs?.toString() || "0");
       setFat(meal.macros?.fat?.toString() || "0");
       setFiber(meal.macros?.fiber?.toString() || "0");
+      setAiMacros(meal.aiMacros || null);
       setErrorMsg(null);
       setSuccessMsg(null);
     }
@@ -113,7 +112,6 @@ export function EditMealModal({
   const fatKcal = Math.round(numFat * 9);
   const calculatedMacroKcal = proteinKcal + carbsKcal + fatKcal;
 
-  const effectiveTotalKcal = numCalories > 0 ? numCalories : calculatedMacroKcal || 1;
   const proteinPct = Math.round((proteinKcal / (calculatedMacroKcal || 1)) * 100);
   const carbsPct = Math.round((carbsKcal / (calculatedMacroKcal || 1)) * 100);
   const fatPct = Math.max(0, 100 - proteinPct - carbsPct);
@@ -127,6 +125,69 @@ export function EditMealModal({
     const parsed = isFloat ? parseFloat(currentVal) || 0 : parseInt(currentVal, 10) || 0;
     const nextVal = Math.max(0, parsed + delta);
     setter(isFloat ? (Number.isInteger(nextVal) ? nextVal.toString() : nextVal.toFixed(1)) : nextVal.toString());
+  };
+
+  const handleRegenerateWithAi = async () => {
+    if (!description.trim() && !meal.cloudinary?.secureUrl) {
+      setErrorMsg("Please enter a meal description first to regenerate with AI.");
+      return;
+    }
+
+    setIsRegenerating(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("description", description.trim() || meal.description || "Logged Meal");
+      formData.append("mealType", mealType);
+      formData.append("save", "false");
+      if (meal.cloudinary?.secureUrl) {
+        formData.append("imageUrl", meal.cloudinary.secureUrl);
+      }
+      if (meal.dateString) {
+        formData.append("dateString", meal.dateString);
+      }
+
+      const res = await fetch("/api/meals/analyze", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to regenerate meal analysis with AI.");
+      }
+
+      const analysis = data.analysis;
+      setCalories(String(analysis.totals?.calories ?? 0));
+      setProtein(String(analysis.totals?.protein ?? 0));
+      setCarbs(String(analysis.totals?.carbs ?? 0));
+      setFat(String(analysis.totals?.fat ?? 0));
+      setFiber(String(analysis.totals?.fiber ?? 0));
+
+      const updatedAi = {
+        calories: analysis.totals?.calories,
+        protein: analysis.totals?.protein,
+        carbs: analysis.totals?.carbs,
+        fat: analysis.totals?.fat,
+        fiber: analysis.totals?.fiber,
+        confidence: analysis.confidence,
+        confidenceReason: analysis.confidenceReason,
+        geminiNotes: analysis.geminiNotes,
+        modelUsed: analysis.modelUsed,
+      };
+      setAiMacros(updatedAi);
+
+      setSuccessMsg("Macronutrients successfully regenerated with Gemini AI!");
+      setTimeout(() => {
+        setSuccessMsg(null);
+      }, 3500);
+    } catch (err: any) {
+      setErrorMsg(err.message || "Failed to regenerate with AI.");
+    } finally {
+      setIsRegenerating(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -157,6 +218,7 @@ export function EditMealModal({
             fat: numFat,
             fiber: numFiber,
           },
+          aiMacros: aiMacros || undefined,
         }),
       });
 
@@ -210,7 +272,7 @@ export function EditMealModal({
           <span>Edit Meal Entry & Macros</span>
         </div>
       }
-      description="Update meal description, category timing, and fine-tune exact macronutrient grams."
+      description="Update meal description, category timing, or regenerate accurate nutritional breakdown with Gemini AI."
     >
       <form onSubmit={handleSubmit} className="space-y-5 text-start">
         {/* Status Alerts */}
@@ -253,7 +315,7 @@ export function EditMealModal({
                   {meal.mealType.replace("_", " ")}
                 </span>
 
-                {meal.imageSource === "photo" || meal.aiMacros ? (
+                {meal.imageSource === "photo" || aiMacros ? (
                   <span className="inline-flex items-center gap-1 text-[10px] font-bold text-teal-300 bg-teal-500/10 px-2 py-0.5 rounded-md border border-teal-500/20">
                     <Sparkles className="w-3 h-3 text-teal-400" />
                     AI Vision
@@ -300,27 +362,27 @@ export function EditMealModal({
         </div>
 
         {/* AI Dietitian Notes if Available */}
-        {meal.aiMacros && (meal.aiMacros.geminiNotes || meal.aiMacros.confidenceReason) && (
+        {aiMacros && (aiMacros.geminiNotes || aiMacros.confidenceReason) && (
           <div className="p-3.5 rounded-2xl bg-teal-950/20 border border-teal-500/20 space-y-1.5">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[10px] font-bold uppercase tracking-wider text-teal-400 flex items-center gap-1">
                 <Info className="w-3 h-3" />
                 <span>AI Dietitian Assessment</span>
               </span>
-              {meal.aiMacros.confidence && (
+              {aiMacros.confidence && (
                 <span className="text-[10px] font-extrabold px-2 py-0.2 rounded-md bg-teal-500/15 text-teal-300 border border-teal-500/20 uppercase">
-                  {meal.aiMacros.confidence} Confidence
+                  {aiMacros.confidence} Confidence
                 </span>
               )}
             </div>
-            {meal.aiMacros.geminiNotes && (
+            {aiMacros.geminiNotes && (
               <p className="text-xs text-zinc-300 italic">
-                &ldquo;{meal.aiMacros.geminiNotes}&rdquo;
+                &ldquo;{aiMacros.geminiNotes}&rdquo;
               </p>
             )}
-            {meal.aiMacros.confidenceReason && (
+            {aiMacros.confidenceReason && (
               <p className="text-[11px] text-zinc-400">
-                {meal.aiMacros.confidenceReason}
+                {aiMacros.confidenceReason}
               </p>
             )}
           </div>
@@ -439,11 +501,28 @@ export function EditMealModal({
           </div>
         </div>
 
-        {/* Macro Inputs with Quick Increment Buttons */}
+        {/* Macro Inputs with Quick Increment Buttons & AI Regenerate Button */}
         <div className="space-y-2">
-          <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400">
-            Macronutrient Breakdown (Grams & Energy)
-          </label>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400">
+              Macronutrient Breakdown (Grams & Energy)
+            </label>
+
+            <button
+              type="button"
+              onClick={handleRegenerateWithAi}
+              disabled={isRegenerating || isSubmitting}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-500/15 hover:bg-teal-500/25 border border-teal-500/30 text-teal-300 hover:text-white text-xs font-bold transition active:scale-95 cursor-pointer disabled:opacity-50"
+              title="Recalculate calories and macronutrient grams using Gemini AI"
+            >
+              {isRegenerating ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-300" />
+              ) : (
+                <Sparkles className="w-3.5 h-3.5 text-teal-400" />
+              )}
+              <span>{isRegenerating ? "Regenerating with AI..." : "Regenerate with AI"}</span>
+            </button>
+          </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
             {/* Calories */}
@@ -627,7 +706,7 @@ export function EditMealModal({
           <button
             type="button"
             onClick={onClose}
-            disabled={isSubmitting}
+            disabled={isSubmitting || isRegenerating}
             className="px-4 py-2.5 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold transition cursor-pointer"
           >
             Cancel
@@ -635,7 +714,7 @@ export function EditMealModal({
 
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || isRegenerating}
             className="px-6 py-2.5 rounded-2xl bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-extrabold text-xs shadow-lg shadow-emerald-500/20 transition active:scale-95 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
           >
             {isSubmitting ? (

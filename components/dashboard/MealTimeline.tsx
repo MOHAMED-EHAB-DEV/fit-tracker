@@ -5,16 +5,30 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { UtensilsCrossed, Plus, Clock, Camera, Edit3, Trash2, Loader2 } from "lucide-react";
+import {
+  UtensilsCrossed,
+  Plus,
+  Clock,
+  Edit3,
+  Trash2,
+  Loader2,
+  Camera,
+} from "lucide-react";
 import type { MealData } from "@/components/nutrition/EditMealModal";
 
-const Modal = dynamic(() => import("@/components/ui/Modal").then((mod) => mod.Modal), {
-  ssr: false,
-});
+const Modal = dynamic(
+  () => import("@/components/ui/Modal").then((mod) => mod.Modal),
+  {
+    ssr: false,
+  },
+);
 
 const EditMealModal = dynamic(
-  () => import("@/components/nutrition/EditMealModal").then((mod) => mod.EditMealModal),
-  { ssr: false }
+  () =>
+    import("@/components/nutrition/EditMealModal").then(
+      (mod) => mod.EditMealModal,
+    ),
+  { ssr: false },
 );
 
 interface MealTimelineProps {
@@ -84,8 +98,12 @@ export function MealTimeline({ meals }: MealTimelineProps) {
             <UtensilsCrossed className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="font-bold text-base text-white">Today&apos;s Meals</h3>
-            <p className="text-xs text-zinc-400">Macro log & nutrition timeline</p>
+            <h3 className="font-bold text-base text-white">
+              Today&apos;s Meals
+            </h3>
+            <p className="text-xs text-zinc-400">
+              Macro log & nutrition timeline
+            </p>
           </div>
         </div>
 
@@ -101,7 +119,9 @@ export function MealTimeline({ meals }: MealTimelineProps) {
       {meals.length === 0 ? (
         <div className="text-center py-8 border border-dashed border-zinc-800 rounded-xl">
           <UtensilsCrossed className="w-8 h-8 text-zinc-600 mx-auto mb-2" />
-          <p className="text-sm text-zinc-400 font-medium">No meals logged today yet</p>
+          <p className="text-sm text-zinc-400 font-medium">
+            No meals logged today yet
+          </p>
           <p className="text-xs text-zinc-500 mt-0.5">
             Take a photo or describe what you ate to track calories & macros
           </p>
@@ -116,9 +136,11 @@ export function MealTimeline({ meals }: MealTimelineProps) {
       ) : (
         <div className="space-y-3">
           {meals.map((meal) => {
-            const time = new Date(meal.loggedAt as string | Date).toLocaleTimeString([], {
+            const time = new Date(
+              meal.loggedAt as string | Date,
+            ).toLocaleTimeString([], {
               hour: "2-digit",
-              minute: "2-digit", 
+              minute: "2-digit",
             });
 
             return (
@@ -154,9 +176,15 @@ export function MealTimeline({ meals }: MealTimelineProps) {
                       {meal.macros.calories} kcal
                     </span>
                     <div className="flex items-center gap-1.5 text-[10px] text-zinc-400 mt-0.5 flex-wrap">
-                      <span className="text-emerald-400 font-medium tabular-nums">P: {Number(meal.macros.protein).toFixed(1)}g</span>
-                      <span className="text-amber-400 font-medium tabular-nums">C: {Number(meal.macros.carbs).toFixed(1)}g</span>
-                      <span className="text-orange-400 font-medium tabular-nums">F: {Number(meal.macros.fat).toFixed(1)}g</span>
+                      <span className="text-emerald-400 font-medium tabular-nums">
+                        P: {Number(meal.macros.protein).toFixed(1)}g
+                      </span>
+                      <span className="text-amber-400 font-medium tabular-nums">
+                        C: {Number(meal.macros.carbs).toFixed(1)}g
+                      </span>
+                      <span className="text-orange-400 font-medium tabular-nums">
+                        F: {Number(meal.macros.fat).toFixed(1)}g
+                      </span>
                     </div>
                   </div>
 
@@ -217,7 +245,15 @@ export function MealTimeline({ meals }: MealTimelineProps) {
         >
           <div className="space-y-4">
             <p className="text-xs text-zinc-300 leading-relaxed">
-              Are you sure you want to delete <strong className="text-white">&quot;{deletingMeal.description}&quot;</strong>? This will deduct <strong className="text-emerald-400">{deletingMeal.macros.calories} kcal</strong> from your daily totals.
+              Are you sure you want to delete{" "}
+              <strong className="text-white">
+                &quot;{deletingMeal.description}&quot;
+              </strong>
+              ? This will deduct{" "}
+              <strong className="text-emerald-400">
+                {deletingMeal.macros.calories} kcal
+              </strong>{" "}
+              from your daily totals.
             </p>
 
             <div className="flex items-center justify-end gap-3 pt-2">

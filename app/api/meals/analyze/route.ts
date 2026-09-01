@@ -108,6 +108,7 @@ export async function POST(request: NextRequest) {
     // 2. Handle Multipart Form Data (Photo / description analysis)
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
+    const imageUrl = (formData.get("imageUrl") as string) || "";
     const description = (formData.get("description") as string) || "";
     const mealType = ((formData.get("mealType") as string) || "lunch") as MealType;
     const dateStringParam = (formData.get("dateString") as string) || null;
@@ -136,6 +137,16 @@ export async function POST(request: NextRequest) {
         );
         uploadStream.end(buffer);
       });
+    } else if (imageUrl && typeof imageUrl === "string" && imageUrl.startsWith("http")) {
+      try {
+        const imgRes = await fetch(imageUrl);
+        if (imgRes.ok) {
+          const arrayBuffer = await imgRes.arrayBuffer();
+          base64Image = Buffer.from(arrayBuffer).toString("base64");
+        }
+      } catch (e) {
+        console.warn("Could not fetch existing imageUrl for re-analysis:", e);
+      }
     }
 
     if (!process.env.GEMINI_API_KEY) {

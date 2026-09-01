@@ -41,7 +41,7 @@ export async function PATCH(
 
     const { id } = await context.params;
     const body = await request.json();
-    const { description, mealType, macros } = body;
+    const { description, mealType, macros, aiMacros } = body;
 
     await getDb();
 
@@ -82,7 +82,9 @@ export async function PATCH(
       fat: newFat,
       fiber: newFiber,
     };
-    existingMeal.isManualOverride = true;
+    if (aiMacros !== undefined) {
+      existingMeal.aiMacros = aiMacros;
+    }
 
     await existingMeal.save();
 
