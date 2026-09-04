@@ -1,0 +1,62 @@
+name: Keep Supabase Alive
+
+on:
+  schedule:
+    # Runs at 00:00 UTC every 5 days
+    - cron: '0 0 */5 * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: Ping Supabase Services
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase Public Endpoints
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://dbaromujzfbwadzugpwn.supabase.co' }}
+          BUCKET_NAME: ${{ secrets.SUPABASE_STORAGE_BUCKET || 'fit-tracker' }}
+          OPTIONAL_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || secrets.SUPABASE_ANON_KEY || '' }}
+        run: |
+          BASE_URL="${SUPABASE_URL%/}"
+          echo "Target Supabase URL: $BASE_URL"
+          echo "Target Public Bucket: $BUCKET_NAME"
+
+          HEADERS=()
+          if [ -n "$OPTIONAL_KEY" ]; then
+            HEADERS=(-H "apikey: $OPTIONAL_KEY" -H "Authorization: Bearer $OPTIONAL_KEY")
+            echo "API Key provided. Using authenticated headers."
+          else
+            echo "No API key provided. Using public endpoints."
+          fi
+
+          # 1. Public Storage Endpoint (activates storage & database)
+          echo ""
+          echo "--- 1. Pinging Public Storage ---"
+          STORAGE_OUT=$(curl -s -i "${HEADERS[@]}" "$BASE_URL/storage/v1/object/public/$BUCKET_NAME/keepalive" || true)
+          STORAGE_STATUS=$(echo "$STORAGE_OUT" | grep -m1 "HTTP/" | awk '{print $2}')
+          echo "Storage HTTP status: $STORAGE_STATUS"
+
+          # 2. PostgREST API Endpoint
+          echo ""
+          echo "--- 2. Pinging PostgREST API ---"
+          REST_OUT=$(curl -s -i "${HEADERS[@]}" "$BASE_URL/rest/v1/" || true)
+          REST_STATUS=$(echo "$REST_OUT" | grep -m1 "HTTP/" | awk '{print $2}')
+          echo "PostgREST HTTP status: $REST_STATUS"
+
+          # 3. Auth Health Endpoint
+          echo ""
+          echo "--- 3. Pinging Auth Health ---"
+          AUTH_OUT=$(curl -s -i "${HEADERS[@]}" "$BASE_URL/auth/v1/health" || true)
+          AUTH_STATUS=$(echo "$AUTH_OUT" | grep -m1 "HTTP/" | awk '{print $2}')
+          echo "Auth HTTP status: $AUTH_STATUS"
+
+          echo ""
+          # Check for database paused state (544 DatabaseTimeout)
+          if [ "$STORAGE_STATUS" = "544" ] || [ "$REST_STATUS" = "544" ]; then
+            echo "::warning::Supabase project returned 544 DatabaseTimeout. The project is currently paused. Please unpause it manually in the Supabase Dashboard. Once unpaused, this workflow will keep it active."
+          elif [ -n "$STORAGE_STATUS" ] || [ -n "$REST_STATUS" ] || [ -n "$AUTH_STATUS" ]; then
+            echo "Supabase successfully pinged. Activity recorded."
+          else
+            echo "::error::Could not reach Supabase. Check the URL."
+            exit 1
+          fi
