@@ -1,9 +1,10 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import { Flame, Footprints, Droplets, Target, RefreshCw } from "lucide-react";
 import { useUser } from "@/context/UserContext";
 import { useNativeStepTracker } from "@/hooks/useNativeStepTracker";
+import { syncWidgetData } from "@/services/webview-bridge";
 
 interface MetricsGridProps {
   stats: {
@@ -41,6 +42,20 @@ export function MetricsGrid({ stats }: MetricsGridProps) {
   const proteinPct = Math.min(100, Math.round((stats.proteinG / proteinGoal) * 100));
   const stepPct = Math.min(100, Math.round((currentSteps / stepGoal) * 100));
   const waterPct = Math.min(100, Math.round((stats.waterMl / waterGoal) * 100));
+
+  // Keep native Android home screen widgets synced with full fitness telemetry
+  useEffect(() => {
+    if (isNative) {
+      syncWidgetData({
+        steps: currentSteps,
+        stepGoal,
+        caloriesIn: stats.caloriesIn,
+        targetCalories: calorieGoal,
+        waterMl: stats.waterMl,
+        waterGoalMl: waterGoal,
+      });
+    }
+  }, [isNative, currentSteps, stepGoal, stats.caloriesIn, calorieGoal, stats.waterMl, waterGoal]);
 
   return (
     <section aria-label="Today's Core Nutrition and Activity Metrics" className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 2xl:gap-6">

@@ -43,6 +43,12 @@ class StepSyncWorker(
             // Always update UI if WebView is currently active in foreground
             JSBridge.instance?.pushStepCount(todayTotalSteps)
 
+            // Update live home screen widgets
+            try {
+                com.fittracker.widget.WidgetDataStore.updateSteps(context, todayTotalSteps)
+                com.fittracker.widget.FitTrackerWidgetUpdater.updateAllWidgets(context)
+            } catch (_: Exception) {}
+
             // 3. Resolve server URL & auth credentials
             val baseUrl = StepStore.getServerUrl(context)
             val syncEndpoint = "$baseUrl/api/steps/sync"

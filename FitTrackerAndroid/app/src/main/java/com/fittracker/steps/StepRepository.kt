@@ -67,6 +67,10 @@ object StepRepository {
                 todaySteps = stepsToday
             )
             StepStore.save(context, newDayState)
+            try {
+                com.fittracker.widget.WidgetDataStore.updateSteps(context, stepsToday)
+                com.fittracker.widget.FitTrackerWidgetUpdater.updateAllWidgets(context)
+            } catch (_: Exception) {}
             return stepsToday
         }
 
@@ -98,6 +102,11 @@ object StepRepository {
             todaySteps = calculatedSteps
         )
         StepStore.save(context, updatedState)
+
+        try {
+            com.fittracker.widget.WidgetDataStore.updateSteps(context, calculatedSteps)
+            com.fittracker.widget.FitTrackerWidgetUpdater.updateAllWidgets(context)
+        } catch (_: Exception) {}
 
         return calculatedSteps
     }

@@ -1,59 +1,45 @@
-# FitTracker Release Notes — Next.js 16 Clean Architecture & Performance Upgrade
+# FitTracker Release Notes — Live Android Home Screen Widgets & Glassmorphism Upgrade
 
-> **Release Version**: 1.0.4  
-> **Target Framework**: Next.js 16.3.1 · React 19.2.8 · Bun 1.4  
-> **Environment**: Android WebView Hybrid App & Web Platform  
-> **Date**: 2026-08-31
+> **Release Version**: 1.1.0  
+> **Target Framework**: Next.js 16.3.1 · React 19.2.8 · Android SDK 34  
+> **Environment**: Android Native App, Home Screen Widgets & Web Platform  
+> **Date**: 2026-09-05
 
 ---
 
 ## 🚀 Overview
 
-This release completes a comprehensive architectural overhaul of FitTracker, transitioning from client-heavy hydration to a performant, server-first App Router architecture optimized specifically for Android WebView runtime constraints.
+This release introduces live, battery-optimized Android home screen widgets with high-contrast dark-mode glassmorphic styling, real-time hardware pedometer tracking, and bidirectional web-telemetry synchronization.
 
 ---
 
 ## 📦 Key Highlights & Enhancements
 
-### 1. Route Boundaries & Resilience (Phase 1)
-- **Ambient Loading Skeletons**: Added custom, flicker-free skeleton screens for all route groups (`app/loading.tsx`, `app/(app)/loading.tsx`, `app/(auth)/loading.tsx`, `app/(admin)/admin/loading.tsx`).
-- **Standardized Error Boundaries**: Implemented interactive error boundaries with in-shell retry triggers and diagnostic digest reference codes across root, app, auth, and admin routes (`error.tsx`, `global-error.tsx`).
-- **Custom 404 Pages**: Created branded not-found screens with compass radar graphics and fast-action links (`app/not-found.tsx`, `app/(app)/not-found.tsx`).
-- **PWA Manifest Resolution**: Added `public/manifest.json` resolving metadata 404 errors.
-- **Continuous Client Navigation**: Eliminated all `window.location.href` hard reloads in `Sidebar`, `OnboardingFlow`, and `AdminSidebar`/`AdminMobileNav` in favor of Next.js `useRouter` transitions.
+### 1. Live Home Screen Widgets Suite
+- **Activity & Steps Widget (Medium 4x2)**: Live step count, goal percentage, custom emerald progress bar, distance (km), active calories burned, live status badge, and an interactive instant sync button.
+- **Quick Step Counter (Small 2x2)**: Compact glanceable card with step count, progress bar, goal indicator, and tap-to-launch.
+- **Daily Fitness Overview (Large 4x3)**: Comprehensive health dashboard tracking Steps, Caloric balance (In vs Target), and Hydration (ml vs Target).
 
----
+### 2. Glassmorphic Aesthetic & Design System
+- **Frosted Glass Cards**: Angled translucent dark gradient (`#E616161B` to `#E60A0A0D`) with 1.2dp rim-light border (`#2EFFFFFF`) and 20dp corners matching launcher styling.
+- **Translucent Accent Chips**: Glass sub-chips for metrics (`#14FFFFFF` with `#1FFFFFFF` border).
+- **Emerald Glow Badges**: Live indicator badge with translucent emerald pill styling (`#2610B981` background, `#4D10B981` border).
+- **Curated Palette Tokens**: Added `widget_glass_bg`, `widget_glass_border`, `widget_glass_surface`, `widget_glass_emerald`, `widget_glass_orange`, `widget_glass_cyan` in `colors.xml`.
 
-### 2. Server/Client Boundary & Bundle Optimization (Phase 2)
-- **Zero-Bundle Server Components**: Converted presentational widgets (such as `RecentPRsWidget`) to pure Server Components, reducing initial client hydration JavaScript.
-- **Deferred Chart Chunks**: Code-split heavyweight `recharts` dependencies in `EnergyBalanceChart` and `WeightTrendWidget` using `next/dynamic` (`ssr: false`) with placeholder skeleton fallbacks, cutting critical-path JS by ~200KB.
-- **On-Demand Modal Code Splitting**: Converted heavy modal dialogs (`QuickLogModal`, `EditMealModal`, `Modal` in workout cards and weekly routine maps) to deferred dynamic imports, loading modal assets only upon user click.
-- **Server Data Prefetching**: Refactored `SettingsPage` to prefetch sanitized user data on the server, eliminating client-side hydration delays.
+### 3. Battery Optimization Architecture
+- **Event-Driven Telemetry**: Zero background polling loops and zero CPU wake-locks. Updates are triggered purely by hardware sensor step count deltas, periodic WorkManager syncs, or user interaction.
+- **Sensor Batching**: Uses Android's non-wake-up step sensor (`Sensor.TYPE_STEP_COUNTER, false`) when available to prevent unnecessary CPU wakeups.
+- **Instant Non-Blocking Sync**: Tapping the sync button executes a fast one-shot sensor read with a strict 1500ms timeout in a background coroutine without launching the main app.
+- **Safe Fallback Update Period**: `updatePeriodMillis` set to 30 minutes, respecting Android battery preservation standards.
 
----
-
-### 3. Server Actions & Zero-Latency Mutations (Phase 3)
-Created a centralized Server Actions module (`lib/fitness/actions.ts`) with automatic `revalidatePath` cache synchronization:
-- `logWaterAction`: Direct database increment for hydration tracking with optimistic UI transitions (replacing AI chat route roundtrips).
-- `deleteWorkoutAction`: Direct server-side workout deletion and multi-route cache revalidation.
-- `deleteMealAction`: Server-side meal removal with automatic daily caloric and macronutrient adjustments in `DailyLog`.
-- `updateWeeklyRoutineAction`: Direct routine split schedule updates.
-- `updateProfileSettingsAction`: Server Action for profile and metabolic target updates with automated BMR/TDEE recalculations.
-
----
-
-### 4. Android WebView Native Experience (Phase 4)
-- **Centralized Bridge Service (`services/webview-bridge.ts`)**: Built a unified abstraction for Android bridge communication (hardware sensor synchronization, OTA update checking, external URL delegation).
-- **Hardware Back Button / Swipe Gesture Interception**: Integrated a `popstate` history trap in `hooks/useDialogOverlay.ts` ensuring Android hardware back gestures dismiss open modals and drawers rather than navigating away from the page.
-- **Dynamic Viewport Height**: Updated chat interfaces from `100vh` to `100dvh` in `CoachClient.tsx` to eliminate on-screen keyboard layout jumping.
-- **Native View Transitions**: Added CSS `@supports (view-transition-name: none)` crossfade rules in `app/globals.css` for instant page crossfades in Chromium WebViews.
-- **Edge-to-Edge Safe Areas**: Configured `viewportFit: "cover"` in root layout metadata for bezel-to-bezel display padding.
-- **GPU & Overscroll Polish**: Applied `overscroll-behavior: none` and `@media (prefers-reduced-transparency: reduce)` fallbacks to protect GPU performance on low-end mobile hardware.
+### 4. Bidirectional Native & Web Synchronization
+- **Android JSBridge**: Added `updateWidgetData(json)` to `JSBridge.kt` allowing the Next.js app to update native widget goals, calories, and hydration levels in real time.
+- **Web App Bridge Service**: Added `syncWidgetData()` in `services/webview-bridge.ts` and automated synchronization in `MetricsGrid.tsx`.
+- **Lifecycle Synchronization**: Widgets automatically refresh in `MainActivity.onResume()` and background `StepSyncWorker.doWork()`.
 
 ---
 
 ## 🛠️ Validation & Code Quality
-
-- **TypeScript Typecheck**: `tsc --noEmit` passed with **0 errors** across all files.
-- **Tailwind CSS Utility Audit**: Standardized all arbitrary value warnings (`h-95`, `min-h-11`, `min-h-10`, `min-h-9`, `rounded-md`, `bg-size-[200%_100%]`).
-- **Preserved Design Integrity**: Maintained full visual fidelity, dark-mode zinc aesthetics, emerald/teal accents, and accessible contrast ratios.
+- **Full Android SDK 24–34 Compatibility**: Native `RemoteViews`, `AppWidgetProvider`, and `PendingIntent` with explicit mutability flags.
+- **RTL & Logical Spacing**: Applied logical attributes (`paddingStart`, `paddingEnd`, `layout_marginStart`, `layout_marginEnd`).
+- **Zero Build Warnings**: Strict layout and Kotlin typing adherence.

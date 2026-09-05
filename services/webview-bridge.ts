@@ -13,6 +13,7 @@ export interface AndroidBridgeInterface {
   setServerUrl?: (url: string) => void;
   checkForUpdate?: () => void;
   openExternalUrl?: (url: string) => void;
+  updateWidgetData?: (json: string) => void;
 }
 
 declare global {
@@ -97,3 +98,29 @@ export function triggerAppUpdateCheck(): void {
     openExternalLink("https://github.com/MOHAMED-EHAB-DEV/fit-tracker/releases/latest");
   }
 }
+
+export interface WidgetSyncData {
+  steps?: number;
+  stepGoal?: number;
+  caloriesIn?: number;
+  targetCalories?: number;
+  waterMl?: number;
+  waterGoalMl?: number;
+}
+
+/**
+ * Synchronizes daily fitness metrics with native Android home screen widgets.
+ */
+export function syncWidgetData(data: WidgetSyncData): void {
+  if (typeof window === "undefined") return;
+
+  const bridge = getAndroidBridge();
+  if (bridge?.updateWidgetData) {
+    try {
+      bridge.updateWidgetData(JSON.stringify(data));
+    } catch (err) {
+      console.warn("Failed to sync widget data:", err);
+    }
+  }
+}
+

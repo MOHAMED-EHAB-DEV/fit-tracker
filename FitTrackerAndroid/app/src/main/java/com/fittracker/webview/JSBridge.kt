@@ -134,9 +134,46 @@ class JSBridge(
     }
 
     /**
+     * Updates widget telemetry from Next.js (steps, stepGoal, calories, water).
+     */
+    @JavascriptInterface
+    fun updateWidgetData(json: String?) {
+        if (json.isNullOrBlank()) return
+        try {
+            val obj = org.json.JSONObject(json)
+            val steps = if (obj.has("steps")) obj.getLong("steps") else null
+            val stepGoal = if (obj.has("stepGoal")) obj.getInt("stepGoal") else null
+            val caloriesIn = if (obj.has("caloriesIn")) obj.getInt("caloriesIn") else null
+            val targetCalories = if (obj.has("targetCalories")) obj.getInt("targetCalories") else null
+            val waterMl = if (obj.has("waterMl")) obj.getInt("waterMl") else null
+            val waterGoalMl = if (obj.has("waterGoalMl")) obj.getInt("waterGoalMl") else null
+
+            com.fittracker.widget.WidgetDataStore.updateAllMetrics(
+                context = context,
+                steps = steps,
+                stepGoal = stepGoal,
+                caloriesIn = caloriesIn,
+                targetCalories = targetCalories,
+                waterMl = waterMl,
+                waterGoalMl = waterGoalMl
+            )
+            com.fittracker.widget.FitTrackerWidgetUpdater.updateAllWidgets(context)
+            Log.d(TAG, "Widget telemetry synced from web application.")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse widget data JSON: ${e.localizedMessage}")
+        }
+    }
+
+    /**
      * Pushes the latest step count to Next.js by dispatching DOM events and bridge callbacks.
      */
     fun pushStepCount(steps: Long) {
+        // Keep live widgets in sync
+        try {
+            com.fittracker.widget.WidgetDataStore.updateSteps(context, steps)
+            com.fittracker.widget.FitTrackerWidgetUpdater.updateAllWidgets(context)
+        } catch (_: Exception) {}
+
         mainHandler.post {
             try {
                 val js = """

@@ -10,4 +10,10 @@
     <string name="title_login">Login</string>
     <string name="title_register">Register</string>
     <string name="title_camera">Camera</string>
+    <string name="widget_step_medium_name">Activity &amp; Steps</string>
+    <string name="widget_step_medium_desc">Track your live steps, goal progress, distance, and calories burned.</string>
+    <string name="widget_step_small_name">Quick Step Counter</string>
+    <string name="widget_step_small_desc">Glanceable step count and goal percentage.</string>
+    <string name="widget_fitness_large_name">Daily Fitness Overview</string>
+    <string name="widget_fitness_large_desc">Comprehensive dashboard tracking steps, calorie balance, and hydration.</string>
 </resources>

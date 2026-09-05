@@ -237,6 +237,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Refresh home screen widgets
+        try {
+            com.fittracker.widget.FitTrackerWidgetUpdater.updateAllWidgets(this)
+        } catch (_: Exception) {}
+
         // If activity recognition permission is granted, perform a fresh fast step check
         if (hasActivityRecognitionPermission()) {
             jsBridge.requestStepSync()
