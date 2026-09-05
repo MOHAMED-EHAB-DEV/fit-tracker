@@ -444,7 +444,8 @@ class AppUpdateManager(private val context: Context) {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val apkFile = File(activity.cacheDir, "FitTracker-update.apk")
+                val downloadDir = activity.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS) ?: activity.cacheDir
+                val apkFile = File(downloadDir, "FitTracker-update.apk")
                 if (apkFile.exists()) {
                     apkFile.delete()
                 }
@@ -541,6 +542,22 @@ class AppUpdateManager(private val context: Context) {
             return
         }
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (!context.packageManager.canRequestPackageInstalls()) {
+                Toast.makeText(
+                    context,
+                    "Please allow FitTracker to install updates, then retry.",
+                    Toast.LENGTH_LONG
+                ).show()
+                val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                return
+            }
+        }
+
         try {
             val apkUri = FileProvider.getUriForFile(
                 context,
@@ -552,6 +569,19 @@ class AppUpdateManager(private val context: Context) {
                 setDataAndType(apkUri, "application/vnd.android.package-archive")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+
+            // Explicitly grant read permissions to all candidate package installer handlers
+            val resInfoList = context.packageManager.queryIntentActivities(
+                installIntent,
+                android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
+            )
+            for (resolveInfo in resInfoList) {
+                context.grantUriPermission(
+                    resolveInfo.activityInfo.packageName,
+                    apkUri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
             }
 
             context.startActivity(installIntent)
