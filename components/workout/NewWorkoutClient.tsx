@@ -1,17 +1,35 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Dumbbell, ArrowRight, LayoutTemplate, Loader2, Calendar } from "lucide-react";
+import { Dumbbell, ArrowRight, LayoutTemplate, Loader2, Calendar, Sparkles } from "lucide-react";
 import { DayOfWeek } from "@/lib/db/models/Workout";
 import { DAYS_OF_WEEK } from "@/constants/workout";
+import { DEFAULT_WORKOUT_TEMPLATES } from "@/lib/fitness/default-templates";
 
 export function NewWorkoutClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const templateIdParam = searchParams.get("templateId") || "";
+
   const [name, setName] = useState("");
   const [dayOfWeek, setDayOfWeek] = useState<DayOfWeek>("saturday");
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedTemplateName, setSelectedTemplateName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (templateIdParam) {
+      if (templateIdParam.startsWith("curated-")) {
+        const found = DEFAULT_WORKOUT_TEMPLATES.find((t) => t._id === templateIdParam);
+        if (found) {
+          setName(found.name);
+          setSelectedTemplateName(found.name);
+          if (found.dayOfWeek) setDayOfWeek(found.dayOfWeek as DayOfWeek);
+        }
+      }
+    }
+  }, [templateIdParam]);
 
   const handleCreateWorkoutSheet = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,6 +42,8 @@ export function NewWorkoutClient() {
         body: JSON.stringify({
           name: name.trim() || `${dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1)} Workout`,
           dayOfWeek,
+          templateId: templateIdParam || undefined,
+          status: "in_progress",
         }),
       });
 
@@ -72,7 +92,7 @@ export function NewWorkoutClient() {
                     type="button"
                     aria-pressed={isSelected}
                     onClick={() => setDayOfWeek(d.key)}
-                    className={`py-2 px-1 min-h-[40px] rounded-xl text-xs font-bold transition text-center border cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
+                    className={`py-2 px-1 min-h-10 rounded-xl text-xs font-bold transition text-center border cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
                       isSelected
                         ? "bg-emerald-500 text-zinc-950 border-emerald-500 shadow-md shadow-emerald-500/20"
                         : "bg-zinc-950/60 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-white"
@@ -97,7 +117,7 @@ export function NewWorkoutClient() {
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Push Day (Chest & Triceps), Heavy Legs..."
               autoFocus
-              className="w-full px-4 py-3 min-h-[44px] bg-zinc-950 border border-zinc-700/60 rounded-2xl text-white font-semibold placeholder-zinc-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              className="w-full px-4 py-3 min-h-11 bg-zinc-950 border border-zinc-700/60 rounded-2xl text-white font-semibold placeholder-zinc-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             />
           </div>
 
@@ -105,7 +125,7 @@ export function NewWorkoutClient() {
             type="submit"
             disabled={isLoading}
             aria-busy={isLoading}
-            className="w-full py-3.5 px-4 min-h-[44px] bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-extrabold rounded-2xl shadow-lg shadow-emerald-500/25 transition active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+            className="w-full py-3.5 px-4 min-h-11 bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-extrabold rounded-2xl shadow-lg shadow-emerald-500/25 transition active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
           >
             {isLoading ? (
               <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />

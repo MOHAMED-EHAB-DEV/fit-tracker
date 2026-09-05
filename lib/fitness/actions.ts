@@ -202,7 +202,10 @@ export async function updateProfileSettingsAction(payload: {
         targetFatG,
         targetFiberG,
       },
-      preferences: payload.preferences,
+      preferences: {
+        ...(user.preferences || {}),
+        ...payload.preferences,
+      },
       computed: {
         bmr,
         tdee,

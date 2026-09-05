@@ -37,6 +37,8 @@ export async function GET(request: NextRequest) {
   }
 }
 
+import { DEFAULT_WORKOUT_TEMPLATES } from "@/lib/fitness/default-templates";
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession();
@@ -55,10 +57,56 @@ export async function POST(request: NextRequest) {
     const workoutDate = body.startedAt || body.date ? new Date(body.startedAt || body.date) : new Date();
     const weekStartDate = getWeekStartDateString(workoutDate);
     const dayOfWeek = (body.dayOfWeek || "saturday").toLowerCase();
-    const status = body.status || "completed";
+    const status = body.status || "in_progress";
 
     let totalVolume = 0;
-    const exerciseList = exercises || [];
+    let exerciseList = exercises || [];
+
+    // Auto-populate exercises if templateId is specified and exercises array is empty
+    if (exerciseList.length === 0 && templateId) {
+      if (typeof templateId === "string" && templateId.startsWith("curated-")) {
+        const curated = DEFAULT_WORKOUT_TEMPLATES.find((t) => t._id === templateId);
+        if (curated) {
+          exerciseList = curated.exercises.map((ex) => {
+            const targetReps = parseInt(ex.repRange.split("-")[1] || ex.repRange.split("-")[0], 10) || 10;
+            return {
+              name: ex.name,
+              muscleGroup: ex.muscleGroup,
+              sets: Array.from({ length: ex.sets }).map(() => ({
+                targetReps,
+                targetWeight: null,
+                completedReps: null,
+                weight: null,
+                rpe: null,
+                isWarmup: false,
+                isPR: false,
+              })),
+            };
+          });
+        }
+      } else {
+        const WorkoutTemplate = (await import("@/lib/db/models/WorkoutTemplate")).default;
+        const dbTpl = await WorkoutTemplate.findById(templateId).lean();
+        if (dbTpl) {
+          exerciseList = dbTpl.exercises.map((ex: any) => {
+            const targetReps = parseInt(ex.repRange.split("-")[1] || ex.repRange.split("-")[0], 10) || 10;
+            return {
+              name: ex.name,
+              catalogId: ex.catalogId,
+              sets: Array.from({ length: ex.sets }).map(() => ({
+                targetReps,
+                targetWeight: null,
+                completedReps: null,
+                weight: null,
+                rpe: null,
+                isWarmup: false,
+                isPR: false,
+              })),
+            };
+          });
+        }
+      }
+    }
 
     const catalogIds = exerciseList.map((e: any) => e.catalogId).filter(Boolean);
     const catalogDocs = await ExerciseCatalog.find({ _id: { $in: catalogIds } }).select("_id metValue").lean();

@@ -18,6 +18,8 @@ import { RecentPRsWidget, IRecentPR } from "@/components/dashboard/RecentPRsWidg
 import { WeightTrendWidget, type IWeightDataPoint } from "@/components/dashboard/WeightTrendWidget";
 import { WaterCounter } from "@/components/dashboard/WaterCounter";
 import { MealTimeline } from "@/components/dashboard/MealTimeline";
+import { StreakWidget } from "@/components/dashboard/StreakWidget";
+import { calculateStreak } from "@/lib/fitness/streak";
 import { DAYS_OF_WEEK as DAYS_LIST } from "@/constants/workout";
 
 async function DashboardContent() {
@@ -29,7 +31,7 @@ async function DashboardContent() {
   const weekDateStrings = getWeekDatesStrings(weekStartStr);
 
   // Parallel database reads
-  const [todayLog, weekLogs, todayMeals, weekWorkouts, allWorkouts, bodyCompLogs, prWorkouts] = await Promise.all([
+  const [todayLog, weekLogs, todayMeals, weekWorkouts, allWorkouts, bodyCompLogs, prWorkouts, allDailyLogs] = await Promise.all([
     DailyLog.findOne({ userId: user?._id, dateString: todayStr }).lean(),
     DailyLog.find({ userId: user?._id, dateString: { $in: weekDateStrings } }).lean(),
     Meal.find({ userId: user?._id, dateString: todayStr }).sort({ createdAt: 1 }).lean(),
@@ -37,7 +39,17 @@ async function DashboardContent() {
     Workout.find({ userId: user?._id }).sort({ updatedAt: -1 }).lean(),
     BodyComp.find({ userId: user?._id }).sort({ checkInDate: 1 }).limit(10).lean(),
     Workout.find({ userId: user?._id, status: "completed" }).sort({ completedAt: -1 }).limit(20).lean(),
+    DailyLog.find({ userId: user?._id }).select("dateString caloriesIn steps waterMl").lean(),
   ]);
+
+  // Compute habit consistency and streak data
+  const activeDates = new Set<string>();
+  allDailyLogs.forEach((l: any) => {
+    if (l.dateString && ((l.caloriesIn || 0) > 0 || (l.steps || 0) > 0 || (l.waterMl || 0) > 0)) {
+      activeDates.add(l.dateString);
+    }
+  });
+  const streakData = calculateStreak(activeDates, todayStr);
 
   const userBmr = user?.computed?.bmr || 1600;
   const targetCalories = user?.fitnessProfile?.targetCalories || user?.computed?.tdee || 2400;
@@ -359,6 +371,9 @@ async function DashboardContent() {
           <span>Record Workout Stats</span>
         </Link>
       </div>
+
+      {/* Gamified Habit Streak & Milestones */}
+      <StreakWidget streak={streakData} />
 
       {/* Primary Key Metrics Grid (Calories, Protein, Steps, Water) */}
       <MetricsGrid stats={stats} />

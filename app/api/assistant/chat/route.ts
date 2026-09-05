@@ -159,6 +159,10 @@ export async function POST(request: NextRequest) {
     await getDb();
     const todayStr = getTodayDateString();
 
+    const userDoc = await User.findById(session.userId).select("preferences.customGeminiApiKey").lean();
+    const userApiKey = userDoc?.preferences?.customGeminiApiKey?.trim() || undefined;
+    const hasGeminiKey = Boolean(userApiKey || process.env.GEMINI_API_KEY);
+
     // 3. Check for Slash Commands or explicit Data Injection
     const parsedCmd = parseCoachCommand(safeMessage, requestedModel);
 
@@ -176,7 +180,7 @@ export async function POST(request: NextRequest) {
       let reply = "I analyzed your data!";
       let modelUsedToReturn = targetModel;
 
-      if (process.env.GEMINI_API_KEY) {
+      if (hasGeminiKey) {
         try {
           const promptParts: string[] = [
             "=== USER COMPRESSED FITNESS DATA CONTEXT ===",
@@ -212,6 +216,7 @@ export async function POST(request: NextRequest) {
             primaryModel: targetModel,
             fallbackModel: fallbackFlashModel,
             contents,
+            apiKey: userApiKey,
             config: createGeminiConfig({
               systemInstruction: AI_COACH_SYSTEM_PROMPT,
               maxOutputTokens: 3000,
@@ -228,7 +233,7 @@ export async function POST(request: NextRequest) {
           reply = `⚠️ Error (${status}): ${errDetail}`;
         }
       } else {
-        reply = "⚠️ Error (500): GEMINI_API_KEY is not configured on the server.";
+        reply = "⚠️ Error (500): No Gemini API Key configured. Add your free key in Settings.";
       }
 
       return NextResponse.json({
@@ -249,7 +254,7 @@ export async function POST(request: NextRequest) {
 
     const targetModel = resolveGeminiModel(requestedModel);
 
-    if (process.env.GEMINI_API_KEY) {
+    if (hasGeminiKey) {
       try {
         const promptParts: string[] = [];
 
@@ -282,6 +287,7 @@ export async function POST(request: NextRequest) {
           primaryModel: targetModel,
           fallbackModel: fallbackFlashModel,
           contents,
+          apiKey: userApiKey,
           config: createGeminiConfig({
             systemInstruction: MULTI_LOG_SYSTEM_PROMPT,
             responseMimeType: "application/json",
@@ -324,7 +330,7 @@ export async function POST(request: NextRequest) {
         parsedResult.chatReply = `⚠️ Error (${status}): ${errDetail}`;
       }
     } else {
-      parsedResult.chatReply = "⚠️ Error (500): GEMINI_API_KEY is not configured on the server.";
+      parsedResult.chatReply = "⚠️ Error (500): No Gemini API Key configured. Add your free key in Settings.";
     }
 
     // Orchestrate batch writes for parsed items if any

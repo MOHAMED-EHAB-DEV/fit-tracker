@@ -3,6 +3,7 @@ import { getFullUser } from "@/lib/auth/session";
 import { UserProvider } from "@/context/UserContext";
 import { Sidebar } from "@/components/shared/Sidebar";
 import { MobileNav } from "@/components/shared/MobileNav";
+import { InstallPwaBanner } from "@/components/pwa/InstallPwaBanner";
 import { redirect } from "next/navigation";
 
 async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
@@ -28,6 +29,7 @@ async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
           </div>
         </main>
         <MobileNav />
+        <InstallPwaBanner />
       </div>
     </UserProvider>
   );

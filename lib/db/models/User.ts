@@ -36,6 +36,7 @@ export interface IUser extends Document {
     timezone: string;
     weightUnit: "kg" | "lbs";
     restTimerDefaultSec: number | null;
+    customGeminiApiKey?: string | null;
   };
   weeklyRoutine: IWeeklyRoutineDay[];
   computed: {
@@ -96,6 +97,7 @@ const UserSchema = new Schema<IUser>(
       timezone: { type: String, default: "Africa/Cairo" },
       weightUnit: { type: String, enum: ["kg", "lbs"], default: "kg" },
       restTimerDefaultSec: { type: Number, default: null },
+      customGeminiApiKey: { type: String, default: null },
     },
     weeklyRoutine: {
       type: [

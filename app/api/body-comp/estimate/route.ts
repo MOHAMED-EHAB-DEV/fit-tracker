@@ -19,9 +19,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
+    await getDb();
+    const userDoc = await User.findById(session.userId).select("preferences.customGeminiApiKey").lean();
+    const userApiKey = userDoc?.preferences?.customGeminiApiKey?.trim() || undefined;
+
+    if (!userApiKey && !process.env.GEMINI_API_KEY) {
       return NextResponse.json(
-        { success: false, error: "Gemini API key is not configured." },
+        { success: false, error: "No Gemini API key configured. Add your free key in Settings." },
         { status: 503 }
       );
     }
@@ -114,6 +118,7 @@ export async function POST(request: NextRequest) {
       primaryModel: flashModel,
       fallbackModel: fallbackFlashModel,
       contents,
+      apiKey: userApiKey,
       config: createGeminiConfig({
         systemInstruction: BODY_COMP_SYSTEM_PROMPT,
         responseMimeType: "application/json",

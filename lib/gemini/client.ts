@@ -126,12 +126,14 @@ export async function generateContentWithFallback(options: {
   config?: any;
   primaryModel?: string;
   fallbackModel?: string;
+  apiKey?: string;
 }): Promise<{ text: string | undefined; modelUsed: string; response: any }> {
   const primary = options.primaryModel || flashModel;
   const fallback = options.fallbackModel || fallbackFlashModel;
+  const client = options.apiKey?.trim() ? new GoogleGenAI({ apiKey: options.apiKey.trim() }) : genAI;
 
   try {
-    const response = await genAI.models.generateContent({
+    const response = await client.models.generateContent({
       model: primary,
       contents: options.contents,
       config: options.config,
@@ -148,7 +150,7 @@ export async function generateContentWithFallback(options: {
     );
 
     try {
-      const fallbackResponse = await genAI.models.generateContent({
+      const fallbackResponse = await client.models.generateContent({
         model: fallback,
         contents: options.contents,
         config: options.config,

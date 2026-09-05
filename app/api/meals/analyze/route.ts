@@ -3,6 +3,7 @@ import { getServerSession } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/mongoose";
 import Meal from "@/lib/db/models/Meal";
 import DailyLog from "@/lib/db/models/DailyLog";
+import User from "@/lib/db/models/User";
 import cloudinary from "@/lib/cloudinary";
 import genAI, {
   flashModel,
@@ -149,12 +150,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (!process.env.GEMINI_API_KEY) {
+    await getDb();
+    const userDoc = await User.findById(session.userId).select("preferences.customGeminiApiKey").lean();
+    const userApiKey = userDoc?.preferences?.customGeminiApiKey?.trim() || undefined;
+
+    if (!userApiKey && !process.env.GEMINI_API_KEY) {
       return NextResponse.json(
-        { success: false, error: "GEMINI_API_KEY is not configured on the server." },
+        { success: false, error: "No Gemini API Key configured. Add your free key in Settings." },
         { status: 500 }
       );
     }
+
+    const targetDateStr = dateStringParam || getTodayDateString();
 
     // Call Gemini for structured nutritional estimation
     let analysis: {
@@ -180,13 +187,10 @@ export async function POST(request: NextRequest) {
       }
 
       const promptText = [
-        `Target Meal Category: ${mealType}`,
-        description.trim()
-          ? `User Provided Notes / Ingredients: "${description.trim()}"`
-          : `User Provided Notes: None (Perform visual plate analysis).`,
-        `Input Modality: ${base64Image ? "Photo + text description" : "Text description only"}.`,
+        `User Meal Context / Description: "${description || "(No description provided, analyze from image)"}"`,
+        `Logged Date: ${targetDateStr}`,
         "",
-        "Evaluation Protocol:",
+        "Instructions:",
         "1. Deconstruct every visible or described food item into specific ingredients (proteins, carbs, fats, vegetables, dairy, sauces, cooking oils).",
         "2. Estimate realistic portion sizes using metric units (grams 'g' or milliliters 'ml') and specify cooked vs raw state.",
         "3. Account for cooking fats (e.g., 5g–10g oil/butter for pan-searing or roasting) unless explicitly oil-free.",
@@ -202,6 +206,7 @@ export async function POST(request: NextRequest) {
         primaryModel: flashModel,
         fallbackModel: fallbackFlashModel,
         contents,
+        apiKey: userApiKey,
         config: createGeminiConfig({
           systemInstruction: MEAL_ANALYZER_SYSTEM_PROMPT,
           responseMimeType: "application/json",
@@ -283,7 +288,6 @@ export async function POST(request: NextRequest) {
 
     // Direct immediate save flow (if requested)
     await getDb();
-    const targetDateStr = dateStringParam || getTodayDateString();
 
     const meal = await Meal.create({
       userId: session.userId,

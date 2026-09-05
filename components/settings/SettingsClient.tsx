@@ -12,6 +12,11 @@ import {
   Flame,
   Zap,
   Dumbbell,
+  Key,
+  Download,
+  ExternalLink,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import versionData from "@/version.json";
 import { ActivityLevel, FitnessGoal, Sex } from "@/types/fitness";
@@ -59,6 +64,9 @@ export function SettingsClient({ initialUser }: SettingsClientProps = {}) {
   const [stepGoal, setStepGoal] = useState(user?.preferences?.stepGoal ? String(user.preferences.stepGoal) : "10000");
   const [waterGoalMl, setWaterGoalMl] = useState(user?.preferences?.waterGoalMl ? String(user.preferences.waterGoalMl) : "3000");
   const [restTimerDefaultSec, setRestTimerDefaultSec] = useState(user?.preferences?.restTimerDefaultSec ? String(user.preferences.restTimerDefaultSec) : "90");
+  const [customGeminiApiKey, setCustomGeminiApiKey] = useState(user?.preferences?.customGeminiApiKey || "");
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   // Macro Targets State
   const [targetCalories, setTargetCalories] = useState(user?.fitnessProfile?.targetCalories ? String(user.fitnessProfile.targetCalories) : "");
@@ -86,6 +94,7 @@ export function SettingsClient({ initialUser }: SettingsClientProps = {}) {
       if (user.preferences?.stepGoal) setStepGoal(String(user.preferences.stepGoal));
       if (user.preferences?.waterGoalMl) setWaterGoalMl(String(user.preferences.waterGoalMl));
       if (user.preferences?.restTimerDefaultSec) setRestTimerDefaultSec(String(user.preferences.restTimerDefaultSec));
+      if (user.preferences?.customGeminiApiKey) setCustomGeminiApiKey(user.preferences.customGeminiApiKey);
 
       if (user.fitnessProfile?.targetCalories) setTargetCalories(String(user.fitnessProfile.targetCalories));
       else if (user.computed?.tdee) setTargetCalories(String(user.computed.tdee));
@@ -129,6 +138,7 @@ export function SettingsClient({ initialUser }: SettingsClientProps = {}) {
           stepGoal: parseInt(stepGoal, 10) || 10000,
           waterGoalMl: parseInt(waterGoalMl, 10) || 3000,
           restTimerDefaultSec: parseInt(restTimerDefaultSec, 10) || 90,
+          customGeminiApiKey: customGeminiApiKey.trim() || null,
         },
       });
 
@@ -143,6 +153,30 @@ export function SettingsClient({ initialUser }: SettingsClientProps = {}) {
       setError(err.message || "Failed to update profile");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleExportData = async () => {
+    setIsExporting(true);
+    try {
+      const res = await fetch("/api/user/export");
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || "Failed to export data");
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `fit-tracker-export-${new Date().toISOString().split("T")[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setError(err.message || "Export failed");
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -273,6 +307,62 @@ export function SettingsClient({ initialUser }: SettingsClientProps = {}) {
                   onChange={(e) => setRestTimerDefaultSec(e.target.value)}
                   placeholder="e.g. 90"
                 />
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+
+        {/* Gemini AI BYOK Card */}
+        <Card variant="default">
+          <CardHeader>
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-2 text-white font-bold text-base">
+                <Key className="w-5 h-5 text-emerald-400" aria-hidden="true" />
+                <span>AI Intelligence & Custom Gemini Key</span>
+              </div>
+              <Chip
+                variant="flat"
+                color={customGeminiApiKey.trim() ? "primary" : "default"}
+                size="sm"
+              >
+                {customGeminiApiKey.trim() ? "Custom Key Active" : "Server Default"}
+              </Chip>
+            </div>
+          </CardHeader>
+          <CardBody className="space-y-4">
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              FitTracker uses Google Gemini for food recognition, coaching, and body composition estimation. Provide your own free API key from Google AI Studio to run unlimited personal inferences with zero cost and maximum privacy.
+            </p>
+
+            <div className="space-y-2">
+              <div className="relative">
+                <Input
+                  label="Google Gemini API Key (Optional)"
+                  type={showApiKey ? "text" : "password"}
+                  value={customGeminiApiKey}
+                  onChange={(e) => setCustomGeminiApiKey(e.target.value)}
+                  placeholder="AIzaSy..."
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  className="absolute inset-e-3 top-9 text-zinc-400 hover:text-zinc-200 transition"
+                  aria-label={showApiKey ? "Hide API key" : "Show API key"}
+                >
+                  {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-zinc-500 pt-1">
+                <span>Stored securely in your profile preferences</span>
+                <a
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-emerald-400 hover:text-emerald-300 font-medium transition"
+                >
+                  <span>Get Free Key at Google AI Studio</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
               </div>
             </div>
           </CardBody>
@@ -426,6 +516,38 @@ export function SettingsClient({ initialUser }: SettingsClientProps = {}) {
               className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
             >
               Log Out All Other Devices
+            </Button>
+          </div>
+        </CardBody>
+      </Card>
+
+      {/* Data Portability & GDPR Export */}
+      <Card variant="default">
+        <CardHeader>
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-2 text-white font-bold text-base">
+              <Download className="w-5 h-5 text-emerald-400" aria-hidden="true" />
+              <span>Data Portability & 1-Click Backup</span>
+            </div>
+            <Chip variant="flat" color="primary" size="sm">
+              JSON Archive
+            </Chip>
+          </div>
+        </CardHeader>
+        <CardBody className="space-y-3">
+          <p className="text-xs text-zinc-400 leading-relaxed">
+            Download your complete health archive — including daily nutrition logs, workout history, body composition check-ins, and personal records. Zero platform lock-in.
+          </p>
+          <div>
+            <Button
+              type="button"
+              variant="bordered"
+              size="sm"
+              isLoading={isExporting}
+              onClick={handleExportData}
+              startContent={<Download className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />}
+            >
+              Export Complete Fitness Data (JSON)
             </Button>
           </div>
         </CardBody>
