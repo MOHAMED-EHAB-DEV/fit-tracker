@@ -1,6 +1,6 @@
-# FitTracker Release Notes — Widget Inflation & Launcher Compatibility Patch
+# FitTracker Release Notes — Native Home Screen Widgets & Habit Gamification
 
-> **Release Version**: 1.1.1  
+> **Release Version**: 1.2.0  
 > **Target Framework**: Next.js 16.3.1 · React 19.2.8 · Android SDK 34  
 > **Environment**: Android Native App, Home Screen Widgets & Web Platform  
 > **Date**: 2026-09-05
@@ -9,45 +9,46 @@
 
 ## 🚀 Overview
 
-This patch release fixes a critical RemoteViews layout inflation failure on Android home screens and resolves missing preview cards in the system widget selector.
-
----
-
-## 🐛 Bug Fixes & Improvements
-
-- **RemoteViews Class Compatibility**: Replaced forbidden `<View>` spacer tags with RemoteViews-whitelisted `<FrameLayout>` in all widget layouts (`widget_step_small.xml`, `widget_step_medium.xml`, `widget_fitness_large.xml`), resolving launcher `InflateException` ("Couldn't add widget").
-- **Widget Picker Previews**: Added `android:previewLayout` to all widget metadata providers (`widget_step_small_info.xml`, `widget_step_medium_info.xml`, `widget_fitness_large_info.xml`) for Android 12+ real-time layout rendering in launcher widget pickers.
-- **Distinct Receiver Labels**: Configured individual receiver `android:label` entries in `AndroidManifest.xml` so each widget displays its descriptive name instead of repeating generic app title.
+FitTracker **v1.2.0** introduces native Android home screen habit streak integration, 1-click widget pinning from the web view, an interactive Widgets Gallery, and a zero-cost value suite including Bring Your Own Key (BYOK) Gemini AI support, privacy data export, and curated workout splits.
 
 ---
 
 ## 📦 Key Highlights & Enhancements
 
-### 1. Live Home Screen Widgets Suite
-- **Activity & Steps Widget (Medium 4x2)**: Live step count, goal percentage, custom emerald progress bar, distance (km), active calories burned, live status badge, and an interactive instant sync button.
-- **Quick Step Counter (Small 2x2)**: Compact glanceable card with step count, progress bar, goal indicator, and tap-to-launch.
-- **Daily Fitness Overview (Large 4x3)**: Comprehensive health dashboard tracking Steps, Caloric balance (In vs Target), and Hydration (ml vs Target).
+### 1. Android Home Screen Habit Streak Widget
+- **Live Flame Badge**: Integrated live habit streak counter (`🔥 Xd Streak`) into the header of `widget_fitness_large.xml`.
+- **Bidirectional Telemetry Sync**: Synchronizes consecutive logging days, longest streaks, and daily active status from `StreakWidget.tsx` through `JSBridge.updateWidgetData()` into native `WidgetDataStore.kt`.
+- **Automatic Lifecycle Refresh**: Widgets refresh seamlessly on resume, daily sensor updates, and background WorkManager synchronization.
 
-### 2. Glassmorphic Aesthetic & Design System
-- **Frosted Glass Cards**: Angled translucent dark gradient (`#E616161B` to `#E60A0A0D`) with 1.2dp rim-light border (`#2EFFFFFF`) and 20dp corners matching launcher styling.
-- **Translucent Accent Chips**: Glass sub-chips for metrics (`#14FFFFFF` with `#1FFFFFFF` border).
-- **Emerald Glow Badges**: Live indicator badge with translucent emerald pill styling (`#2610B981` background, `#4D10B981` border).
-- **Curated Palette Tokens**: Added `widget_glass_bg`, `widget_glass_border`, `widget_glass_surface`, `widget_glass_emerald`, `widget_glass_orange`, `widget_glass_cyan` in `colors.xml`.
+### 2. 1-Click Native Widget Pinning API
+- **AppWidgetManager Integration**: Implemented `AppWidgetManager.requestPinAppWidget()` inside `JSBridge.kt` (Android 8.0+ / API 26+).
+- **Launcher Confirmation**: Users can add any widget directly to their Android launcher from inside the app with a single click, without navigating through system widget menus.
 
-### 3. Battery Optimization Architecture
-- **Event-Driven Telemetry**: Zero background polling loops and zero CPU wake-locks. Updates are triggered purely by hardware sensor step count deltas, periodic WorkManager syncs, or user interaction.
-- **Sensor Batching**: Uses Android's non-wake-up step sensor (`Sensor.TYPE_STEP_COUNTER, false`) when available to prevent unnecessary CPU wakeups.
-- **Instant Non-Blocking Sync**: Tapping the sync button executes a fast one-shot sensor read with a strict 1500ms timeout in a background coroutine without launching the main app.
-- **Safe Fallback Update Period**: `updatePeriodMillis` set to 30 minutes, respecting Android battery preservation standards.
+### 3. Interactive Widgets Gallery (`/widgets`)
+- **Visual Mockups**: High-fidelity live previews of all 3 home screen widgets:
+  - **Quick Pedometer (2x2 Small)**
+  - **Activity & Steps Bar (4x2 Medium)**
+  - **Complete Fitness & Habit Hub (4x3 Large)**
+- **Add to Home Screen Buttons**: 1-click pinning triggers the native Android launcher prompt.
+- **Quick Access**: Accessible from the Settings page and direct navigation.
 
-### 4. Bidirectional Native & Web Synchronization
-- **Android JSBridge**: Added `updateWidgetData(json)` to `JSBridge.kt` allowing the Next.js app to update native widget goals, calories, and hydration levels in real time.
-- **Web App Bridge Service**: Added `syncWidgetData()` in `services/webview-bridge.ts` and automated synchronization in `MetricsGrid.tsx`.
-- **Lifecycle Synchronization**: Widgets automatically refresh in `MainActivity.onResume()` and background `StepSyncWorker.doWork()`.
+### 4. Bring Your Own Key (BYOK) for Gemini AI
+- **Zero Operating Costs**: Users can supply their free Google AI Studio API key in Settings to run personal inferences with unlimited rate limits.
+- **Per-Request Override**: Gracefully falls back to the server environment key if no personal key is entered.
+
+### 5. 1-Click Privacy Data Export (GDPR / Backup)
+- **Zero Lock-In**: Dedicated `/api/user/export` endpoint generating a structured JSON archive of user profile, daily nutrition logs, workout history, body composition check-ins, and personal records.
+
+### 6. Curated Workout Splits & Auto-Seeding
+- **Battle-Tested Templates**: Preloaded with 6 structured training splits (Push, Pull, Legs, Upper Power, Lower Power, Full Body Foundation).
+- **Auto-Population**: Creating a workout from a template automatically prefills exercise names, muscle groups, sets, and rep ranges.
+
+### 7. PWA Mobile Web Experience
+- **1-Click Web App Installation**: Responsive, dismissible banner supporting Chromium `beforeinstallprompt` and step-by-step "Add to Home Screen" instructions for iOS Safari.
 
 ---
 
 ## 🛠️ Validation & Code Quality
-- **Full Android SDK 24–34 Compatibility**: Native `RemoteViews`, `AppWidgetProvider`, and `PendingIntent` with explicit mutability flags.
-- **RTL & Logical Spacing**: Applied logical attributes (`paddingStart`, `paddingEnd`, `layout_marginStart`, `layout_marginEnd`).
-- **Zero Build Warnings**: Strict layout and Kotlin typing adherence.
+- **Zero Build / TypeScript Warnings**: Full strict mode typing adherence with `tsc --noEmit`.
+- **RemoteViews Architecture**: 100% compliant with Android RemoteViews layout constraints.
+- **RTL & Logical Spacing**: Applied logical attributes (`paddingStart`, `paddingEnd`, `layout_marginStart`, `layout_marginEnd`, `inset-s-`, `inset-e-`).

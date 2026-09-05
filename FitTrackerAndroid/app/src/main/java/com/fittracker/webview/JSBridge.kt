@@ -147,6 +147,9 @@ class JSBridge(
             val targetCalories = if (obj.has("targetCalories")) obj.getInt("targetCalories") else null
             val waterMl = if (obj.has("waterMl")) obj.getInt("waterMl") else null
             val waterGoalMl = if (obj.has("waterGoalMl")) obj.getInt("waterGoalMl") else null
+            val streakDays = if (obj.has("streakDays")) obj.getInt("streakDays") else null
+            val longestStreak = if (obj.has("longestStreak")) obj.getInt("longestStreak") else null
+            val isLoggedToday = if (obj.has("isLoggedToday")) obj.getBoolean("isLoggedToday") else null
 
             com.fittracker.widget.WidgetDataStore.updateAllMetrics(
                 context = context,
@@ -155,12 +158,50 @@ class JSBridge(
                 caloriesIn = caloriesIn,
                 targetCalories = targetCalories,
                 waterMl = waterMl,
-                waterGoalMl = waterGoalMl
+                waterGoalMl = waterGoalMl,
+                streakDays = streakDays,
+                longestStreak = longestStreak,
+                isLoggedToday = isLoggedToday
             )
             com.fittracker.widget.FitTrackerWidgetUpdater.updateAllWidgets(context)
-            Log.d(TAG, "Widget telemetry synced from web application.")
+            Log.d(TAG, "Widget telemetry synced from web application (including streak).")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse widget data JSON: ${e.localizedMessage}")
+        }
+    }
+
+    /**
+     * Checks whether the Android launcher supports one-click widget pinning (Android 8.0+ / API 26+).
+     */
+    @JavascriptInterface
+    fun isPinWidgetSupported(): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return false
+        val appWidgetManager = context.getSystemService(android.appwidget.AppWidgetManager::class.java) ?: return false
+        return appWidgetManager.isRequestPinAppWidgetSupported
+    }
+
+    /**
+     * Prompts the Android launcher to pin a selected widget to the home screen.
+     */
+    @JavascriptInterface
+    fun pinWidget(type: String?): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return false
+        val appWidgetManager = context.getSystemService(android.appwidget.AppWidgetManager::class.java) ?: return false
+        if (!appWidgetManager.isRequestPinAppWidgetSupported) return false
+
+        val providerClass = when (type?.lowercase()?.trim()) {
+            "small", "quick", "step_small" -> com.fittracker.widget.FitTrackerQuickWidget::class.java
+            "medium", "step", "activity" -> com.fittracker.widget.FitTrackerStepWidget::class.java
+            "large", "fitness", "overview" -> com.fittracker.widget.FitTrackerFitnessWidget::class.java
+            else -> com.fittracker.widget.FitTrackerFitnessWidget::class.java
+        }
+
+        val provider = android.content.ComponentName(context, providerClass)
+        return try {
+            appWidgetManager.requestPinAppWidget(provider, null, null)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to requestPinAppWidget for $type: ${e.localizedMessage}")
+            false
         }
     }
 

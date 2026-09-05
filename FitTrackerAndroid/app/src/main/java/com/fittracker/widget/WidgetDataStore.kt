@@ -11,6 +11,9 @@ data class WidgetFitnessData(
     val targetCalories: Int = 2400,
     val waterMl: Int = 0,
     val waterGoalMl: Int = 3000,
+    val streakDays: Int = 0,
+    val longestStreak: Int = 0,
+    val isLoggedToday: Boolean = false,
     val lastUpdateTimestamp: Long = 0L
 ) {
     val distanceKm: Float
@@ -57,6 +60,9 @@ data class WidgetFitnessData(
 
     val formattedStepGoalText: String
         get() = String.format(Locale.US, "Goal: %,d steps", stepGoal)
+
+    val formattedStreak: String
+        get() = if (streakDays > 0) String.format(Locale.US, "%d Days", streakDays) else "0 Days"
 }
 
 object WidgetDataStore {
@@ -68,6 +74,9 @@ object WidgetDataStore {
     private const val KEY_TARGET_CALORIES = "widget_target_calories"
     private const val KEY_WATER_ML = "widget_water_ml"
     private const val KEY_WATER_GOAL_ML = "widget_water_goal_ml"
+    private const val KEY_STREAK_DAYS = "widget_streak_days"
+    private const val KEY_LONGEST_STREAK = "widget_longest_streak"
+    private const val KEY_IS_LOGGED_TODAY = "widget_is_logged_today"
     private const val KEY_LAST_UPDATE = "widget_last_update_ts"
 
     private fun getPrefs(context: Context): SharedPreferences {
@@ -83,6 +92,9 @@ object WidgetDataStore {
             targetCalories = prefs.getInt(KEY_TARGET_CALORIES, 2400),
             waterMl = prefs.getInt(KEY_WATER_ML, 0),
             waterGoalMl = prefs.getInt(KEY_WATER_GOAL_ML, 3000),
+            streakDays = prefs.getInt(KEY_STREAK_DAYS, 0),
+            longestStreak = prefs.getInt(KEY_LONGEST_STREAK, 0),
+            isLoggedToday = prefs.getBoolean(KEY_IS_LOGGED_TODAY, false),
             lastUpdateTimestamp = prefs.getLong(KEY_LAST_UPDATE, System.currentTimeMillis())
         )
     }
@@ -101,7 +113,10 @@ object WidgetDataStore {
         caloriesIn: Int? = null,
         targetCalories: Int? = null,
         waterMl: Int? = null,
-        waterGoalMl: Int? = null
+        waterGoalMl: Int? = null,
+        streakDays: Int? = null,
+        longestStreak: Int? = null,
+        isLoggedToday: Boolean? = null
     ) {
         val editor = getPrefs(context).edit()
         steps?.let { editor.putLong(KEY_STEPS, it) }
@@ -110,6 +125,9 @@ object WidgetDataStore {
         targetCalories?.let { editor.putInt(KEY_TARGET_CALORIES, it) }
         waterMl?.let { editor.putInt(KEY_WATER_ML, it) }
         waterGoalMl?.let { editor.putInt(KEY_WATER_GOAL_ML, it) }
+        streakDays?.let { editor.putInt(KEY_STREAK_DAYS, it) }
+        longestStreak?.let { editor.putInt(KEY_LONGEST_STREAK, it) }
+        isLoggedToday?.let { editor.putBoolean(KEY_IS_LOGGED_TODAY, it) }
         editor.putLong(KEY_LAST_UPDATE, System.currentTimeMillis())
         editor.apply()
     }

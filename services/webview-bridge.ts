@@ -14,6 +14,8 @@ export interface AndroidBridgeInterface {
   checkForUpdate?: () => void;
   openExternalUrl?: (url: string) => void;
   updateWidgetData?: (json: string) => void;
+  pinWidget?: (type: string) => boolean;
+  isPinWidgetSupported?: () => boolean;
 }
 
 declare global {
@@ -106,6 +108,9 @@ export interface WidgetSyncData {
   targetCalories?: number;
   waterMl?: number;
   waterGoalMl?: number;
+  streakDays?: number;
+  longestStreak?: number;
+  isLoggedToday?: boolean;
 }
 
 /**
@@ -122,5 +127,26 @@ export function syncWidgetData(data: WidgetSyncData): void {
       console.warn("Failed to sync widget data:", err);
     }
   }
+}
+
+/**
+ * Checks if the current Android environment supports one-click widget pinning.
+ */
+export function isPinAppWidgetSupported(): boolean {
+  if (typeof window === "undefined") return false;
+  const bridge = getAndroidBridge();
+  return Boolean(bridge?.isPinWidgetSupported?.());
+}
+
+/**
+ * Prompts the Android launcher to add a widget to the user's home screen.
+ */
+export function requestPinAppWidget(type: "small" | "medium" | "large"): boolean {
+  if (typeof window === "undefined") return false;
+  const bridge = getAndroidBridge();
+  if (bridge?.pinWidget) {
+    return bridge.pinWidget(type);
+  }
+  return false;
 }
 

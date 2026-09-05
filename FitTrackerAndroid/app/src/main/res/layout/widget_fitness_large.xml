@@ -63,6 +63,37 @@
                 android:textSize="9sp" />
         </LinearLayout>
 
+        <!-- Habit Streak Badge -->
+        <LinearLayout
+            android:id="@+id/layout_large_streak"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/widget_badge_live"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="7dp"
+            android:paddingTop="2dp"
+            android:paddingEnd="7dp"
+            android:paddingBottom="2dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🔥"
+                android:textSize="8sp" />
+
+            <TextView
+                android:id="@+id/tv_large_streak"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="3dp"
+                android:fontFamily="sans-serif-bold"
+                android:text="0d Streak"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="9sp" />
+        </LinearLayout>
+
         <FrameLayout
             android:layout_width="0dp"
             android:layout_height="1dp"

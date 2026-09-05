@@ -1,8 +1,9 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import { Flame, Award, Calendar, CheckCircle2, TrendingUp } from "lucide-react";
 import { IStreakData } from "@/lib/fitness/streak";
+import { syncWidgetData } from "@/services/webview-bridge";
 
 interface StreakWidgetProps {
   streak: IStreakData;
@@ -17,6 +18,15 @@ export function StreakWidget({ streak }: StreakWidgetProps) {
     nextMilestone,
     badgeTitle,
   } = streak;
+
+  // Sync habit streak to native Android home screen widgets
+  useEffect(() => {
+    syncWidgetData({
+      streakDays: currentStreak,
+      longestStreak,
+      isLoggedToday,
+    });
+  }, [currentStreak, longestStreak, isLoggedToday]);
 
   // Progress to next milestone percentage
   const progressPercent = Math.min(

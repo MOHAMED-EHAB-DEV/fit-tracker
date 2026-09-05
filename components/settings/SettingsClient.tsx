@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { useUser } from "@/context/UserContext";
 import {
   User,
@@ -570,7 +571,7 @@ export function SettingsClient({ initialUser }: SettingsClientProps = {}) {
           <p className="text-xs text-zinc-400 leading-relaxed">
             Running FitTracker {isAndroidNativeApp() ? "Android Native App" : "Web Platform"}. Automated over-the-air updates check for new features on app launch.
           </p>
-          <div>
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
               variant="bordered"
@@ -580,6 +581,14 @@ export function SettingsClient({ initialUser }: SettingsClientProps = {}) {
             >
               Check for Updates
             </Button>
+
+            <Link
+              href="/widgets"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold transition border border-zinc-700/60"
+            >
+              <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Widgets Gallery</span>
+            </Link>
           </div>
         </CardBody>
       </Card>

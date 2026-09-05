@@ -149,6 +149,10 @@ object FitTrackerWidgetUpdater {
             views.setTextViewText(R.id.tv_large_water_target, data.formattedWaterGoal)
             views.setProgressBar(R.id.progress_large_water, 100, data.waterPercent, false)
 
+            // Habit Streak
+            val streakText = if (data.streakDays > 0) "${data.streakDays}d Streak" else "No Streak"
+            views.setTextViewText(R.id.tv_large_streak, streakText)
+
             // Footer
             views.setTextViewText(R.id.tv_large_updated_at, "FitTracker • $updatedText")
 
