@@ -62,6 +62,7 @@
         <!-- 1. Activity & Steps (Medium 4x2) -->
         <receiver
             android:name=".widget.FitTrackerStepWidget"
+            android:label="@string/widget_step_medium_name"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -78,6 +79,7 @@
         <!-- 2. Quick Counter (Small 2x2) -->
         <receiver
             android:name=".widget.FitTrackerQuickWidget"
+            android:label="@string/widget_step_small_name"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -93,6 +95,7 @@
         <!-- 3. Daily Fitness Overview (Large 4x3) -->
         <receiver
             android:name=".widget.FitTrackerFitnessWidget"
+            android:label="@string/widget_fitness_large_name"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />

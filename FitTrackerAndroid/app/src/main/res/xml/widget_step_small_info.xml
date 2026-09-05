@@ -6,6 +6,7 @@
     android:targetCellHeight="2"
     android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/widget_step_small"
+    android:previewLayout="@layout/widget_step_small"
     android:resizeMode="none"
     android:widgetCategory="home_screen"
     android:description="@string/widget_step_small_desc" />

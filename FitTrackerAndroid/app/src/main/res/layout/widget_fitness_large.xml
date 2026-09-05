@@ -63,7 +63,7 @@
                 android:textSize="9sp" />
         </LinearLayout>
 
-        <View
+        <FrameLayout
             android:layout_width="0dp"
             android:layout_height="1dp"
             android:layout_weight="1" />
@@ -117,7 +117,7 @@
                 android:textColor="@color/widget_text_secondary"
                 android:textSize="11sp" />
 
-            <View
+            <FrameLayout
                 android:layout_width="0dp"
                 android:layout_height="1dp"
                 android:layout_weight="1" />
@@ -177,7 +177,7 @@
                 android:textColor="@color/widget_text_secondary"
                 android:textSize="10sp" />
 
-            <View
+            <FrameLayout
                 android:layout_width="0dp"
                 android:layout_height="1dp"
                 android:layout_weight="1" />

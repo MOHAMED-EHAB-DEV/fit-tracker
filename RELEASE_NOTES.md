@@ -1,6 +1,6 @@
-# FitTracker Release Notes — Live Android Home Screen Widgets & Glassmorphism Upgrade
+# FitTracker Release Notes — Widget Inflation & Launcher Compatibility Patch
 
-> **Release Version**: 1.1.0  
+> **Release Version**: 1.1.1  
 > **Target Framework**: Next.js 16.3.1 · React 19.2.8 · Android SDK 34  
 > **Environment**: Android Native App, Home Screen Widgets & Web Platform  
 > **Date**: 2026-09-05
@@ -9,7 +9,15 @@
 
 ## 🚀 Overview
 
-This release introduces live, battery-optimized Android home screen widgets with high-contrast dark-mode glassmorphic styling, real-time hardware pedometer tracking, and bidirectional web-telemetry synchronization.
+This patch release fixes a critical RemoteViews layout inflation failure on Android home screens and resolves missing preview cards in the system widget selector.
+
+---
+
+## 🐛 Bug Fixes & Improvements
+
+- **RemoteViews Class Compatibility**: Replaced forbidden `<View>` spacer tags with RemoteViews-whitelisted `<FrameLayout>` in all widget layouts (`widget_step_small.xml`, `widget_step_medium.xml`, `widget_fitness_large.xml`), resolving launcher `InflateException` ("Couldn't add widget").
+- **Widget Picker Previews**: Added `android:previewLayout` to all widget metadata providers (`widget_step_small_info.xml`, `widget_step_medium_info.xml`, `widget_fitness_large_info.xml`) for Android 12+ real-time layout rendering in launcher widget pickers.
+- **Distinct Receiver Labels**: Configured individual receiver `android:label` entries in `AndroidManifest.xml` so each widget displays its descriptive name instead of repeating generic app title.
 
 ---
 
