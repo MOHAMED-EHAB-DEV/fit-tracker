@@ -17,6 +17,8 @@
     "bump:major": "node scripts/bump-version.mjs major"
   },
   "dependencies": {
+    "@emoji-mart/data": "^1.2.1",
+    "@emoji-mart/react": "^1.1.1",
     "@google/genai": "^2.18.0",
     "@visx/axis": "^4.0.0",
     "@visx/curve": "^4.0.0",
@@ -32,6 +34,7 @@
     "cloudinary": "^2.10.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
+    "emoji-mart": "^5.6.0",
     "jose": "^6.2.9",
     "lucide-react": "^1.33.0",
     "mongoose": "^9.9.3",

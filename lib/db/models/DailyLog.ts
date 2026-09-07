@@ -27,6 +27,7 @@ export interface IDailyLog extends Document {
   steps: number;
   stepsSyncedAt: Date | null;
   stepsSource: "step_counter" | "manual";
+  completedHabitIds: mongoose.Types.ObjectId[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -58,9 +59,14 @@ const DailyLogSchema = new Schema<IDailyLog>(
     ],
     steps: { type: Number, default: 0 },
     stepsSyncedAt: { type: Date, default: null },
-    stepsSource: { type: String, enum: ["step_counter", "manual"], default: "manual" },
+    stepsSource: {
+      type: String,
+      enum: ["step_counter", "manual"],
+      default: "manual",
+    },
+    completedHabitIds: [{ type: Schema.Types.ObjectId, ref: "Habit" }],
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 DailyLogSchema.index({ userId: 1, date: -1 });

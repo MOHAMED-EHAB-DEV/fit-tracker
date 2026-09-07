@@ -1,5 +1,6 @@
 import {
   LayoutDashboard,
+  CheckSquare,
   Dumbbell,
   UtensilsCrossed,
   Scale,
@@ -18,6 +19,7 @@ export interface NavItem {
 
 export const MAIN_NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard, mobileLabel: "Home" },
+  { label: "Habits", href: "/habits", icon: CheckSquare, mobileLabel: "Habits" },
   { label: "Workouts", href: "/workouts", icon: Dumbbell, mobileLabel: "Workout" },
   { label: "Nutrition", href: "/nutrition", icon: UtensilsCrossed, mobileLabel: "Nutrition" },
   { label: "Body Comp", href: "/body-comp", icon: Scale, mobileLabel: "Body" },

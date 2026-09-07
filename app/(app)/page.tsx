@@ -19,6 +19,8 @@ import { WeightTrendWidget, type IWeightDataPoint } from "@/components/dashboard
 import { WaterCounter } from "@/components/dashboard/WaterCounter";
 import { MealTimeline } from "@/components/dashboard/MealTimeline";
 import { StreakWidget } from "@/components/dashboard/StreakWidget";
+import { HabitsWidget } from "@/components/dashboard/HabitsWidget";
+import Habit from "@/lib/db/models/Habit";
 import { calculateStreak } from "@/lib/fitness/streak";
 import { DAYS_OF_WEEK as DAYS_LIST } from "@/constants/workout";
 
@@ -31,7 +33,7 @@ async function DashboardContent() {
   const weekDateStrings = getWeekDatesStrings(weekStartStr);
 
   // Parallel database reads
-  const [todayLog, weekLogs, todayMeals, weekWorkouts, allWorkouts, bodyCompLogs, prWorkouts, allDailyLogs] = await Promise.all([
+  const [todayLog, weekLogs, todayMeals, weekWorkouts, allWorkouts, bodyCompLogs, prWorkouts, allDailyLogs, userHabits] = await Promise.all([
     DailyLog.findOne({ userId: user?._id, dateString: todayStr }).lean(),
     DailyLog.find({ userId: user?._id, dateString: { $in: weekDateStrings } }).lean(),
     Meal.find({ userId: user?._id, dateString: todayStr }).sort({ createdAt: 1 }).lean(),
@@ -39,13 +41,29 @@ async function DashboardContent() {
     Workout.find({ userId: user?._id }).sort({ updatedAt: -1 }).lean(),
     BodyComp.find({ userId: user?._id }).sort({ checkInDate: 1 }).limit(10).lean(),
     Workout.find({ userId: user?._id, status: "completed" }).sort({ completedAt: -1 }).limit(20).lean(),
-    DailyLog.find({ userId: user?._id }).select("dateString caloriesIn steps waterMl").lean(),
+    DailyLog.find({ userId: user?._id }).select("dateString caloriesIn steps waterMl completedHabitIds").lean(),
+    Habit.find({ userId: user?._id, isActive: true }).sort({ order: 1, createdAt: 1 }).lean(),
   ]);
+
+  const serializedHabits = (userHabits || []).map((h: any) => ({
+    _id: h._id.toString(),
+    name: h.name,
+    emoji: h.emoji || "⚡",
+    color: h.color || "#10b981",
+    order: h.order || 0,
+  }));
+  const todayCompletedHabitIds = (todayLog?.completedHabitIds || []).map(String);
 
   // Compute habit consistency and streak data
   const activeDates = new Set<string>();
   allDailyLogs.forEach((l: any) => {
-    if (l.dateString && ((l.caloriesIn || 0) > 0 || (l.steps || 0) > 0 || (l.waterMl || 0) > 0)) {
+    if (
+      l.dateString &&
+      ((l.caloriesIn || 0) > 0 ||
+        (l.steps || 0) > 0 ||
+        (l.waterMl || 0) > 0 ||
+        (l.completedHabitIds && l.completedHabitIds.length > 0))
+    ) {
       activeDates.add(l.dateString);
     }
   });
@@ -372,11 +390,18 @@ async function DashboardContent() {
         </Link>
       </div>
 
+      {/* Primary Key Metrics Grid (Calories, Protein, Steps, Water) */}
+      <MetricsGrid stats={stats} />
+
       {/* Gamified Habit Streak & Milestones */}
       <StreakWidget streak={streakData} />
 
-      {/* Primary Key Metrics Grid (Calories, Protein, Steps, Water) */}
-      <MetricsGrid stats={stats} />
+      {/* Daily Habits Quick Checklist Widget */}
+      <HabitsWidget
+        habits={serializedHabits}
+        initialCompletedHabitIds={todayCompletedHabitIds}
+        todayStr={todayStr}
+      />
 
       {/* Middle Grid: Energy Balance Chart + Weekly Training Split */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 2xl:gap-8">
