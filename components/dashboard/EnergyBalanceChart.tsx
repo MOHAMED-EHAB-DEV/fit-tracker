@@ -1,17 +1,14 @@
 "use client";
 
-import { useState, useId } from "react";
-import {
-  ResponsiveContainer,
-  ComposedChart,
-  Bar,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-  CartesianGrid,
-} from "recharts";
+import { useState, useId, useMemo, useCallback } from "react";
+import { ParentSize } from "@visx/responsive";
+import { Group } from "@visx/group";
+import { Bar, BarRounded, LinePath } from "@visx/shape";
+import { scaleBand, scaleLinear } from "@visx/scale";
+import { AxisBottom, AxisLeft } from "@visx/axis";
+import { GridRows } from "@visx/grid";
+import { useTooltip, TooltipWithBounds, defaultStyles } from "@visx/tooltip";
+import { localPoint } from "@visx/event";
 import { Flame, TrendingDown, TrendingUp } from "lucide-react";
 
 export interface IDailyHistoryPoint {
@@ -33,55 +30,373 @@ interface EnergyBalanceChartProps {
   targetCalories: number;
 }
 
-const CustomTooltip = ({ active, payload }: any) => {
-  if (active && payload && payload.length) {
-    const d = payload[0].payload as IDailyHistoryPoint;
-    const net = d.caloriesIn - d.caloriesOut;
-    const isDeficit = net < 0;
+interface EnergyChartInnerProps {
+  width: number;
+  height: number;
+  data: IDailyHistoryPoint[];
+  viewMode: "energy" | "macros";
+}
 
-    return (
-      <div className="p-3.5 rounded-2xl bg-zinc-900/95 border border-zinc-800 shadow-2xl backdrop-blur-md text-xs space-y-2 min-w-44">
-        <div className="flex items-center justify-between border-b border-zinc-800/80 pb-1.5">
-          <span className="font-bold text-white">{d.dayName}</span>
-          <span className="text-zinc-500 text-[10px]">{d.dateString}</span>
-        </div>
+function EnergyBalanceChartInner({
+  width,
+  height,
+  data,
+  viewMode,
+}: EnergyChartInnerProps) {
+  const margin = useMemo(
+    () => ({ top: 12, right: 8, bottom: 20, left: 42 }),
+    []
+  );
 
-        <div className="space-y-1">
-          <div className="flex justify-between items-center text-zinc-300">
-            <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span>Calories In:</span>
-            </span>
-            <span className="font-bold text-white tabular-nums">{d.caloriesIn.toLocaleString()} kcal</span>
-          </div>
+  const innerWidth = Math.max(0, width - margin.left - margin.right);
+  const innerHeight = Math.max(0, height - margin.top - margin.bottom);
 
-          <div className="flex justify-between items-center text-zinc-300">
-            <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-orange-400" />
-              <span>Calories Out:</span>
-            </span>
-            <span className="font-bold text-white tabular-nums">{d.caloriesOut.toLocaleString()} kcal</span>
-          </div>
+  const {
+    tooltipData,
+    tooltipLeft = 0,
+    tooltipTop = 0,
+    tooltipOpen,
+    showTooltip,
+    hideTooltip,
+  } = useTooltip<IDailyHistoryPoint>();
 
-          <div className="flex justify-between items-center pt-1 border-t border-zinc-800/60 font-semibold">
-            <span className="text-zinc-400">Net Energy:</span>
-            <span className={`tabular-nums ${isDeficit ? "text-emerald-400" : "text-amber-400"}`}>
-              {isDeficit ? "" : "+"}
-              {net.toLocaleString()} kcal ({isDeficit ? "Deficit" : "Surplus"})
-            </span>
-          </div>
+  const x0Scale = useMemo(
+    () =>
+      scaleBand<string>({
+        domain: data.map((d) => d.dayName),
+        range: [0, innerWidth],
+        padding: 0.16,
+      }),
+    [data, innerWidth]
+  );
 
-          <div className="flex justify-between items-center text-[10px] text-zinc-400 pt-1 tabular-nums">
-            <span>P: {Number(d.protein).toFixed(1)}g</span>
-            <span>C: {Number(d.carbs).toFixed(1)}g</span>
-            <span>F: {Number(d.fat).toFixed(1)}g</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-  return null;
-};
+  const bandWidth = x0Scale.bandwidth();
+
+  const yScale = useMemo(() => {
+    if (viewMode === "energy") {
+      const maxVal = Math.max(
+        ...data.map((d) => Math.max(d.caloriesIn, d.caloriesOut, d.targetCalories || 0))
+      );
+      // Tight 4% headroom so highest bar is visible without excessive empty space
+      const yMax = Math.max(500, Math.ceil(maxVal * 1.04));
+      return scaleLinear<number>({
+        domain: [0, yMax],
+        range: [innerHeight, 0],
+        nice: false,
+      });
+    } else {
+      const maxVal = Math.max(
+        ...data.map((d) => (d.protein || 0) + (d.carbs || 0) + (d.fat || 0))
+      );
+      const yMax = Math.max(50, Math.ceil(maxVal * 1.04));
+      return scaleLinear<number>({
+        domain: [0, yMax],
+        range: [innerHeight, 0],
+        nice: false,
+      });
+    }
+  }, [data, innerHeight, viewMode]);
+
+  const handlePointer = useCallback(
+    (
+      event:
+        | React.PointerEvent<SVGRectElement>
+        | React.MouseEvent<SVGRectElement>
+        | React.TouchEvent<SVGRectElement>
+    ) => {
+      const point = localPoint(event as any);
+      if (!point) return;
+      const x = point.x - margin.left;
+      if (x < 0 || x > innerWidth || data.length === 0) {
+        hideTooltip();
+        return;
+      }
+      const slotWidth = innerWidth / data.length;
+      const index = Math.max(0, Math.min(data.length - 1, Math.floor(x / slotWidth)));
+      const d = data[index];
+      if (!d) return;
+
+      const dayCenter = (x0Scale(d.dayName) ?? 0) + bandWidth / 2;
+      const topY =
+        viewMode === "energy"
+          ? yScale(Math.max(d.caloriesIn, d.caloriesOut, d.targetCalories || 0))
+          : yScale((d.protein || 0) + (d.carbs || 0) + (d.fat || 0));
+
+      showTooltip({
+        tooltipData: d,
+        tooltipLeft: margin.left + dayCenter,
+        tooltipTop: margin.top + Math.max(0, topY),
+      });
+    },
+    [data, innerWidth, margin.left, margin.top, showTooltip, hideTooltip, x0Scale, bandWidth, viewMode, yScale]
+  );
+
+  if (width < 40 || height < 40) return null;
+
+  return (
+    <div className="relative w-full h-full select-none">
+      <svg width={width} height={height} className="overflow-visible">
+        <Group left={margin.left} top={margin.top}>
+          <GridRows
+            scale={yScale}
+            width={innerWidth}
+            stroke="#27272a"
+            strokeDasharray="3 3"
+            numTicks={4}
+          />
+
+          {/* Hover Column Spotlight Background */}
+          {data.map((d) => {
+            const slotX = x0Scale(d.dayName) ?? 0;
+            const isHovered = tooltipOpen && tooltipData?.dayName === d.dayName;
+            return (
+              <rect
+                key={`spotlight-${d.dayName}`}
+                x={slotX - 3}
+                y={0}
+                width={bandWidth + 6}
+                height={innerHeight}
+                rx={6}
+                fill={isHovered ? "rgba(255, 255, 255, 0.04)" : "transparent"}
+                pointerEvents="none"
+              />
+            );
+          })}
+
+          {/* Render Bars Based on View Mode */}
+          {viewMode === "energy" ? (
+            <>
+              {data.map((d) => {
+                const dayX = x0Scale(d.dayName) ?? 0;
+                const barGap = Math.max(2, Math.min(4, Math.round(bandWidth * 0.05)));
+                const barWidth = Math.max(6, Math.min(36, Math.floor((bandWidth - barGap) / 2)));
+                const totalGroupWidth = barWidth * 2 + barGap;
+                const groupOffset = (bandWidth - totalGroupWidth) / 2;
+
+                // Calories In Bar
+                const inX = dayX + groupOffset;
+                const inY = yScale(d.caloriesIn);
+                const inHeight = Math.max(0, innerHeight - inY);
+
+                // Calories Out Bar
+                const outX = inX + barWidth + barGap;
+                const outY = yScale(d.caloriesOut);
+                const outHeight = Math.max(0, innerHeight - outY);
+
+                const radius = Math.min(5, barWidth / 2);
+
+                return (
+                  <g key={`energy-bars-${d.dayName}`}>
+                    {inHeight > 0 && (
+                      <BarRounded
+                        x={inX}
+                        y={inY}
+                        width={barWidth}
+                        height={inHeight}
+                        top
+                        radius={radius}
+                        fill="#10b981"
+                      />
+                    )}
+                    {outHeight > 0 && (
+                      <BarRounded
+                        x={outX}
+                        y={outY}
+                        width={barWidth}
+                        height={outHeight}
+                        top
+                        radius={radius}
+                        fill="#f97316"
+                      />
+                    )}
+                  </g>
+                );
+              })}
+
+              {/* Target Calories Dashed Guideline */}
+              <LinePath<IDailyHistoryPoint>
+                data={data}
+                x={(d) => (x0Scale(d.dayName) ?? 0) + bandWidth / 2}
+                y={(d) => yScale(d.targetCalories)}
+                stroke="#a1a1aa"
+                strokeDasharray="4 4"
+                strokeWidth={1.5}
+                strokeLinecap="round"
+              />
+            </>
+          ) : (
+            // Macros View (Stacked Bars)
+            data.map((d) => {
+              const dayX = x0Scale(d.dayName) ?? 0;
+              const barWidth = Math.max(10, Math.min(48, Math.floor(bandWidth * 0.72)));
+              const groupOffset = (bandWidth - barWidth) / 2;
+              const barX = dayX + groupOffset;
+              const radius = Math.min(5, barWidth / 2);
+
+              const protein = d.protein || 0;
+              const carbs = d.carbs || 0;
+              const fat = d.fat || 0;
+
+              // Stack 1: Protein (bottom)
+              const yProt = yScale(protein);
+              const hProt = Math.max(0, innerHeight - yProt);
+
+              // Stack 2: Carbs (middle)
+              const yCarbs = yScale(protein + carbs);
+              const hCarbs = Math.max(0, yProt - yCarbs);
+
+              // Stack 3: Fat (top)
+              const yFat = yScale(protein + carbs + fat);
+              const hFat = Math.max(0, yCarbs - yFat);
+
+              return (
+                <g key={`macro-bars-${d.dayName}`}>
+                  {hProt > 0 && (
+                    <Bar
+                      x={barX}
+                      y={yProt}
+                      width={barWidth}
+                      height={hProt}
+                      fill="#10b981"
+                    />
+                  )}
+                  {hCarbs > 0 && (
+                    <Bar
+                      x={barX}
+                      y={yCarbs}
+                      width={barWidth}
+                      height={hCarbs}
+                      fill="#eab308"
+                    />
+                  )}
+                  {hFat > 0 && (
+                    <BarRounded
+                      x={barX}
+                      y={yFat}
+                      width={barWidth}
+                      height={hFat}
+                      top
+                      radius={radius}
+                      fill="#f97316"
+                    />
+                  )}
+                </g>
+              );
+            })
+          )}
+
+          <AxisBottom
+            top={innerHeight}
+            scale={x0Scale}
+            stroke="#27272a"
+            tickStroke="transparent"
+            tickLabelProps={() => ({
+              fill: "#a1a1aa",
+              fontSize: 11,
+              textAnchor: "middle",
+              dy: 4,
+            })}
+          />
+
+          <AxisLeft
+            scale={yScale}
+            numTicks={4}
+            stroke="transparent"
+            tickStroke="transparent"
+            tickFormat={(val) => Number(val).toLocaleString()}
+            tickLabelProps={() => ({
+              fill: "#71717a",
+              fontSize: 10,
+              textAnchor: "end",
+              dx: -4,
+              dy: 3,
+            })}
+          />
+
+          {/* Capture Mouse / Touch Events */}
+          <Bar
+            x={0}
+            y={0}
+            width={innerWidth}
+            height={innerHeight}
+            fill="transparent"
+            onPointerMove={handlePointer}
+            onPointerLeave={hideTooltip}
+            onTouchStart={handlePointer}
+            onTouchMove={handlePointer}
+            className="cursor-pointer"
+          />
+        </Group>
+      </svg>
+
+      {/* Rich Glassmorphic Tooltip */}
+      {tooltipOpen && tooltipData && (
+        <TooltipWithBounds
+          top={tooltipTop}
+          left={tooltipLeft}
+          style={{
+            ...defaultStyles,
+            backgroundColor: "transparent",
+            border: "none",
+            boxShadow: "none",
+            padding: 0,
+            pointerEvents: "none",
+          }}
+        >
+          {(() => {
+            const net = tooltipData.caloriesIn - tooltipData.caloriesOut;
+            const isDeficit = net < 0;
+
+            return (
+              <div className="p-3.5 rounded-2xl bg-zinc-900/95 border border-zinc-800 shadow-2xl backdrop-blur-md text-xs space-y-2 min-w-44 select-none">
+                <div className="flex items-center justify-between border-b border-zinc-800/80 pb-1.5">
+                  <span className="font-bold text-white">{tooltipData.dayName}</span>
+                  <span className="text-zinc-500 text-[10px]">{tooltipData.dateString}</span>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center text-zinc-300">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                      <span>Calories In:</span>
+                    </span>
+                    <span className="font-bold text-white tabular-nums">
+                      {tooltipData.caloriesIn.toLocaleString()} kcal
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-zinc-300">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-orange-400" />
+                      <span>Calories Out:</span>
+                    </span>
+                    <span className="font-bold text-white tabular-nums">
+                      {tooltipData.caloriesOut.toLocaleString()} kcal
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center pt-1 border-t border-zinc-800/60 font-semibold">
+                    <span className="text-zinc-400">Net Energy:</span>
+                    <span className={`tabular-nums ${isDeficit ? "text-emerald-400" : "text-amber-400"}`}>
+                      {isDeficit ? "" : "+"}
+                      {net.toLocaleString()} kcal ({isDeficit ? "Deficit" : "Surplus"})
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-[10px] text-zinc-400 pt-1 tabular-nums">
+                    <span>P: {Number(tooltipData.protein || 0).toFixed(1)}g</span>
+                    <span>C: {Number(tooltipData.carbs || 0).toFixed(1)}g</span>
+                    <span>F: {Number(tooltipData.fat || 0).toFixed(1)}g</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </TooltipWithBounds>
+      )}
+    </div>
+  );
+}
 
 export function EnergyBalanceChart({
   data,
@@ -196,104 +511,58 @@ export function EnergyBalanceChart({
         </article>
       </div>
 
-      {/* Chart Canvas */}
-      <figure aria-label="7-Day energy intake and expenditure chart" className="h-64 sm:h-72 w-full pt-2">
-        <ResponsiveContainer width="100%" height="100%">
+      {/* Visx Chart Canvas with compact Legend */}
+      <figure
+        aria-label="7-Day energy intake and expenditure chart"
+        className="h-64 sm:h-72 w-full flex flex-col justify-between"
+      >
+        {/* Chart Legend */}
+        <div className="flex items-center justify-end gap-3.5 text-[11px] text-zinc-400 select-none pb-1 shrink-0">
           {viewMode === "energy" ? (
-            <ComposedChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-              <XAxis
-                dataKey="dayName"
-                stroke="#71717a"
-                tick={{ fill: "#a1a1aa", fontSize: 11 }}
-                tickLine={false}
-              />
-              <YAxis
-                stroke="#71717a"
-                tick={{ fill: "#71717a", fontSize: 10 }}
-                tickLine={false}
-                axisLine={false}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend
-                verticalAlign="top"
-                align="right"
-                iconType="circle"
-                wrapperStyle={{ fontSize: "11px", paddingBottom: "10px" }}
-              />
-              <Bar
-                name="Calories In"
-                dataKey="caloriesIn"
-                fill="#10b981"
-                radius={[6, 6, 0, 0]}
-                maxBarSize={32}
-              />
-              <Bar
-                name="Calories Out"
-                dataKey="caloriesOut"
-                fill="#f97316"
-                radius={[6, 6, 0, 0]}
-                maxBarSize={32}
-              />
-              <Line
-                name="Calorie Target"
-                type="monotone"
-                dataKey="targetCalories"
-                stroke="#a1a1aa"
-                strokeDasharray="4 4"
-                dot={false}
-                strokeWidth={1.5}
-              />
-            </ComposedChart>
+            <>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                <span>Calories In</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-orange-500 shrink-0" />
+                <span>Calories Out</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-3.5 h-0 border-b border-dashed border-zinc-400 shrink-0" />
+                <span>Calorie Target</span>
+              </span>
+            </>
           ) : (
-            <ComposedChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-              <XAxis
-                dataKey="dayName"
-                stroke="#71717a"
-                tick={{ fill: "#a1a1aa", fontSize: 11 }}
-                tickLine={false}
-              />
-              <YAxis
-                stroke="#71717a"
-                tick={{ fill: "#71717a", fontSize: 10 }}
-                tickLine={false}
-                axisLine={false}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend
-                verticalAlign="top"
-                align="right"
-                iconType="circle"
-                wrapperStyle={{ fontSize: "11px", paddingBottom: "10px" }}
-              />
-              <Bar
-                name="Protein (g)"
-                dataKey="protein"
-                fill="#10b981"
-                stackId="macros"
-                radius={[0, 0, 0, 0]}
-                maxBarSize={32}
-              />
-              <Bar
-                name="Carbs (g)"
-                dataKey="carbs"
-                fill="#eab308"
-                stackId="macros"
-                radius={[0, 0, 0, 0]}
-                maxBarSize={32}
-              />
-              <Bar
-                name="Fat (g)"
-                dataKey="fat"
-                fill="#f97316"
-                stackId="macros"
-                radius={[6, 6, 0, 0]}
-                maxBarSize={32}
-              />
-            </ComposedChart>
+            <>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                <span>Protein (g)</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-yellow-500 shrink-0" />
+                <span>Carbs (g)</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-orange-500 shrink-0" />
+                <span>Fat (g)</span>
+              </span>
+            </>
           )}
-        </ResponsiveContainer>
+        </div>
+
+        <div className="flex-1 w-full min-h-0">
+          <ParentSize debounceTime={10}>
+            {({ width, height }) => (
+              <EnergyBalanceChartInner
+                width={width}
+                height={height}
+                data={data}
+                viewMode={viewMode}
+              />
+            )}
+          </ParentSize>
+        </div>
       </figure>
     </section>
   );
