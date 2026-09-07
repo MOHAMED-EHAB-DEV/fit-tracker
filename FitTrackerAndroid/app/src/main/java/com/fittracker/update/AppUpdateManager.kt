@@ -62,7 +62,15 @@ class AppUpdateManager(private val context: Context) {
      */
     fun getInstalledVersionName(): String {
         return try {
-            val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+            val pInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getPackageInfo(
+                    context.packageName,
+                    android.content.pm.PackageManager.PackageInfoFlags.of(0)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getPackageInfo(context.packageName, 0)
+            }
             pInfo.versionName?.removePrefix("v")?.trim() ?: BuildConfig.VERSION_NAME.removePrefix("v").trim()
         } catch (e: Exception) {
             BuildConfig.VERSION_NAME.removePrefix("v").trim()
@@ -74,7 +82,15 @@ class AppUpdateManager(private val context: Context) {
      */
     fun getInstalledVersionCode(): Long {
         return try {
-            val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+            val pInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getPackageInfo(
+                    context.packageName,
+                    android.content.pm.PackageManager.PackageInfoFlags.of(0)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getPackageInfo(context.packageName, 0)
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 pInfo.longVersionCode
             } else {
@@ -567,15 +583,26 @@ class AppUpdateManager(private val context: Context) {
 
             val installIntent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(apkUri, "application/vnd.android.package-archive")
+                clipData = android.content.ClipData.newUri(context.contentResolver, "FitTracker Update", apkUri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
 
             // Explicitly grant read permissions to all candidate package installer handlers
-            val resInfoList = context.packageManager.queryIntentActivities(
-                installIntent,
-                android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
-            )
+            val resInfoList = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.queryIntentActivities(
+                    installIntent,
+                    android.content.pm.PackageManager.ResolveInfoFlags.of(
+                        android.content.pm.PackageManager.MATCH_DEFAULT_ONLY.toLong()
+                    )
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.queryIntentActivities(
+                    installIntent,
+                    android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
+                )
+            }
             for (resolveInfo in resInfoList) {
                 context.grantUriPermission(
                     resolveInfo.activityInfo.packageName,

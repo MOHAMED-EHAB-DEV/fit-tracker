@@ -2,6 +2,7 @@ package com.fittracker
 
 import android.Manifest
 import android.app.Activity
+import android.content.ClipData
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -17,6 +18,8 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -89,10 +92,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
         // Store active base URL for background sync
         StepStore.setServerUrl(this, appUrl)
+
+        // Modern Android 13+ predictive back handling
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (::webView.isInitialized && webView.canGoBack()) {
+                    webView.goBack()
+                } else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                    isEnabled = true
+                }
+            }
+        })
 
         webView = WebView(this).apply {
             settings.apply {
@@ -179,6 +196,7 @@ class MainActivity : AppCompatActivity() {
 
             takePictureIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
                 putExtra(MediaStore.EXTRA_OUTPUT, photoURI)
+                clipData = ClipData.newUri(contentResolver, "photo", photoURI)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             }
         } catch (e: Exception) {
@@ -269,16 +287,14 @@ class MainActivity : AppCompatActivity() {
             permissionsToRequest.add(Manifest.permission.CAMERA)
         }
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+
         if (permissionsToRequest.isNotEmpty()) {
             requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
-        }
-    }
-
-    override fun onBackPressed() {
-        if (webView.canGoBack()) {
-            webView.goBack()
-        } else {
-            super.onBackPressed()
         }
     }
 }

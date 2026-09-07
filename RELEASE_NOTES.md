@@ -1,54 +1,46 @@
-# FitTracker Release Notes — Native Home Screen Widgets & Habit Gamification
+# FitTracker Release Notes — Android 13+ (14 & 15) Compatibility & System Modernization
 
-> **Release Version**: 1.2.0  
-> **Target Framework**: Next.js 16.3.1 · React 19.2.8 · Android SDK 34  
+> **Release Version**: 1.2.1  
+> **Target Framework**: Next.js 16.3.1 · React 19.2.8 · Android SDK 34 (API 33, 34, 35 compatible)  
 > **Environment**: Android Native App, Home Screen Widgets & Web Platform  
-> **Date**: 2026-09-05
+> **Date**: 2026-09-07  
 
 ---
 
 ## 🚀 Overview
 
-FitTracker **v1.2.0** introduces native Android home screen habit streak integration, 1-click widget pinning from the web view, an interactive Widgets Gallery, and a zero-cost value suite including Bring Your Own Key (BYOK) Gemini AI support, privacy data export, and curated workout splits.
+FitTracker **v1.2.1** brings full native compatibility with all Android versions over Android 13, including **Android 14 (UpsideDownCake / API 34)** and **Android 15 (VanillaIceCream / API 35)**. This release modernizes system navigation, edge-to-edge window insets, granular media permissions, camera capture URI grants, internal broadcast security, and Package Manager API calls.
 
 ---
 
 ## 📦 Key Highlights & Enhancements
 
-### 1. Android Home Screen Habit Streak Widget
-- **Live Flame Badge**: Integrated live habit streak counter (`🔥 Xd Streak`) into the header of `widget_fitness_large.xml`.
-- **Bidirectional Telemetry Sync**: Synchronizes consecutive logging days, longest streaks, and daily active status from `StreakWidget.tsx` through `JSBridge.updateWidgetData()` into native `WidgetDataStore.kt`.
-- **Automatic Lifecycle Refresh**: Widgets refresh seamlessly on resume, daily sensor updates, and background WorkManager synchronization.
+### 1. Modern Predictive Back Gesture Support (Android 13+)
+- Migrated from deprecated `onBackPressed()` to `OnBackPressedCallback` integrated with `onBackPressedDispatcher`.
+- Enabled `android:enableOnBackInvokedCallback="true"` in `AndroidManifest.xml` to support smooth system-level predictive back gesture animations on Android 13, 14, and 15 without accidental app exits.
 
-### 2. 1-Click Native Widget Pinning API
-- **AppWidgetManager Integration**: Implemented `AppWidgetManager.requestPinAppWidget()` inside `JSBridge.kt` (Android 8.0+ / API 26+).
-- **Launcher Confirmation**: Users can add any widget directly to their Android launcher from inside the app with a single click, without navigating through system widget menus.
+### 2. Edge-to-Edge Display & Window Insets (Android 14 & 15)
+- Enabled `enableEdgeToEdge()` on `MainActivity` to support Android 15's mandatory edge-to-edge layout requirements.
+- Configured transparent system status and navigation bars (`@android:color/transparent`) in `themes.xml` so WebView dynamically maps notch, punch hole, and system bar cutouts into CSS safe-area variables (`env(safe-area-inset-top)` / `env(safe-area-inset-bottom)`).
 
-### 3. Interactive Widgets Gallery (`/widgets`)
-- **Visual Mockups**: High-fidelity live previews of all 3 home screen widgets:
-  - **Quick Pedometer (2x2 Small)**
-  - **Activity & Steps Bar (4x2 Medium)**
-  - **Complete Fitness & Habit Hub (4x3 Large)**
-- **Add to Home Screen Buttons**: 1-click pinning triggers the native Android launcher prompt.
-- **Quick Access**: Accessible from the Settings page and direct navigation.
+### 3. Granular Media Permissions & Camera URI Grants (Android 13 & 14)
+- Added `READ_MEDIA_VISUAL_USER_SELECTED` permission for Android 14+ Selected Photos Access, allowing users to grant partial gallery permissions.
+- Attached `ClipData` with explicit read/write flags to `takePictureIntent` in `launchFileChooser()` to prevent camera app `SecurityException: Permission Denial` on Android 13+.
+- Added `POST_NOTIFICATIONS` manifest declaration and runtime request handling on Android 13+ (`Build.VERSION_CODES.TIRAMISU`).
 
-### 4. Bring Your Own Key (BYOK) for Gemini AI
-- **Zero Operating Costs**: Users can supply their free Google AI Studio API key in Settings to run personal inferences with unlimited rate limits.
-- **Per-Request Override**: Gracefully falls back to the server environment key if no personal key is entered.
+### 4. Package Visibility & Intent Queries (Android 11+ / 13+ / 14+)
+- Added `<queries>` block in `AndroidManifest.xml` covering `IMAGE_CAPTURE`, package archive view (`.apk`), and file picker actions for strict package visibility rules.
+- Attached `ClipData` to OTA updater `installIntent` ensuring package installer processes receive immediate URI permissions.
 
-### 5. 1-Click Privacy Data Export (GDPR / Backup)
-- **Zero Lock-In**: Dedicated `/api/user/export` endpoint generating a structured JSON archive of user profile, daily nutrition logs, workout history, body composition check-ins, and personal records.
+### 5. Broadcast Security & Internal Component Protection (Android 14)
+- Set explicit package targeting (`setPackage(context.packageName)`) on widget sync broadcasts (`ACTION_SYNC_WIDGET`) to prevent implicit broadcast restrictions on Android 14.
 
-### 6. Curated Workout Splits & Auto-Seeding
-- **Battle-Tested Templates**: Preloaded with 6 structured training splits (Push, Pull, Legs, Upper Power, Lower Power, Full Body Foundation).
-- **Auto-Population**: Creating a workout from a template automatically prefills exercise names, muscle groups, sets, and rep ranges.
-
-### 7. PWA Mobile Web Experience
-- **1-Click Web App Installation**: Responsive, dismissible banner supporting Chromium `beforeinstallprompt` and step-by-step "Add to Home Screen" instructions for iOS Safari.
+### 6. Modernized PackageManager APIs
+- Replaced deprecated `getPackageInfo(String, Int)` and `queryIntentActivities(Intent, Int)` with typed `PackageInfoFlags.of(0)` and `ResolveInfoFlags.of(...)` on API 33+.
 
 ---
 
 ## 🛠️ Validation & Code Quality
-- **Zero Build / TypeScript Warnings**: Full strict mode typing adherence with `tsc --noEmit`.
-- **RemoteViews Architecture**: 100% compliant with Android RemoteViews layout constraints.
-- **RTL & Logical Spacing**: Applied logical attributes (`paddingStart`, `paddingEnd`, `layout_marginStart`, `layout_marginEnd`, `inset-s-`, `inset-e-`).
+- **Full Backward & Forward Compatibility**: Fully compatible with Android 7.0 (API 24) through Android 15 (API 35+).
+- **Zero Warnings**: Deprecated back navigation and package query APIs eliminated.
+- **RTL & Logical Spacing**: Preserved all logical styling and safe-area insets.

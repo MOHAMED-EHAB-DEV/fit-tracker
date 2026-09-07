@@ -44,6 +44,7 @@ object FitTrackerWidgetUpdater {
     private fun createSyncPendingIntent(context: Context, requestCode: Int): PendingIntent {
         val intent = Intent(FitTrackerStepWidget.ACTION_SYNC_WIDGET).apply {
             component = ComponentName(context, FitTrackerStepWidget::class.java)
+            setPackage(context.packageName)
         }
         return PendingIntent.getBroadcast(context, requestCode, intent, getPendingIntentFlags())
     }
