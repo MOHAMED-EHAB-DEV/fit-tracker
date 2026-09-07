@@ -12,7 +12,7 @@ export function MobileNav() {
   return (
     <nav
       aria-label="Mobile navigation"
-      className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-zinc-950/95 border-t border-zinc-800/80 backdrop-blur-lg px-2 py-1.5 safe-area-pb select-none"
+      className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-zinc-950/95 border-t border-zinc-800/80 backdrop-blur-lg px-1 sm:px-2 py-1.5 safe-area-pb select-none"
     >
       <div className="flex items-center justify-around">
         {NAV_ITEMS.map((item) => {
@@ -28,7 +28,7 @@ export function MobileNav() {
               href={item.href}
               aria-current={isActive ? "page" : undefined}
               className={cn(
-                "flex flex-col items-center justify-center py-1.5 px-3 min-h-[48px] min-w-[48px] rounded-xl transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 active:scale-95",
+                "flex flex-col items-center justify-center py-1.5 px-1.5 sm:px-3 min-h-12 min-w-10 sm:min-w-12 rounded-xl transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 active:scale-95",
                 isActive
                   ? "text-emerald-400 font-semibold"
                   : "text-zinc-400 hover:text-zinc-200"
