@@ -91,7 +91,7 @@ export function HabitCard({ habit, isChecked, onToggle, onEdit, onDelete }: Habi
               className="w-1.5 h-1.5 rounded-full inline-block"
               style={{ backgroundColor: habitColor }}
             />
-            {isChecked ? "Completed today" : "Daily habit"}
+            {isChecked ? "Completed" : "Daily habit"}
           </span>
         </div>
       </div>

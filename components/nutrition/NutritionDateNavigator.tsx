@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useTransition } from "react";
+import React, { useTransition, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Sparkles, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles, Loader2, Calendar } from "lucide-react";
 import { format, parseISO, isToday as checkIsToday, isYesterday as checkIsYesterday } from "date-fns";
 import { getTodayDateString } from "@/lib/fitness/timezone";
+import { NutritionCalendarPopover } from "./NutritionCalendarPopover";
 
 interface NutritionDateNavigatorProps {
   selectedDate: string; // "YYYY-MM-DD"
@@ -21,6 +22,8 @@ export function NutritionDateNavigator({
 }: NutritionDateNavigatorProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [showCalendar, setShowCalendar] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const todayStr = getTodayDateString();
   const effectiveMaxDate = maxDate || todayStr;
@@ -79,50 +82,34 @@ export function NutritionDateNavigator({
     }
   };
 
-  const handleDateInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.value) {
-      navigateToDate(e.target.value);
-    }
-  };
-
   const formattedDateTitle = format(parsedDate, "EEEE, MMMM d, yyyy");
 
   return (
     <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 sm:p-4 rounded-2xl bg-zinc-900/80 backdrop-blur-xl border border-white/10 shadow-lg">
-      {/* Left / Date Label (clickable to pick a date) */}
-      <label className="relative cursor-pointer group flex flex-col justify-center select-none">
+      {/* Left / Date Label */}
+      <div className="flex flex-col justify-center select-none">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-bold text-white tracking-tight group-hover:text-emerald-400 transition">
+          <span className="text-sm font-bold text-white tracking-tight">
             {formattedDateTitle}
           </span>
           {isCurrentToday && (
-            <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-extrabold uppercase tracking-wider">
+            <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-extrabold uppercase tracking-wider ms-1">
               Today
             </span>
           )}
           {isYesterday && (
-            <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[10px] font-extrabold uppercase tracking-wider">
+            <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[10px] font-extrabold uppercase tracking-wider ms-1">
               Yesterday
             </span>
           )}
           {isPending && (
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400 ms-1" />
           )}
         </div>
-        <span className="text-xs text-zinc-400 group-hover:text-zinc-300 transition">
+        <span className="text-xs text-zinc-400 mt-0.5">
           {isCurrentToday ? "Inspect and track today's nutrition log" : `Daily log entry for ${selectedDate}`}
         </span>
-        <input
-          type="date"
-          value={selectedDate}
-          min={effectiveMinDate}
-          max={effectiveMaxDate}
-          onChange={handleDateInput}
-          disabled={isPending}
-          className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-          title="Click to pick a date"
-        />
-      </label>
+      </div>
 
       {/* Right / Controls */}
       <div className="flex items-center gap-1.5 self-end sm:self-auto">
@@ -139,7 +126,7 @@ export function NutritionDateNavigator({
           </button>
         )}
 
-        {/* Previous Day */}
+        {/* Previous Day Arrow */}
         <button
           type="button"
           onClick={handlePrevDay}
@@ -151,7 +138,34 @@ export function NutritionDateNavigator({
           <ChevronLeft className="w-4 h-4" />
         </button>
 
-        {/* Next Day */}
+        {/* Calendar Picker Button between the two arrows */}
+        <div className="relative">
+          <button
+            ref={triggerRef}
+            type="button"
+            onClick={() => setShowCalendar((prev) => !prev)}
+            disabled={isPending}
+            aria-label="Open calendar"
+            aria-expanded={showCalendar}
+            title="Pick date from calendar"
+            className="p-2 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-emerald-400 hover:text-emerald-300 border border-white/10 hover:border-emerald-500/40 transition active:scale-95 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <Calendar className="w-4 h-4" />
+          </button>
+
+          <NutritionCalendarPopover
+            isOpen={showCalendar}
+            onClose={() => setShowCalendar(false)}
+            triggerRef={triggerRef}
+            selectedDateStr={selectedDate}
+            minDate={effectiveMinDate}
+            maxDate={effectiveMaxDate}
+            onSelectDate={navigateToDate}
+            availableDates={availableDates}
+          />
+        </div>
+
+        {/* Next Day Arrow */}
         <button
           type="button"
           onClick={handleNextDay}

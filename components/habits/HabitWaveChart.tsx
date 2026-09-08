@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useId, useMemo, useCallback } from "react";
+import React, { useId, useMemo, useCallback, useState, useRef } from "react";
 import { ParentSize } from "@visx/responsive";
 import { Group } from "@visx/group";
 import { AreaClosed, LinePath, Bar, Line } from "@visx/shape";
@@ -9,8 +9,10 @@ import { scaleLinear } from "@visx/scale";
 import { LinearGradient } from "@visx/gradient";
 import { useTooltip, TooltipWithBounds, defaultStyles } from "@visx/tooltip";
 import { localPoint } from "@visx/event";
+import { format } from "date-fns";
 import { ChevronLeft, ChevronRight, Activity, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/Toast";
 
 export interface IHabitHistoryPoint {
   dateString: string;
@@ -27,6 +29,9 @@ interface HabitWaveChartProps {
   onViewModeChange: (mode: "week" | "month") => void;
   onOffsetChange: (offset: number) => void;
   title?: string;
+  selectedDate?: string;
+  onSelectDate?: (dateString: string) => void;
+  todayStr?: string;
 }
 
 interface InnerChartProps {
@@ -34,9 +39,22 @@ interface InnerChartProps {
   height: number;
   data: IHabitHistoryPoint[];
   maxHabits: number;
+  selectedDate?: string;
+  todayStr: string;
+  onSelectDate?: (dateString: string) => void;
+  onFutureDateClick?: (dateString: string) => void;
 }
 
-function HabitWaveInnerChart({ width, height, data, maxHabits }: InnerChartProps) {
+function HabitWaveInnerChart({
+  width,
+  height,
+  data,
+  maxHabits,
+  selectedDate,
+  todayStr,
+  onSelectDate,
+  onFutureDateClick,
+}: InnerChartProps) {
   const gradientId = useId();
 
   // Compact, snug margins: ensure no wasted space
@@ -78,6 +96,11 @@ function HabitWaveInnerChart({ width, height, data, maxHabits }: InnerChartProps
     [effectiveMax, innerHeight]
   );
 
+  const selectedIndex = useMemo(() => {
+    if (!selectedDate) return -1;
+    return data.findIndex((d) => d.dateString === selectedDate);
+  }, [data, selectedDate]);
+
   const handlePointer = useCallback(
     (
       event:
@@ -97,13 +120,40 @@ function HabitWaveInnerChart({ width, height, data, maxHabits }: InnerChartProps
       const d = data[index];
       if (!d) return;
 
+      // Disallow inspecting future days
+      if (d.dateString > todayStr) {
+        hideTooltip();
+        return;
+      }
+
       showTooltip({
         tooltipData: d,
         tooltipLeft: margin.left + xScale(index),
         tooltipTop: margin.top + yScale(d.completedCount),
       });
     },
-    [data, innerWidth, margin.left, margin.top, showTooltip, hideTooltip, xScale, yScale]
+    [data, innerWidth, margin.left, margin.top, showTooltip, hideTooltip, xScale, yScale, todayStr]
+  );
+
+  const handleClick = useCallback(
+    (event: React.MouseEvent<SVGRectElement> | React.TouchEvent<SVGRectElement>) => {
+      const point = localPoint(event as any);
+      if (!point) return;
+      const x = point.x - margin.left;
+      if (x < 0 || x > innerWidth) return;
+      const rawIdx = xScale.invert(x);
+      const index = Math.max(0, Math.min(data.length - 1, Math.round(rawIdx)));
+      const d = data[index];
+      if (!d) return;
+
+      if (d.dateString > todayStr) {
+        onFutureDateClick?.(d.dateString);
+        return;
+      }
+
+      onSelectDate?.(d.dateString);
+    },
+    [data, innerWidth, margin.left, onSelectDate, onFutureDateClick, xScale, todayStr]
   );
 
   if (width < 50 || height < 50 || data.length === 0) return null;
@@ -169,25 +219,58 @@ function HabitWaveInnerChart({ width, height, data, maxHabits }: InnerChartProps
           {/* Individual Day Point Circles */}
           {data.length <= 14 &&
             data.map((d, i) => {
+              const isFuture = d.dateString > todayStr;
               const cx = xScale(i);
               const cy = yScale(d.completedCount);
-              const isSelected = tooltipData?.dateString === d.dateString;
+              const isSelected = selectedDate === d.dateString;
+              const isHovered = !isFuture && tooltipData?.dateString === d.dateString;
               return (
                 <circle
                   key={d.dateString}
                   cx={cx}
                   cy={cy}
-                  r={isSelected ? 5 : 3.5}
-                  fill={d.completedCount > 0 ? "#10b981" : "#3f3f46"}
-                  stroke="#09090b"
-                  strokeWidth={2}
+                  r={isSelected ? 5.5 : isHovered ? 5 : 3.5}
+                  fill={
+                    isFuture
+                      ? "#27272a"
+                      : isSelected
+                      ? "#34d399"
+                      : d.completedCount > 0
+                      ? "#10b981"
+                      : "#3f3f46"
+                  }
+                  stroke={isSelected ? "#ffffff" : isFuture ? "#18181b" : "#09090b"}
+                  strokeWidth={isSelected ? 2.5 : 2}
+                  opacity={isFuture ? 0.35 : 1}
                   className="transition-all duration-150 pointer-events-none"
                 />
               );
             })}
 
+          {/* Selected Date Indicator Line & Point */}
+          {selectedIndex >= 0 && (
+            <g pointerEvents="none">
+              <Line
+                from={{ x: xScale(selectedIndex), y: 0 }}
+                to={{ x: xScale(selectedIndex), y: innerHeight }}
+                stroke="#10b981"
+                strokeWidth={1.5}
+                strokeDasharray="3 3"
+                opacity={0.5}
+              />
+              <circle
+                cx={xScale(selectedIndex)}
+                cy={yScale(data[selectedIndex].completedCount)}
+                r={6}
+                fill="#10b981"
+                stroke="#ffffff"
+                strokeWidth={2}
+              />
+            </g>
+          )}
+
           {/* Tooltip Cursor Line & Point */}
-          {tooltipOpen && tooltipData && (
+          {tooltipOpen && tooltipData && tooltipData.dateString !== selectedDate && (
             <g pointerEvents="none">
               <Line
                 from={{ x: tooltipLeft - margin.left, y: 0 }}
@@ -208,28 +291,59 @@ function HabitWaveInnerChart({ width, height, data, maxHabits }: InnerChartProps
             </g>
           )}
 
-          {/* Bottom X-Axis Day Labels: reveal all days */}
+          {/* Bottom X-Axis Day Labels: reveal all days with click-to-select */}
           {data.map((item, idx) => {
             const x = xScale(idx);
-            const isHovered = tooltipData?.dateString === item.dateString;
+            const isFuture = item.dateString > todayStr;
+            const isHovered = !isFuture && tooltipData?.dateString === item.dateString;
+            const isSelected = selectedDate === item.dateString;
             const isMonthMode = data.length > 14;
             const fontSize = isMonthMode ? (innerWidth < 600 ? 8.5 : 10) : 11;
             return (
-              <text
+              <g
                 key={item.dateString || idx}
-                x={x}
-                y={innerHeight + 18}
-                textAnchor="middle"
-                fontSize={fontSize}
-                fontWeight={isHovered ? 700 : 500}
-                fill={isHovered ? "#10b981" : isMonthMode ? "#a1a1aa" : "#71717a"}
+                onClick={() => {
+                  if (isFuture) {
+                    onFutureDateClick?.(item.dateString);
+                  } else {
+                    onSelectDate?.(item.dateString);
+                  }
+                }}
+                className={isFuture ? "cursor-not-allowed opacity-35" : "cursor-pointer"}
               >
-                {item.dayLabel}
-              </text>
+                {isSelected && (
+                  <circle
+                    cx={x}
+                    cy={innerHeight + 24}
+                    r={2}
+                    fill="#10b981"
+                  />
+                )}
+                <text
+                  x={x}
+                  y={innerHeight + 18}
+                  textAnchor="middle"
+                  fontSize={fontSize}
+                  fontWeight={isSelected ? 800 : isHovered ? 700 : 500}
+                  fill={
+                    isSelected
+                      ? "#34d399"
+                      : isFuture
+                      ? "#52525b"
+                      : isHovered
+                      ? "#10b981"
+                      : isMonthMode
+                      ? "#a1a1aa"
+                      : "#71717a"
+                  }
+                >
+                  {item.dayLabel}
+                </text>
+              </g>
             );
           })}
 
-          {/* Transparent Overlay for Hover Tracking */}
+          {/* Transparent Overlay for Hover Tracking & Clicking */}
           <Bar
             x={0}
             y={0}
@@ -239,8 +353,12 @@ function HabitWaveInnerChart({ width, height, data, maxHabits }: InnerChartProps
             onPointerMove={handlePointer}
             onPointerLeave={hideTooltip}
             onTouchMove={handlePointer}
-            onTouchEnd={hideTooltip}
-            className="cursor-crosshair"
+            onTouchEnd={(e) => {
+              handleClick(e);
+              hideTooltip();
+            }}
+            onClick={handleClick}
+            className="cursor-pointer"
           />
         </Group>
       </svg>
@@ -295,7 +413,18 @@ export function HabitWaveChart({
   onViewModeChange,
   onOffsetChange,
   title = "Habit Consistency Trends",
+  selectedDate,
+  onSelectDate,
+  todayStr,
 }: HabitWaveChartProps) {
+  const { toast } = useToast();
+
+  const effectiveToday = useMemo(() => todayStr || format(new Date(), "yyyy-MM-dd"), [todayStr]);
+
+  const handleFutureDateClick = useCallback((_dateStr: string) => {
+    toast("Cannot inspect future days", "error", 2600);
+  }, [toast]);
+
   const maxHabits = useMemo(() => {
     return Math.max(...data.map((d) => Math.max(d.totalHabits, d.completedCount)), 1);
   }, [data]);
@@ -311,7 +440,7 @@ export function HabitWaveChart({
   const completionPct = totalPossible > 0 ? Math.round((totalCompletedInRange / totalPossible) * 100) : 0;
 
   return (
-    <div className="p-4 sm:p-5 rounded-3xl bg-zinc-900/60 border border-zinc-800/80 shadow-lg shadow-zinc-950/20 flex flex-col justify-between">
+    <div className="relative p-4 sm:p-5 rounded-3xl bg-zinc-900/60 border border-zinc-800/80 shadow-lg shadow-zinc-950/20 flex flex-col justify-between">
       {/* Header with Title, Period Switchers, & Metrics */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-800/60">
         <div>
@@ -324,9 +453,15 @@ export function HabitWaveChart({
               {completionPct}% completion
             </span>
           </div>
-          <p className="text-xs text-zinc-500 mt-0.5">
-            {totalCompletedInRange} habits checked across this{" "}
-            {viewMode === "week" ? "week (Sat – Fri)" : "month (Day 1 – End)"}
+          <p className="text-xs text-zinc-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+            <span>
+              {totalCompletedInRange} habits checked across this{" "}
+              {viewMode === "week" ? "week (Sat – Fri)" : "month (Day 1 – End)"}
+            </span>
+            <span className="text-zinc-600 hidden sm:inline">•</span>
+            <span className="text-emerald-400/90 text-[11px] font-medium">
+              Click any date on chart to inspect habits
+            </span>
           </p>
         </div>
 
@@ -395,6 +530,10 @@ export function HabitWaveChart({
               height={height}
               data={data}
               maxHabits={maxHabits}
+              selectedDate={selectedDate}
+              todayStr={effectiveToday}
+              onSelectDate={onSelectDate}
+              onFutureDateClick={handleFutureDateClick}
             />
           )}
         </ParentSize>

@@ -102,8 +102,19 @@ async function NutritionContent({ searchParams }: NutritionPageProps) {
     loggedAt: m.loggedAt ? new Date(m.loggedAt).toISOString() : new Date().toISOString(),
     dateString: m.dateString,
     imageSource: m.imageSource,
-    isManualOverride: m.isManualOverride,
-    items: m.items || [],
+    isManualOverride: Boolean(m.isManualOverride),
+    items: Array.isArray(m.items)
+      ? m.items.map((item: any) => ({
+          _id: item._id ? item._id.toString() : undefined,
+          name: item.name || "",
+          quantity: item.quantity || "",
+          calories: Number(item.calories) || 0,
+          protein: Number(item.protein) || 0,
+          carbs: Number(item.carbs) || 0,
+          fat: Number(item.fat) || 0,
+          fiber: Number(item.fiber) || 0,
+        }))
+      : [],
     macros: {
       calories: m.macros?.calories || 0,
       protein: m.macros?.protein || 0,
