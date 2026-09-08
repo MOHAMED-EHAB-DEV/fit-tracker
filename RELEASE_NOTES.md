@@ -1,15 +1,15 @@
 # FitTracker Release Notes — Android 13+ (14 & 15) Compatibility & System Modernization
 
-> **Release Version**: 1.2.1  
+> **Release Version**: 1.2.2  
 > **Target Framework**: Next.js 16.3.1 · React 19.2.8 · Android SDK 34 (API 33, 34, 35 compatible)  
 > **Environment**: Android Native App, Home Screen Widgets & Web Platform  
-> **Date**: 2026-09-07  
+> **Date**: 2026-09-08  
 
 ---
 
 ## 🚀 Overview
 
-FitTracker **v1.2.1** brings full native compatibility with all Android versions over Android 13, including **Android 14 (UpsideDownCake / API 34)** and **Android 15 (VanillaIceCream / API 35)**. This release modernizes system navigation, edge-to-edge window insets, granular media permissions, camera capture URI grants, internal broadcast security, and Package Manager API calls.
+FitTracker **v1.2.2** ensures the app and WebView render cleanly below the status bar, preventing system bar overlaps while retaining full compatibility with all Android versions over Android 13 (Android 14 & 15).
 
 ---
 
@@ -19,9 +19,9 @@ FitTracker **v1.2.1** brings full native compatibility with all Android versions
 - Migrated from deprecated `onBackPressed()` to `OnBackPressedCallback` integrated with `onBackPressedDispatcher`.
 - Enabled `android:enableOnBackInvokedCallback="true"` in `AndroidManifest.xml` to support smooth system-level predictive back gesture animations on Android 13, 14, and 15 without accidental app exits.
 
-### 2. Edge-to-Edge Display & Window Insets (Android 14 & 15)
-- Enabled `enableEdgeToEdge()` on `MainActivity` to support Android 15's mandatory edge-to-edge layout requirements.
-- Configured transparent system status and navigation bars (`@android:color/transparent`) in `themes.xml` so WebView dynamically maps notch, punch hole, and system bar cutouts into CSS safe-area variables (`env(safe-area-inset-top)` / `env(safe-area-inset-bottom)`).
+### 2. Status Bar & Window Layout Management
+- Configured dedicated dark system status and navigation bars (`@color/background_dark`) in `themes.xml` with light icons (`windowLightStatusBar=false`).
+- App and WebView render cleanly below the status bar, preventing system bar overlaps with the web interface.
 
 ### 3. Granular Media Permissions & Camera URI Grants (Android 13 & 14)
 - Added `READ_MEDIA_VISUAL_USER_SELECTED` permission for Android 14+ Selected Photos Access, allowing users to grant partial gallery permissions.
