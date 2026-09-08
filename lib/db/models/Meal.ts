@@ -21,6 +21,16 @@ interface IAiMacros {
   modelUsed: string;
 }
 
+export interface IMealItem {
+  name: string;
+  quantity?: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber?: number;
+}
+
 export interface IMeal extends Document {
   userId: mongoose.Types.ObjectId;
   loggedAt: Date;
@@ -30,6 +40,7 @@ export interface IMeal extends Document {
   imageSource: "photo" | "text_only";
   cloudinary: ICloudinaryMeta | null;
   aiMacros: IAiMacros | null;
+  items?: IMealItem[];
   macros: {
     calories: number;
     protein: number;
@@ -79,6 +90,17 @@ const MealSchema = new Schema<IMeal>(
       },
       default: null,
     },
+    items: [
+      {
+        name: { type: String, required: true },
+        quantity: { type: String, default: "" },
+        calories: { type: Number, default: 0 },
+        protein: { type: Number, default: 0 },
+        carbs: { type: Number, default: 0 },
+        fat: { type: Number, default: 0 },
+        fiber: { type: Number, default: 0 },
+      },
+    ],
     macros: {
       calories: { type: Number, default: 0 },
       protein: { type: Number, default: 0 },

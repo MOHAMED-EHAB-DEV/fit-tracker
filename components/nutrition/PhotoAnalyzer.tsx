@@ -19,6 +19,7 @@ import {
   Info,
   Layers,
   Edit3,
+  Trash2,
 } from "lucide-react";
 import { useClientResize } from "@/hooks/useClientResize";
 import { MealType } from "@/types/fitness";
@@ -62,6 +63,7 @@ export function PhotoAnalyzer() {
   const [editFat, setEditFat] = useState("");
   const [editFiber, setEditFiber] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [editItems, setEditItems] = useState<any[]>([]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -98,6 +100,9 @@ export function PhotoAnalyzer() {
       if (dateParam) {
         formData.append("dateString", dateParam);
       }
+      if (editItems.length > 0) {
+        formData.append("previousItems", JSON.stringify(editItems));
+      }
 
       const res = await fetch("/api/meals/analyze", {
         method: "POST",
@@ -122,6 +127,7 @@ export function PhotoAnalyzer() {
       setEditFat(String(analysis.totals?.fat ?? 0));
       setEditFiber(String(analysis.totals?.fiber ?? 0));
       setEditNotes(analysis.geminiNotes || "");
+      setEditItems(analysis.items || []);
 
       // Open confirm modal for review and additional details
       setIsConfirmModalOpen(true);
@@ -130,6 +136,25 @@ export function PhotoAnalyzer() {
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  const handleRemoveItem = (index: number) => {
+    const updated = editItems.filter((_, idx) => idx !== index);
+    setEditItems(updated);
+  };
+
+  const handleSyncTotalsFromItems = () => {
+    if (editItems.length === 0) return;
+    const totalCal = editItems.reduce((acc, it) => acc + (Number(it.calories) || 0), 0);
+    const totalP = editItems.reduce((acc, it) => acc + (Number(it.protein) || 0), 0);
+    const totalC = editItems.reduce((acc, it) => acc + (Number(it.carbs) || 0), 0);
+    const totalF = editItems.reduce((acc, it) => acc + (Number(it.fat) || 0), 0);
+    const totalFib = editItems.reduce((acc, it) => acc + (Number(it.fiber) || 0), 0);
+    setEditCalories(String(Math.round(totalCal)));
+    setEditProtein(totalP.toFixed(1));
+    setEditCarbs(totalC.toFixed(1));
+    setEditFat(totalF.toFixed(1));
+    setEditFiber(totalFib.toFixed(1));
   };
 
   const handleConfirmSave = async () => {
@@ -141,6 +166,7 @@ export function PhotoAnalyzer() {
         description: editDescription.trim() || "Logged Meal",
         mealType: editMealType,
         dateString: dateParam,
+        items: editItems,
         macros: {
           calories: parseInt(editCalories, 10) || 0,
           protein: parseFloat(editProtein) || 0,
@@ -200,6 +226,7 @@ export function PhotoAnalyzer() {
     setSelectedBlob(null);
     setPreviewUrl(null);
     setDescription("");
+    setEditItems([]);
     setIsSaved(false);
     setIsConfirmModalOpen(false);
     setError(null);
@@ -602,24 +629,67 @@ export function PhotoAnalyzer() {
               </div>
 
               {/* Ingredient Breakdown Section */}
-              {analysisResult?.items && analysisResult.items.length > 0 && (
+              {editItems && editItems.length > 0 && (
                 <div className="space-y-2">
-                  <span className="block text-xs font-bold uppercase tracking-wider text-zinc-400 select-none">
-                    Detected Ingredient Breakdown ({analysisResult.items.length} items)
-                  </span>
-                  <div className="max-h-48 overflow-y-auto space-y-1.5 pe-1">
-                    {analysisResult.items.map((item: any, idx: number) => (
+                  <div className="flex items-center justify-between">
+                    <span className="block text-xs font-bold uppercase tracking-wider text-zinc-400 select-none">
+                      Detected Ingredient Breakdown ({editItems.length} items)
+                    </span>
+                    {editItems.length !== (analysisResult?.items?.length ?? 0) && (
+                      <button
+                        type="button"
+                        onClick={handleSyncTotalsFromItems}
+                        className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 transition cursor-pointer"
+                      >
+                        Recalculate Totals
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-56 overflow-y-auto space-y-2 pe-1">
+                    {editItems.map((item: any, idx: number) => (
                       <div
                         key={idx}
-                        className="flex items-center justify-between text-xs p-2.5 rounded-xl bg-zinc-950/50 border border-white/5 hover:border-white/10 transition"
+                        className="flex flex-col gap-1.5 p-3 rounded-xl bg-zinc-950/60 border border-white/6 hover:border-white/12 transition text-start"
                       >
-                        <div className="truncate me-2">
-                          <span className="text-zinc-200 font-semibold">{item.name}</span>
-                          <span className="text-zinc-500 ms-1.5">({item.quantity})</span>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="truncate me-2">
+                            <span className="text-zinc-200 font-bold text-xs">{item.name}</span>
+                            {item.quantity && (
+                              <span className="text-zinc-400 text-[11px] font-medium ms-1.5">
+                                ({item.quantity})
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-amber-400 font-extrabold text-xs tabular-nums bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                              {Math.round(Number(item.calories) || 0)} kcal
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveItem(idx)}
+                              className="p-1 rounded-md text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition cursor-pointer"
+                              title="Remove ingredient"
+                              aria-label={`Remove ${item.name}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-3 text-zinc-400 shrink-0 font-medium">
-                          <span className="text-white tabular-nums">{item.calories} kcal</span>
-                          <span className="text-emerald-400 tabular-nums">P: {item.protein}g</span>
+
+                        {/* All ingredient macros */}
+                        <div className="flex items-center gap-1.5 flex-wrap text-[10px] font-bold pt-0.5">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 tabular-nums">
+                            P: {Number(item.protein || 0).toFixed(1)}g
+                          </span>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 tabular-nums">
+                            C: {Number(item.carbs || 0).toFixed(1)}g
+                          </span>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-500/10 text-orange-400 border border-orange-500/20 tabular-nums">
+                            F: {Number(item.fat || 0).toFixed(1)}g
+                          </span>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-500/10 text-teal-400 border border-teal-500/20 tabular-nums">
+                            Fib: {Number(item.fiber || 0).toFixed(1)}g
+                          </span>
                         </div>
                       </div>
                     ))}
@@ -693,6 +763,17 @@ export function PhotoAnalyzer() {
                 </span>
               </div>
             </div>
+
+            {editItems && editItems.length > 0 && (
+              <div className="p-3 rounded-2xl bg-zinc-950/60 border border-white/5 space-y-1.5 text-start">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block">
+                  Logged Ingredients ({editItems.length})
+                </span>
+                <p className="text-xs text-zinc-300">
+                  {editItems.map((it) => it.name).join(", ")}
+                </p>
+              </div>
+            )}
 
             <div className="flex items-center gap-3 pt-2">
               <Button

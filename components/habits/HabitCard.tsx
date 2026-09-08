@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Check, Trash2 } from "lucide-react";
+import { Check, Trash2, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface IHabitData {
@@ -16,10 +16,11 @@ interface HabitCardProps {
   habit: IHabitData;
   isChecked: boolean;
   onToggle: (habitId: string) => Promise<void>;
+  onEdit?: (habit: IHabitData) => void;
   onDelete?: (habitId: string) => Promise<void>;
 }
 
-export function HabitCard({ habit, isChecked, onToggle, onDelete }: HabitCardProps) {
+export function HabitCard({ habit, isChecked, onToggle, onEdit, onDelete }: HabitCardProps) {
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -95,10 +96,11 @@ export function HabitCard({ habit, isChecked, onToggle, onDelete }: HabitCardPro
         </div>
       </div>
 
-      {/* Actions: Delete on hover & Checkbox */}
-      <div className="flex items-center gap-2 shrink-0">
+      {/* Actions: Delete on hover (on the left of edit), Edit (next to check), Checkbox */}
+      <div className="flex items-center gap-1.5 shrink-0">
         {onDelete && (
           <button
+            type="button"
             onClick={handleDelete}
             title="Delete habit"
             aria-label="Delete habit"
@@ -109,9 +111,25 @@ export function HabitCard({ habit, isChecked, onToggle, onDelete }: HabitCardPro
           </button>
         )}
 
+        {onEdit && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit(habit);
+            }}
+            title="Edit habit"
+            aria-label="Edit habit"
+            className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-xl transition cursor-pointer"
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
+        )}
+
         {/* Checkbox */}
         <button
           type="button"
+          onClick={handleCheck}
           aria-label={isChecked ? "Mark incomplete" : "Mark complete"}
           className={cn(
             "w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-200 border cursor-pointer",

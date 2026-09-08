@@ -167,6 +167,11 @@ export function MealTimeline({ meals }: MealTimelineProps) {
                     <p className="font-semibold text-sm text-zinc-200 truncate mt-1">
                       {meal.description || "Logged Meal"}
                     </p>
+                    {meal.items && meal.items.length > 0 && (
+                      <p className="text-[11px] text-zinc-500 truncate mt-0.5">
+                        {meal.items.map((it) => it.name).join(", ")}
+                      </p>
+                    )}
                   </div>
                 </div>
 

@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { mealType, description, macros, dateString } = body;
+    const { mealType, description, macros, dateString, items } = body;
 
     if (!mealType || !macros) {
       return NextResponse.json({ success: false, error: "Missing required meal fields" }, { status: 400 });
@@ -51,6 +51,17 @@ export async function POST(request: NextRequest) {
       mealType,
       description: description || "Manual Meal",
       imageSource: "text_only",
+      items: Array.isArray(items)
+        ? items.map((it: any) => ({
+            name: String(it.name || "Item"),
+            quantity: String(it.quantity || ""),
+            calories: Math.round(Number(it.calories) || 0),
+            protein: Number((Number(it.protein) || 0).toFixed(1)),
+            carbs: Number((Number(it.carbs) || 0).toFixed(1)),
+            fat: Number((Number(it.fat) || 0).toFixed(1)),
+            fiber: Number((Number(it.fiber) || 0).toFixed(1)),
+          }))
+        : [],
       macros: {
         calories: Number(macros.calories) || 0,
         protein: Number(macros.protein) || 0,

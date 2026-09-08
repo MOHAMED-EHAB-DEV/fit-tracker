@@ -35,6 +35,7 @@ export async function POST(request: NextRequest) {
         dateString,
         macros,
         aiMacros,
+        items,
         cloudinary: cloudinaryData,
       } = body;
 
@@ -56,6 +57,17 @@ export async function POST(request: NextRequest) {
         description: description || "Logged Meal",
         imageSource: cloudinaryData ? "photo" : "text_only",
         cloudinary: cloudinaryData || null,
+        items: Array.isArray(items)
+          ? items.map((it: any) => ({
+              name: String(it.name || "Item"),
+              quantity: String(it.quantity || ""),
+              calories: Math.round(Number(it.calories) || 0),
+              protein: Number((Number(it.protein) || 0).toFixed(1)),
+              carbs: Number((Number(it.carbs) || 0).toFixed(1)),
+              fat: Number((Number(it.fat) || 0).toFixed(1)),
+              fiber: Number((Number(it.fiber) || 0).toFixed(1)),
+            }))
+          : [],
         aiMacros: aiMacros
           ? {
               calories: Number(aiMacros.calories) || Number(macros.calories) || 0,
@@ -106,7 +118,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 2. Handle Multipart Form Data (Photo / description analysis)
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     const imageUrl = (formData.get("imageUrl") as string) || "";
@@ -114,6 +125,27 @@ export async function POST(request: NextRequest) {
     const mealType = ((formData.get("mealType") as string) || "lunch") as MealType;
     const dateStringParam = (formData.get("dateString") as string) || null;
     const shouldSaveImmediately = formData.get("save") === "true";
+    const previousItemsRaw = (formData.get("previousItems") as string) || "";
+    const previousMacrosRaw = (formData.get("previousMacros") as string) || "";
+
+    let previousItems: any[] = [];
+    if (previousItemsRaw) {
+      try {
+        const parsed = JSON.parse(previousItemsRaw);
+        if (Array.isArray(parsed)) previousItems = parsed;
+      } catch {
+        // ignore parse error
+      }
+    }
+
+    let previousMacros: any = null;
+    if (previousMacrosRaw) {
+      try {
+        previousMacros = JSON.parse(previousMacrosRaw);
+      } catch {
+        // ignore parse error
+      }
+    }
 
     let cloudinaryResult: UploadApiResponse | null = null;
     let base64Image: string | null = null;
@@ -186,20 +218,49 @@ export async function POST(request: NextRequest) {
         });
       }
 
+      const previousContextParts: string[] = [];
+      if (previousItems.length > 0) {
+        previousContextParts.push(
+          "Previous / Existing Logged Ingredients & Individual Macros:",
+          ...previousItems.map(
+            (it, i) =>
+              `  ${i + 1}. ${it.name || "Item"}${it.quantity ? ` (${it.quantity})` : ""}: ${it.calories ?? 0} kcal | ${it.protein ?? 0}g protein | ${it.carbs ?? 0}g carbs | ${it.fat ?? 0}g fat | ${it.fiber ?? 0}g fiber`
+          )
+        );
+      }
+      if (previousMacros) {
+        previousContextParts.push(
+          `Previous Total Macro Targets: ${previousMacros.calories || 0} kcal, ${previousMacros.protein || 0}g protein, ${previousMacros.carbs || 0}g carbs, ${previousMacros.fat || 0}g fat, ${previousMacros.fiber || 0}g fiber`
+        );
+      }
+      if (previousContextParts.length > 0) {
+        previousContextParts.push(
+          "",
+          "CRITICAL REGENERATION DIRECTIVE — PRESERVE AND COMBINE INGREDIENTS:",
+          "1. The final 'items' array MUST contain ALL previous ingredients alongside any newly described or identified food items.",
+          "2. Do NOT drop, replace, or wipe out previous ingredients unless the user explicitly requested to remove an item.",
+          "3. For previous items: keep their name and portions/macros (or refine them if more detail is given in the prompt).",
+          "4. For new items: append them as new entries with their respective portion and USDA macros in the 'items' array.",
+          "5. 'totals' MUST be the exact mathematical sum of ALL items combined (retained previous items + new items)."
+        );
+      }
+
       const promptText = [
         `User Meal Context / Description: "${description || "(No description provided, analyze from image)"}"`,
         `Logged Date: ${targetDateStr}`,
+        "",
+        ...previousContextParts,
         "",
         "Instructions:",
         "1. Deconstruct every visible or described food item into specific ingredients (proteins, carbs, fats, vegetables, dairy, sauces, cooking oils).",
         "2. Estimate realistic portion sizes using metric units (grams 'g' or milliliters 'ml') and specify cooked vs raw state.",
         "3. Account for cooking fats (e.g., 5g–10g oil/butter for pan-searing or roasting) unless explicitly oil-free.",
         "4. Calculate scientific macronutrients (Calories, Protein, Carbs, Fat, Fiber) per ingredient using USDA nutritional standards.",
-        "5. If the user provided explicit weights or ingredients in their description, prioritize them over visual guesses.",
+        "5. If the user provided explicit weights or ingredients in their description or previous ingredients list, prioritize and refine them over visual guesses.",
         "6. Ensure strict mathematical sum consistency: totals MUST equal the sum of all individual items.",
         "7. Specify accurate confidence rating ('high', 'medium', or 'low') and provide a clear 'confidenceReason' explaining visibility, lighting, ingredients, and portion certainty.",
         "8. Provide a concise, professional dietitian note in 'geminiNotes' summarizing key assumptions (cooking oils, sauces) and nutritional balance.",
-      ].join("\n");
+      ].filter(Boolean).join("\n");
       contents.push(promptText);
 
       const { text, modelUsed } = await generateContentWithFallback({
@@ -225,21 +286,42 @@ export async function POST(request: NextRequest) {
         throw new Error("Invalid JSON received from Gemini AI.");
       }
 
-      const items = Array.isArray(parsed.items) ? parsed.items : [];
+      const rawReturnedItems = Array.isArray(parsed.items) ? parsed.items : [];
+      let finalItems = [...rawReturnedItems];
+
+      // If previous items were supplied, verify none were dropped accidentally
+      if (previousItems.length > 0) {
+        const returnedNamesLower = rawReturnedItems.map((it: any) =>
+          String(it.name || "").toLowerCase().trim()
+        );
+
+        const missingPreviousItems = previousItems.filter((prev: any) => {
+          const prevNameLower = String(prev.name || "").toLowerCase().trim();
+          if (!prevNameLower) return false;
+          return !returnedNamesLower.some(
+            (retName: string) => retName.includes(prevNameLower) || prevNameLower.includes(retName)
+          );
+        });
+
+        if (missingPreviousItems.length > 0) {
+          finalItems = [...missingPreviousItems, ...finalItems];
+        }
+      }
+
       let { calories = 0, protein = 0, carbs = 0, fat = 0, fiber = 0 } = parsed.totals || {};
 
-      // If totals are missing or 0 while items exist, sum up from items
-      if ((!calories || calories <= 0) && items.length > 0) {
-        calories = items.reduce((sum: number, it: any) => sum + (Number(it.calories) || 0), 0);
-        protein = items.reduce((sum: number, it: any) => sum + (Number(it.protein) || 0), 0);
-        carbs = items.reduce((sum: number, it: any) => sum + (Number(it.carbs) || 0), 0);
-        fat = items.reduce((sum: number, it: any) => sum + (Number(it.fat) || 0), 0);
-        fiber = items.reduce((sum: number, it: any) => sum + (Number(it.fiber) || 0), 0);
+      // If items exist, recalculate totals to reflect the complete set of items
+      if (finalItems.length > 0) {
+        calories = finalItems.reduce((sum: number, it: any) => sum + (Number(it.calories) || 0), 0);
+        protein = finalItems.reduce((sum: number, it: any) => sum + (Number(it.protein) || 0), 0);
+        carbs = finalItems.reduce((sum: number, it: any) => sum + (Number(it.carbs) || 0), 0);
+        fat = finalItems.reduce((sum: number, it: any) => sum + (Number(it.fat) || 0), 0);
+        fiber = finalItems.reduce((sum: number, it: any) => sum + (Number(it.fiber) || 0), 0);
       }
 
       analysis = {
         mealDescription: parsed.mealDescription || description || "Logged Meal",
-        items,
+        items: finalItems,
         totals: {
           calories: Math.round(Number(calories) || 0),
           protein: Number((Number(protein) || 0).toFixed(1)),
@@ -297,6 +379,7 @@ export async function POST(request: NextRequest) {
       description: analysis.mealDescription || description || "Logged Meal",
       imageSource: cloudinaryResult ? "photo" : "text_only",
       cloudinary: cloudinaryPayload,
+      items: analysis.items || [],
       aiMacros: {
         calories: analysis.totals.calories,
         protein: analysis.totals.protein,

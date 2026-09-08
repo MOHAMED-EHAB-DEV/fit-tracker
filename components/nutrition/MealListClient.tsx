@@ -150,6 +150,11 @@ export function MealListClient({ initialMeals, selectedDate }: MealListClientPro
                     <p className="font-bold text-sm text-zinc-100 mt-1 truncate">
                       {m.description || "Logged Meal"}
                     </p>
+                    {m.items && m.items.length > 0 && (
+                      <p className="text-[11px] text-zinc-400 truncate mt-0.5">
+                        {m.items.map((it) => it.name).join(", ")}
+                      </p>
+                    )}
                   </div>
                 </div>
 

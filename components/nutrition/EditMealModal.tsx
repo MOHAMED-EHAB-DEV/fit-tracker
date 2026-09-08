@@ -18,10 +18,22 @@ import {
   Clock,
   Calendar,
   AlertCircle,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { MealType } from "@/types/fitness";
 import { Modal } from "@/components/ui/Modal";
 import { MEAL_TYPE_OPTIONS as MEAL_TYPES } from "@/constants/nutrition";
+
+export interface MealItem {
+  name: string;
+  quantity?: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber?: number;
+}
 
 export interface MealData {
   _id: string;
@@ -31,6 +43,7 @@ export interface MealData {
   dateString?: string;
   imageSource?: "photo" | "text_only";
   isManualOverride?: boolean;
+  items?: MealItem[];
   macros: {
     calories: number;
     protein: number;
@@ -79,6 +92,16 @@ export function EditMealModal({
   const [fat, setFat] = useState("");
   const [fiber, setFiber] = useState("");
   const [aiMacros, setAiMacros] = useState<MealData["aiMacros"]>(null);
+  const [items, setItems] = useState<MealItem[]>([]);
+  const [isAddingItem, setIsAddingItem] = useState(false);
+  const [newItemName, setNewItemName] = useState("");
+  const [newItemQty, setNewItemQty] = useState("");
+  const [newItemCalories, setNewItemCalories] = useState("");
+  const [newItemProtein, setNewItemProtein] = useState("");
+  const [newItemCarbs, setNewItemCarbs] = useState("");
+  const [newItemFat, setNewItemFat] = useState("");
+  const [newItemFiber, setNewItemFiber] = useState("");
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -94,6 +117,8 @@ export function EditMealModal({
       setFat(meal.macros?.fat?.toString() || "0");
       setFiber(meal.macros?.fiber?.toString() || "0");
       setAiMacros(meal.aiMacros || null);
+      setItems(meal.items || []);
+      setIsAddingItem(false);
       setErrorMsg(null);
       setSuccessMsg(null);
     }
@@ -149,6 +174,21 @@ export function EditMealModal({
         formData.append("dateString", meal.dateString);
       }
 
+      const itemsToPass = items.length > 0 ? items : (meal.items || []);
+      if (itemsToPass.length > 0) {
+        formData.append("previousItems", JSON.stringify(itemsToPass));
+      }
+      formData.append(
+        "previousMacros",
+        JSON.stringify({
+          calories: numCalories,
+          protein: numProtein,
+          carbs: numCarbs,
+          fat: numFat,
+          fiber: numFiber,
+        })
+      );
+
       const res = await fetch("/api/meals/analyze", {
         method: "POST",
         body: formData,
@@ -160,11 +200,34 @@ export function EditMealModal({
       }
 
       const analysis = data.analysis;
+      if (analysis.mealDescription) {
+        setDescription(analysis.mealDescription);
+      }
       setCalories(String(analysis.totals?.calories ?? 0));
       setProtein(String(analysis.totals?.protein ?? 0));
       setCarbs(String(analysis.totals?.carbs ?? 0));
       setFat(String(analysis.totals?.fat ?? 0));
       setFiber(String(analysis.totals?.fiber ?? 0));
+
+      const prevNames = (items.length > 0 ? items : (meal.items || [])).map((it) =>
+        String(it.name || "").toLowerCase().trim()
+      );
+
+      if (analysis.items && Array.isArray(analysis.items)) {
+        setItems(analysis.items);
+        const newCount = analysis.items.filter((it: any) => {
+          const cur = String(it.name || "").toLowerCase().trim();
+          return !prevNames.some((p) => p.includes(cur) || cur.includes(p));
+        }).length;
+
+        if (newCount > 0) {
+          setSuccessMsg(`Regenerated! Added ${newCount} new item(s) to the ingredients breakdown below.`);
+        } else {
+          setSuccessMsg("Macronutrients & ingredients successfully updated with AI!");
+        }
+      } else {
+        setSuccessMsg("Macronutrients successfully regenerated with Gemini AI!");
+      }
 
       const updatedAi = {
         calories: analysis.totals?.calories,
@@ -179,15 +242,69 @@ export function EditMealModal({
       };
       setAiMacros(updatedAi);
 
-      setSuccessMsg("Macronutrients successfully regenerated with Gemini AI!");
       setTimeout(() => {
         setSuccessMsg(null);
-      }, 3500);
+      }, 4500);
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to regenerate with AI.");
     } finally {
       setIsRegenerating(false);
     }
+  };
+
+  const handleRemoveItem = (idxToRemove: number) => {
+    setItems((prev) => prev.filter((_, i) => i !== idxToRemove));
+  };
+
+  const handleAddItem = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newItemName.trim()) return;
+    const p = parseFloat(newItemProtein) || 0;
+    const c = parseFloat(newItemCarbs) || 0;
+    const f = parseFloat(newItemFat) || 0;
+    const fib = parseFloat(newItemFiber) || 0;
+    const cal = newItemCalories ? parseInt(newItemCalories, 10) : Math.round(p * 4 + c * 4 + f * 9);
+
+    const itemToAdd: MealItem = {
+      name: newItemName.trim(),
+      quantity: newItemQty.trim(),
+      calories: cal,
+      protein: p,
+      carbs: c,
+      fat: f,
+      fiber: fib,
+    };
+
+    setItems((prev) => [...prev, itemToAdd]);
+    setNewItemName("");
+    setNewItemQty("");
+    setNewItemCalories("");
+    setNewItemProtein("");
+    setNewItemCarbs("");
+    setNewItemFat("");
+    setNewItemFiber("");
+    setIsAddingItem(false);
+  };
+
+  const handleSyncTotalsFromItems = () => {
+    if (items.length === 0) return;
+    const totalCal = items.reduce((acc, it) => acc + (Number(it.calories) || 0), 0);
+    const totalP = items.reduce((acc, it) => acc + (Number(it.protein) || 0), 0);
+    const totalC = items.reduce((acc, it) => acc + (Number(it.carbs) || 0), 0);
+    const totalF = items.reduce((acc, it) => acc + (Number(it.fat) || 0), 0);
+    const totalFib = items.reduce((acc, it) => acc + (Number(it.fiber) || 0), 0);
+    setCalories(String(Math.round(totalCal)));
+    setProtein(totalP.toFixed(1));
+    setCarbs(totalC.toFixed(1));
+    setFat(totalF.toFixed(1));
+    setFiber(totalFib.toFixed(1));
+  };
+
+  const isItemNew = (itemName: string) => {
+    const initialNames = (meal.items || []).map((it) => String(it.name || "").toLowerCase().trim());
+    if (initialNames.length === 0) return false;
+    const current = String(itemName || "").toLowerCase().trim();
+    return !initialNames.some((init) => init.includes(current) || current.includes(init));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -211,6 +328,7 @@ export function EditMealModal({
         body: JSON.stringify({
           description: description.trim(),
           mealType,
+          items,
           macros: {
             calories: numCalories,
             protein: numProtein,
@@ -471,8 +589,11 @@ export function EditMealModal({
         {/* Editable Main Inputs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
-              Meal Description / Items
+            <label className="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5 flex items-center justify-between">
+              <span>Meal Description / Items</span>
+              <span className="text-[10px] text-zinc-500 font-normal normal-case">
+                (type new items here, then click Regenerate)
+              </span>
             </label>
             <input
               type="text"
@@ -699,6 +820,225 @@ export function EditMealModal({
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Ingredients Breakdown Section */}
+        <div className="space-y-3 p-4 rounded-2xl bg-zinc-950/60 border border-white/8">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-xs font-bold uppercase tracking-wider text-zinc-300 select-none">
+              Ingredients & Portions ({items.length})
+            </span>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {items.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleSyncTotalsFromItems}
+                  className="px-2.5 py-1 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 text-[11px] font-bold transition cursor-pointer"
+                  title="Sum all ingredient macros and apply to meal totals above"
+                >
+                  Sync Totals
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleRegenerateWithAi}
+                disabled={isRegenerating || isSubmitting}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-teal-500/15 hover:bg-teal-500/25 border border-teal-500/30 text-teal-300 hover:text-white text-[11px] font-bold transition active:scale-95 cursor-pointer disabled:opacity-50"
+                title="Regenerate all ingredients and totals using AI"
+              >
+                {isRegenerating ? (
+                  <Loader2 className="w-3 h-3 animate-spin text-teal-300" />
+                ) : (
+                  <Sparkles className="w-3 h-3 text-teal-400" />
+                )}
+                <span>Regenerate with AI</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsAddingItem((prev) => !prev)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] font-bold transition cursor-pointer"
+              >
+                <Plus className="w-3 h-3" />
+                <span>{isAddingItem ? "Cancel" : "Add Ingredient"}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Inline Add Ingredient Form */}
+          {isAddingItem && (
+            <div className="p-3.5 rounded-xl bg-zinc-900/90 border border-emerald-500/30 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">
+                    Ingredient Name *
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Rolled Oats"
+                    value={newItemName}
+                    onChange={(e) => setNewItemName(e.target.value)}
+                    className="w-full px-3 py-1.5 bg-zinc-950 border border-white/10 rounded-xl text-white text-xs font-medium focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">
+                    Portion / Quantity
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 50g (1/2 cup)"
+                    value={newItemQty}
+                    onChange={(e) => setNewItemQty(e.target.value)}
+                    className="w-full px-3 py-1.5 bg-zinc-950 border border-white/10 rounded-xl text-white text-xs font-medium focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                <div>
+                  <label className="block text-[10px] font-bold text-orange-400 mb-0.5">
+                    Calories (kcal)
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="190"
+                    value={newItemCalories}
+                    onChange={(e) => setNewItemCalories(e.target.value)}
+                    className="w-full px-2.5 py-1 bg-zinc-950 border border-white/10 rounded-lg text-white text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-orange-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-emerald-400 mb-0.5">
+                    Protein (g)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    placeholder="6"
+                    value={newItemProtein}
+                    onChange={(e) => setNewItemProtein(e.target.value)}
+                    className="w-full px-2.5 py-1 bg-zinc-950 border border-white/10 rounded-lg text-white text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-amber-400 mb-0.5">
+                    Carbs (g)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    placeholder="34"
+                    value={newItemCarbs}
+                    onChange={(e) => setNewItemCarbs(e.target.value)}
+                    className="w-full px-2.5 py-1 bg-zinc-950 border border-white/10 rounded-lg text-white text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-amber-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-orange-300 mb-0.5">
+                    Fat (g)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    placeholder="3"
+                    value={newItemFat}
+                    onChange={(e) => setNewItemFat(e.target.value)}
+                    className="w-full px-2.5 py-1 bg-zinc-950 border border-white/10 rounded-lg text-white text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-orange-300"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-teal-400 mb-0.5">
+                    Fiber (g)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    placeholder="4"
+                    value={newItemFiber}
+                    onChange={(e) => setNewItemFiber(e.target.value)}
+                    className="w-full px-2.5 py-1 bg-zinc-950 border border-white/10 rounded-lg text-white text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-teal-400"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsAddingItem(false)}
+                  className="px-3 py-1 rounded-lg text-zinc-400 hover:text-white text-xs font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddItem}
+                  disabled={!newItemName.trim()}
+                  className="px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs transition cursor-pointer disabled:opacity-50"
+                >
+                  Add Ingredient
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* List of Ingredients */}
+          {items.length === 0 ? (
+            <p className="text-xs text-zinc-500 italic py-2 text-center">
+              No ingredients recorded for this meal yet. Add them above or regenerate with AI.
+            </p>
+          ) : (
+            <div className="max-h-56 overflow-y-auto space-y-2 pe-1">
+              {items.map((it, idx) => (
+                <div
+                  key={idx}
+                  className="flex flex-col gap-1.5 p-3 rounded-xl bg-zinc-950/70 border border-white/6 hover:border-white/12 transition text-start"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="truncate me-2">
+                      <span className="text-zinc-200 font-bold text-xs">{it.name}</span>
+                      {it.quantity && (
+                        <span className="text-zinc-400 text-[11px] font-medium ms-1.5">
+                          ({it.quantity})
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-amber-400 font-extrabold text-xs tabular-nums bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                        {Math.round(Number(it.calories) || 0)} kcal
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveItem(idx)}
+                        className="p-1 rounded-md text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition cursor-pointer"
+                        title="Remove ingredient"
+                        aria-label={`Remove ${it.name}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-wrap text-[10px] font-bold pt-0.5">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 tabular-nums">
+                      P: {Number(it.protein || 0).toFixed(1)}g
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 tabular-nums">
+                      C: {Number(it.carbs || 0).toFixed(1)}g
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-500/10 text-orange-400 border border-orange-500/20 tabular-nums">
+                      F: {Number(it.fat || 0).toFixed(1)}g
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-500/10 text-teal-400 border border-teal-500/20 tabular-nums">
+                      Fib: {Number(it.fiber || 0).toFixed(1)}g
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Action Buttons */}

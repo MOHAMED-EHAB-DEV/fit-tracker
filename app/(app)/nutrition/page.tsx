@@ -103,6 +103,7 @@ async function NutritionContent({ searchParams }: NutritionPageProps) {
     dateString: m.dateString,
     imageSource: m.imageSource,
     isManualOverride: m.isManualOverride,
+    items: m.items || [],
     macros: {
       calories: m.macros?.calories || 0,
       protein: m.macros?.protein || 0,

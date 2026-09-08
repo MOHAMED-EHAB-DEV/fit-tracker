@@ -41,7 +41,7 @@ export async function PATCH(
 
     const { id } = await context.params;
     const body = await request.json();
-    const { description, mealType, macros, aiMacros } = body;
+    const { description, mealType, macros, aiMacros, items } = body;
 
     await getDb();
 
@@ -73,6 +73,18 @@ export async function PATCH(
     }
     if (mealType !== undefined && typeof mealType === "string") {
       existingMeal.mealType = mealType as any;
+    }
+
+    if (items !== undefined && Array.isArray(items)) {
+      existingMeal.items = items.map((it: any) => ({
+        name: String(it.name || "Item"),
+        quantity: String(it.quantity || ""),
+        calories: Math.round(Number(it.calories) || 0),
+        protein: Number((Number(it.protein) || 0).toFixed(1)),
+        carbs: Number((Number(it.carbs) || 0).toFixed(1)),
+        fat: Number((Number(it.fat) || 0).toFixed(1)),
+        fiber: Number((Number(it.fiber) || 0).toFixed(1)),
+      }));
     }
 
     existingMeal.macros = {

@@ -3,9 +3,10 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CheckSquare, Check, Plus, ChevronRight, Sparkles } from "lucide-react";
+import { CheckSquare, Check, Plus, ChevronRight, Sparkles, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { IHabitData } from "@/components/habits/HabitCard";
+import { EditHabitModal } from "@/components/habits/EditHabitModal";
 
 interface HabitsWidgetProps {
   habits: IHabitData[];
@@ -19,13 +20,34 @@ export function HabitsWidget({
   todayStr,
 }: HabitsWidgetProps) {
   const router = useRouter();
+  const [habitsList, setHabitsList] = useState<IHabitData[]>(initialHabits);
   const [completedIds, setCompletedIds] = useState<Set<string>>(
     new Set(initialCompletedHabitIds)
   );
+  const [editingHabit, setEditingHabit] = useState<IHabitData | null>(null);
+
+  useEffect(() => {
+    setHabitsList(initialHabits);
+  }, [initialHabits]);
 
   useEffect(() => {
     setCompletedIds(new Set(initialCompletedHabitIds));
   }, [initialCompletedHabitIds]);
+
+  const handleUpdateHabit = (updated: IHabitData) => {
+    setHabitsList((prev) => prev.map((h) => (h._id === updated._id ? updated : h)));
+    router.refresh();
+  };
+
+  const handleHabitDeleted = (habitId: string) => {
+    setHabitsList((prev) => prev.filter((h) => h._id !== habitId));
+    setCompletedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(habitId);
+      return next;
+    });
+    router.refresh();
+  };
 
   const handleToggle = async (habitId: string) => {
     const isChecked = completedIds.has(habitId);
@@ -60,7 +82,7 @@ export function HabitsWidget({
     }
   };
 
-  const total = initialHabits.length;
+  const total = habitsList.length;
   const done = completedIds.size;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 
@@ -127,22 +149,24 @@ export function HabitsWidget({
 
           {/* Quick checklist items */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {initialHabits.slice(0, 6).map((h) => {
+            {habitsList.slice(0, 6).map((h) => {
               const isChecked = completedIds.has(h._id);
               const color = h.color || "#10b981";
               return (
-                <button
+                <div
                   key={h._id}
-                  type="button"
-                  onClick={() => handleToggle(h._id)}
                   className={cn(
-                    "flex items-center justify-between p-2.5 rounded-xl border text-start transition-all duration-150 cursor-pointer select-none",
+                    "flex items-center justify-between p-2.5 rounded-xl border text-start transition-all duration-150 select-none group",
                     isChecked
                       ? "bg-zinc-800/80 border-zinc-700/60 shadow-xs"
                       : "bg-zinc-900/50 border-zinc-800/80 hover:bg-zinc-800/40"
                   )}
                 >
-                  <div className="flex items-center gap-2 min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => handleToggle(h._id)}
+                    className="flex items-center gap-2 min-w-0 flex-1 text-start cursor-pointer"
+                  >
                     <span className="text-base shrink-0">{h.emoji || "⚡"}</span>
                     <span
                       className={cn(
@@ -152,38 +176,65 @@ export function HabitsWidget({
                     >
                       {h.name}
                     </span>
-                  </div>
+                  </button>
 
-                  <div
-                    className={cn(
-                      "w-5 h-5 rounded-md flex items-center justify-center transition shrink-0 border ms-2",
-                      isChecked
-                        ? "border-transparent text-zinc-950 font-bold"
-                        : "border-zinc-700 bg-zinc-800"
-                    )}
-                    style={{
-                      backgroundColor: isChecked ? color : undefined,
-                    }}
-                  >
-                    {isChecked && <Check className="w-3 h-3 stroke-3" />}
+                  <div className="flex items-center gap-1.5 shrink-0 ms-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingHabit(h);
+                      }}
+                      title="Edit habit"
+                      aria-label="Edit habit"
+                      className="p-1 text-zinc-400 hover:text-white hover:bg-zinc-700/60 rounded-lg transition cursor-pointer"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleToggle(h._id)}
+                      aria-label={isChecked ? "Mark incomplete" : "Mark complete"}
+                      className={cn(
+                        "w-5 h-5 rounded-md flex items-center justify-center transition shrink-0 border cursor-pointer",
+                        isChecked
+                          ? "border-transparent text-zinc-950 font-bold"
+                          : "border-zinc-700 bg-zinc-800"
+                      )}
+                      style={{
+                        backgroundColor: isChecked ? color : undefined,
+                      }}
+                    >
+                      {isChecked && <Check className="w-3 h-3 stroke-3" />}
+                    </button>
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
 
-          {initialHabits.length > 6 && (
+          {habitsList.length > 6 && (
             <div className="pt-1 text-center">
               <Link
                 href="/habits"
                 className="text-[11px] font-semibold text-zinc-500 hover:text-emerald-400 transition"
               >
-                +{initialHabits.length - 6} more habits in full view →
+                +{habitsList.length - 6} more habits in full view →
               </Link>
             </div>
           )}
         </div>
       )}
+
+      {/* Edit Habit Modal */}
+      <EditHabitModal
+        isOpen={!!editingHabit}
+        habit={editingHabit}
+        onClose={() => setEditingHabit(null)}
+        onUpdated={handleUpdateHabit}
+        onDeleted={handleHabitDeleted}
+      />
     </div>
   );
 }

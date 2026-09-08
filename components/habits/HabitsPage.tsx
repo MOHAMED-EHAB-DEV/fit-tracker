@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus, Sparkles, CheckSquare, Flame, Loader2 } from "lucide-react";
 import { HabitCard, IHabitData } from "./HabitCard";
 import { AddHabitModal } from "./AddHabitModal";
+import { EditHabitModal } from "./EditHabitModal";
 import { HabitWaveChart, IHabitHistoryPoint } from "./HabitWaveChart";
 import {
   format,
@@ -34,6 +35,7 @@ export function HabitsPage({
     new Set(initialCompletedHabitIds)
   );
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingHabit, setEditingHabit] = useState<IHabitData | null>(null);
   const [viewMode, setViewMode] = useState<"week" | "month">("week");
   const [offset, setOffset] = useState<number>(0);
   const [logsMap, setLogsMap] = useState<Record<string, string[]>>({
@@ -169,26 +171,37 @@ export function HabitsPage({
     }
   };
 
-  // Handle deleting habit
+  // Handle updating habit
+  const handleUpdateHabit = (updated: IHabitData) => {
+    setHabits((prev) => prev.map((h) => (h._id === updated._id ? updated : h)));
+    router.refresh();
+  };
+
+  // Handle local state cleanup after habit deletion
+  const handleHabitDeleted = (habitId: string) => {
+    setHabits((prev) => prev.filter((h) => h._id !== habitId));
+    setCompletedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(habitId);
+      return next;
+    });
+    setLogsMap((prev) => {
+      const updated: Record<string, string[]> = {};
+      for (const [k, v] of Object.entries(prev)) {
+        updated[k] = v.filter((id) => id !== habitId);
+      }
+      return updated;
+    });
+    router.refresh();
+  };
+
+  // Handle deleting habit from card button
   const handleDeleteHabit = async (habitId: string) => {
     try {
       const res = await fetch(`/api/habits/${habitId}`, { method: "DELETE" });
       const data = await res.json();
       if (res.ok && data.success) {
-        setHabits((prev) => prev.filter((h) => h._id !== habitId));
-        setCompletedIds((prev) => {
-          const next = new Set(prev);
-          next.delete(habitId);
-          return next;
-        });
-        setLogsMap((prev) => {
-          const updated: Record<string, string[]> = {};
-          for (const [k, v] of Object.entries(prev)) {
-            updated[k] = v.filter((id) => id !== habitId);
-          }
-          return updated;
-        });
-        router.refresh();
+        handleHabitDeleted(habitId);
       }
     } catch (err) {
       console.error("Failed to delete habit:", err);
@@ -293,6 +306,7 @@ export function HabitsPage({
                 habit={habit}
                 isChecked={completedIds.has(habit._id)}
                 onToggle={handleToggleHabit}
+                onEdit={(h) => setEditingHabit(h)}
                 onDelete={handleDeleteHabit}
               />
             ))}
@@ -321,6 +335,15 @@ export function HabitsPage({
           setHabits((prev) => [...prev, newHabit]);
           router.refresh();
         }}
+      />
+
+      {/* Edit Habit Modal */}
+      <EditHabitModal
+        isOpen={!!editingHabit}
+        habit={editingHabit}
+        onClose={() => setEditingHabit(null)}
+        onUpdated={handleUpdateHabit}
+        onDeleted={handleHabitDeleted}
       />
     </div>
   );
