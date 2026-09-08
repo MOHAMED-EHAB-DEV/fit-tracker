@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { isAndroidNativeApp } from "@/services/webview-bridge";
 
 interface UseDialogOverlayOptions {
   isOpen: boolean;
@@ -6,6 +7,7 @@ interface UseDialogOverlayOptions {
   durationMs?: number;
   lockScroll?: boolean;
   closeOnEscape?: boolean;
+  interceptBackButton?: boolean;
 }
 
 interface UseDialogOverlayReturn {
@@ -24,7 +26,13 @@ export function useDialogOverlay({
   durationMs = 200,
   lockScroll = true,
   closeOnEscape = true,
+  interceptBackButton = true,
 }: UseDialogOverlayOptions): UseDialogOverlayReturn {
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
   // 1. SSR-Safe Client Mount State
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => {
@@ -72,11 +80,24 @@ export function useDialogOverlay({
     };
   }, [isOpen, lockScroll]);
 
-  // 4. Escape Key & Android Back Button Popstate Interception
+  // 4. Escape Key Dismissal
   useEffect(() => {
-    if (!isOpen || typeof window === "undefined") return;
+    if (!isOpen || !closeOnEscape || typeof window === "undefined") return;
 
-    // Push a dummy history state when opening dialog
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.key === "Esc") {
+        onCloseRef.current();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, closeOnEscape]);
+
+  // 5. Android Hardware Back Button Popstate Interception (only active in native Android WebView wrapper)
+  useEffect(() => {
+    if (!isOpen || !interceptBackButton || typeof window === "undefined" || !isAndroidNativeApp()) return;
+
     const modalHistoryKey = `modal_state_${Date.now()}`;
     window.history.pushState({ [modalHistoryKey]: true }, "");
 
@@ -84,28 +105,19 @@ export function useDialogOverlay({
 
     const handlePopState = () => {
       isClosedByPopState = true;
-      onClose();
-    };
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (closeOnEscape && (e.key === "Escape" || e.key === "Esc")) {
-        onClose();
-      }
+      onCloseRef.current();
     };
 
     window.addEventListener("popstate", handlePopState);
-    window.addEventListener("keydown", handleKeyDown);
 
     return () => {
       window.removeEventListener("popstate", handlePopState);
-      window.removeEventListener("keydown", handleKeyDown);
 
-      // If closed by button/click instead of browser back, revert the pushed history state
       if (!isClosedByPopState && window.history.state?.[modalHistoryKey]) {
         window.history.back();
       }
     };
-  }, [isOpen, closeOnEscape, onClose]);
+  }, [isOpen, interceptBackButton]);
 
   return { isMounted, shouldRender, isAnimatingOut };
 }

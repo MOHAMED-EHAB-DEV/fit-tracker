@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import Image from "next/image";
 import {
   Scale,
@@ -83,6 +83,9 @@ export function BodyCompClient({ initialCheckIns }: BodyCompClientProps) {
 
   // Lightbox modal state
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const handleCloseLightbox = useCallback(() => {
+    setLightboxUrl(null);
+  }, []);
 
   const [aiPreview, setAiPreview] = useState<{
     estimatedBodyFatPercent: number | null;
@@ -620,10 +623,17 @@ export function BodyCompClient({ initialCheckIns }: BodyCompClientProps) {
                       </span>
                       <div className="flex items-center gap-3 overflow-x-auto pb-1">
                         {item.photos!.map((photo, pIdx) => (
-                          <div
+                          <button
+                            type="button"
                             key={pIdx}
-                            onClick={() => photo.signedUrl && setLightboxUrl(photo.signedUrl)}
-                            className="relative w-28 h-36 sm:w-32 sm:h-40 rounded-2xl overflow-hidden border border-white/10 bg-zinc-950 shrink-0 cursor-pointer group shadow-md"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (photo.signedUrl) {
+                                setLightboxUrl(photo.signedUrl);
+                              }
+                            }}
+                            className="relative w-28 h-36 sm:w-32 sm:h-40 rounded-2xl overflow-hidden border border-white/10 bg-zinc-950 shrink-0 cursor-pointer group shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                            aria-label={`View physique photo ${photo.angle || pIdx + 1} full size`}
                           >
                             <Image
                               src={photo.signedUrl}
@@ -640,7 +650,7 @@ export function BodyCompClient({ initialCheckIns }: BodyCompClientProps) {
                                 {photo.angle}
                               </span>
                             )}
-                          </div>
+                          </button>
                         ))}
                       </div>
                     </div>
@@ -791,13 +801,13 @@ export function BodyCompClient({ initialCheckIns }: BodyCompClientProps) {
       </div>
 
       {/* Lightbox Preview Modal */}
-      {lightboxUrl && (
-        <Modal
-          isOpen={Boolean(lightboxUrl)}
-          onClose={() => setLightboxUrl(null)}
-          size="lg"
-          title="Physique Photo Full View"
-        >
+      <Modal
+        isOpen={Boolean(lightboxUrl)}
+        onClose={handleCloseLightbox}
+        size="lg"
+        title="Physique Photo Full View"
+      >
+        {lightboxUrl && (
           <div className="relative w-full h-[70vh] rounded-2xl overflow-hidden bg-zinc-950 flex items-center justify-center">
             <Image
               src={lightboxUrl}
@@ -806,8 +816,8 @@ export function BodyCompClient({ initialCheckIns }: BodyCompClientProps) {
               className="object-contain"
             />
           </div>
-        </Modal>
-      )}
+        )}
+      </Modal>
     </div>
   );
 }
