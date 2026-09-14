@@ -205,6 +205,27 @@ class JSBridge(
         }
     }
 
+
+
+    /**
+     * Shows a heads-up system notification for a planner event.
+     */
+    @JavascriptInterface
+    fun showNotification(
+        eventId: String,
+        title: String,
+        description: String,
+        category: String?
+    ) {
+        com.fittracker.notification.PlannerNotificationManager.showNotification(
+            context,
+            eventId,
+            title,
+            description,
+            category
+        )
+    }
+
     /**
      * Pushes the latest step count to Next.js by dispatching DOM events and bridge callbacks.
      */

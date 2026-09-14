@@ -16,6 +16,12 @@ export interface AndroidBridgeInterface {
   updateWidgetData?: (json: string) => void;
   pinWidget?: (type: string) => boolean;
   isPinWidgetSupported?: () => boolean;
+  showNotification?: (
+    eventId: string,
+    title: string,
+    description: string,
+    category?: string
+  ) => void;
 }
 
 declare global {
@@ -149,4 +155,32 @@ export function requestPinAppWidget(type: "small" | "medium" | "large"): boolean
   }
   return false;
 }
+
+export interface PlannerNotificationPayload {
+  id: string;
+  title: string;
+  description?: string;
+  category?: string;
+}
+
+/**
+ * Displays a heads-up system notification everywhere on Android for a planner event.
+ */
+export function triggerSystemNotification(payload: PlannerNotificationPayload): void {
+  if (typeof window === "undefined") return;
+  const bridge = getAndroidBridge();
+  if (bridge?.showNotification) {
+    try {
+      bridge.showNotification(
+        payload.id,
+        payload.title,
+        payload.description || "",
+        payload.category
+      );
+    } catch (err) {
+      console.warn("Failed to trigger system notification:", err);
+    }
+  }
+}
+
 

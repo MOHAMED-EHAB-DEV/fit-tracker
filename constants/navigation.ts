@@ -7,6 +7,7 @@ import {
   Sparkles,
   Settings,
   Users,
+  CalendarClock,
   type LucideIcon,
 } from "lucide-react";
 
@@ -19,6 +20,7 @@ export interface NavItem {
 
 export const MAIN_NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard, mobileLabel: "Home" },
+  { label: "Day Planner", href: "/planner", icon: CalendarClock, mobileLabel: "Plan" },
   { label: "Habits", href: "/habits", icon: CheckSquare, mobileLabel: "Habits" },
   { label: "Workouts", href: "/workouts", icon: Dumbbell, mobileLabel: "Workout" },
   { label: "Nutrition", href: "/nutrition", icon: UtensilsCrossed, mobileLabel: "Nutrition" },

@@ -1,5 +1,5 @@
 import React, { Suspense } from "react";
-import { format } from "date-fns";
+import { format, parseISO, getDay, getDate } from "date-fns";
 import { Loader2, PenSquare, Dumbbell, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { getFullUser } from "@/lib/auth/session";
@@ -20,7 +20,10 @@ import { WaterCounter } from "@/components/dashboard/WaterCounter";
 import { MealTimeline } from "@/components/dashboard/MealTimeline";
 import { StreakWidget } from "@/components/dashboard/StreakWidget";
 import { HabitsWidget } from "@/components/dashboard/HabitsWidget";
+import { TodayPlanWidget } from "@/components/dashboard/TodayPlanWidget";
 import Habit from "@/lib/db/models/Habit";
+import PlannedEvent from "@/lib/db/models/PlannedEvent";
+import { sortEventsByPlannerTime } from "@/lib/planner/time-sort";
 import { calculateStreak } from "@/lib/fitness/streak";
 import { DAYS_OF_WEEK as DAYS_LIST } from "@/constants/workout";
 
@@ -33,7 +36,7 @@ async function DashboardContent() {
   const weekDateStrings = getWeekDatesStrings(weekStartStr);
 
   // Parallel database reads
-  const [todayLog, weekLogs, todayMeals, weekWorkouts, allWorkouts, bodyCompLogs, prWorkouts, allDailyLogs, userHabits] = await Promise.all([
+  const [todayLog, weekLogs, todayMeals, weekWorkouts, allWorkouts, bodyCompLogs, prWorkouts, allDailyLogs, userHabits, plannedEvents] = await Promise.all([
     DailyLog.findOne({ userId: user?._id, dateString: todayStr }).lean(),
     DailyLog.find({ userId: user?._id, dateString: { $in: weekDateStrings } }).lean(),
     Meal.find({ userId: user?._id, dateString: todayStr }).sort({ createdAt: 1 }).lean(),
@@ -43,7 +46,43 @@ async function DashboardContent() {
     Workout.find({ userId: user?._id, status: "completed" }).sort({ completedAt: -1 }).limit(20).lean(),
     DailyLog.find({ userId: user?._id }).select("dateString caloriesIn steps waterMl completedHabitIds").lean(),
     Habit.find({ userId: user?._id, isActive: true }).sort({ order: 1, createdAt: 1 }).lean(),
+    PlannedEvent.find({
+      userId: user?._id,
+      $or: [
+        { date: todayStr, recurrence: { $in: ["once", null] } },
+        { date: { $lte: todayStr }, recurrence: { $in: ["daily", "weekly", "monthly"] } },
+      ],
+    }).sort({ startTime: 1 }).lean(),
   ]);
+
+  const targetParsed = parseISO(todayStr);
+  const targetDayOfWeek = getDay(targetParsed);
+  const targetDayOfMonth = getDate(targetParsed);
+
+  const matchingPlannedEvents = (plannedEvents || []).filter((e: any) => {
+    if (e.excludedDates && e.excludedDates.includes(todayStr)) return false;
+    if (!e.recurrence || e.recurrence === "once") return e.date === todayStr;
+    if (e.recurrence === "daily") return true;
+
+    const eventParsed = parseISO(e.date);
+    if (e.recurrence === "weekly") return getDay(eventParsed) === targetDayOfWeek;
+    if (e.recurrence === "monthly") return getDate(eventParsed) === targetDayOfMonth;
+    return false;
+  });
+
+  const serializedPlannedEvents = sortEventsByPlannerTime(
+    matchingPlannedEvents.map((e: any) => ({
+      _id: e._id.toString(),
+      title: e.title,
+      startTime: e.startTime,
+      endTime: e.endTime || "",
+      category: e.category || "other",
+      color: e.color || "#10b981",
+      isCompleted: (!e.recurrence || e.recurrence === "once")
+        ? Boolean(e.isCompleted)
+        : Array.isArray(e.completedDates) && e.completedDates.includes(todayStr),
+    }))
+  );
 
   const serializedHabits = (userHabits || []).map((h: any) => ({
     _id: h._id.toString(),
@@ -395,6 +434,12 @@ async function DashboardContent() {
 
       {/* Gamified Habit Streak & Milestones */}
       <StreakWidget streak={streakData} />
+
+      {/* Today's Day Planner Widget */}
+      <TodayPlanWidget
+        initialEvents={serializedPlannedEvents}
+        todayStr={todayStr}
+      />
 
       {/* Daily Habits Quick Checklist Widget */}
       <HabitsWidget
