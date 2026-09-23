@@ -14,6 +14,7 @@ export function Sidebar() {
   const { user } = useUser();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
 
   useEffect(() => {
     try {
@@ -26,19 +27,45 @@ export function Sidebar() {
     }
   }, []);
 
+  const closeMobile = () => {
+    if (!isMobileOpen || isClosing) return;
+    setIsClosing(true);
+  };
+
+  const handleAnimationEnd = (e: React.AnimationEvent) => {
+    if (e.target !== e.currentTarget) return;
+    if (isClosing) {
+      setIsMobileOpen(false);
+      setIsClosing(false);
+    }
+  };
+
+  // Fallback timer to ensure unmounting if animation end is interrupted
+  useEffect(() => {
+    if (!isClosing) return;
+    const timer = setTimeout(() => {
+      setIsMobileOpen(false);
+      setIsClosing(false);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [isClosing]);
+
   // Close mobile drawer on route change
   useEffect(() => {
-    setIsMobileOpen(false);
+    if (isMobileOpen) {
+      setIsMobileOpen(false);
+      setIsClosing(false);
+    }
   }, [pathname]);
 
   // Handle escape key and body scroll lock for mobile drawer
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        setIsMobileOpen(false);
+        closeMobile();
       }
     };
-    if (isMobileOpen) {
+    if (isMobileOpen || isClosing) {
       document.addEventListener("keydown", handleKeyDown);
       document.body.style.overflow = "hidden";
     } else {
@@ -48,7 +75,7 @@ export function Sidebar() {
       document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = "";
     };
-  }, [isMobileOpen]);
+  }, [isMobileOpen, isClosing]);
 
   const toggleCollapsed = () => {
     setIsCollapsed((prev) => {
@@ -63,6 +90,7 @@ export function Sidebar() {
   };
 
   const handleLogout = async () => {
+    closeMobile();
     try {
       await fetch("/api/auth/logout", { method: "POST" });
       router.push("/login");
@@ -77,31 +105,42 @@ export function Sidebar() {
       {/* Mobile Floating Reveal Button (Hidden on Desktop) */}
       <button
         type="button"
-        onClick={() => setIsMobileOpen(true)}
+        onClick={() => {
+          setIsMobileOpen(true);
+          setIsClosing(false);
+        }}
         aria-label="Open navigation menu"
-        className="md:hidden fixed bottom-5 inset-s-5 z-40 px-3.5 py-2.5 rounded-2xl bg-zinc-900/90 border border-white/10 text-emerald-400 shadow-2xl backdrop-blur-xl hover:bg-zinc-800 transition active:scale-95 cursor-pointer flex items-center gap-2"
+        className="md:hidden fixed bottom-5 inset-s-5 z-40 w-11 h-11 rounded-2xl bg-zinc-900/90 border border-white/10 text-emerald-400 shadow-2xl backdrop-blur-xl hover:bg-zinc-800 transition active:scale-95 cursor-pointer flex items-center justify-center"
       >
         <Menu className="w-5 h-5 text-emerald-400" />
-        <span className="text-xs font-bold text-white">Menu</span>
       </button>
 
       {/* Mobile Drawer Overlay & Slide-Over Panel (Hidden on Desktop) */}
-      {isMobileOpen && (
+      {(isMobileOpen || isClosing) && (
         <div className="fixed inset-0 z-50 md:hidden">
           {/* Backdrop */}
           <div
-            className="fixed inset-0 bg-black/70 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
-            onClick={() => setIsMobileOpen(false)}
+            className={cn(
+              "fixed inset-0 bg-black/70 backdrop-blur-xs",
+              isClosing ? "sidebar-backdrop-exit" : "sidebar-backdrop-enter"
+            )}
+            onClick={closeMobile}
             aria-hidden="true"
           />
 
           {/* Drawer Panel */}
-          <aside className="fixed inset-y-0 inset-s-0 w-72 max-w-[85vw] h-full bg-zinc-950 border-e border-zinc-800/80 p-5 flex flex-col shadow-2xl z-50 animate-in slide-in-from-start duration-200 select-none overflow-y-auto">
+          <aside
+            onAnimationEnd={handleAnimationEnd}
+            className={cn(
+              "fixed inset-y-0 inset-s-0 w-72 max-w-[85vw] h-full bg-zinc-950 border-e border-zinc-800/80 p-5 flex flex-col shadow-2xl z-50 select-none overflow-y-auto",
+              isClosing ? "sidebar-drawer-exit" : "sidebar-drawer-enter"
+            )}
+          >
             {/* Header with Brand & Close Button */}
             <div className="flex items-center justify-between mb-6">
               <Link
                 href="/"
-                onClick={() => setIsMobileOpen(false)}
+                onClick={closeMobile}
                 className="flex items-center gap-3 px-2 py-1.5 rounded-2xl"
               >
                 <div className="w-10 h-10 rounded-xl bg-linear-to-tr from-emerald-500 to-teal-400 p-0.5 shadow-md shadow-emerald-500/20 flex items-center justify-center shrink-0">
@@ -120,7 +159,7 @@ export function Sidebar() {
               </Link>
               <button
                 type="button"
-                onClick={() => setIsMobileOpen(false)}
+                onClick={closeMobile}
                 aria-label="Close navigation menu"
                 className="p-2 rounded-xl bg-zinc-900 border border-white/5 text-zinc-400 hover:text-white transition cursor-pointer"
               >
@@ -138,7 +177,7 @@ export function Sidebar() {
                   <Link
                     key={item.href}
                     href={item.href}
-                    onClick={() => setIsMobileOpen(false)}
+                    onClick={closeMobile}
                     aria-current={isActive ? "page" : undefined}
                     className={cn(
                       "flex items-center gap-3.5 px-3.5 py-3 rounded-xl font-medium text-sm transition-all duration-200 group relative",

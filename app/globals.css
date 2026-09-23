@@ -192,3 +192,82 @@
   color: #f4f4f5 !important;
   background: rgba(255, 255, 255, 0.08) !important;
 }
+
+/* ── Mobile Sidebar Drawer Animations ── */
+@keyframes sidebar-backdrop-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sidebar-backdrop-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes sidebar-drawer-slide-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes sidebar-drawer-slide-out {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes sidebar-drawer-slide-in-rtl {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes sidebar-drawer-slide-out-rtl {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.sidebar-backdrop-enter {
+  animation: sidebar-backdrop-fade-in 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.sidebar-backdrop-exit {
+  animation: sidebar-backdrop-fade-out 200ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+.sidebar-drawer-enter {
+  animation: sidebar-drawer-slide-in 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.sidebar-drawer-exit {
+  animation: sidebar-drawer-slide-out 220ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+[dir="rtl"] .sidebar-drawer-enter {
+  animation-name: sidebar-drawer-slide-in-rtl;
+}
+
+[dir="rtl"] .sidebar-drawer-exit {
+  animation-name: sidebar-drawer-slide-out-rtl;
+}
