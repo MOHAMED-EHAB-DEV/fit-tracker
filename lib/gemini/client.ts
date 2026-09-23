@@ -165,6 +165,7 @@ export async function generateContentWithFallback(options: {
       console.error(`[Gemini Auto-Switch] Fallback model (${fallback}) also failed:`, fallbackErr);
       throw fallbackErr;
     }
+  }
 }
 
 /**
