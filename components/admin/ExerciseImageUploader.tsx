@@ -438,7 +438,7 @@ export function ExerciseImageUploader({
             )}
           </p>
           <p className="text-xs text-zinc-500">
-            Supports PNG, JPG, WebP, GIF up to 10MB each (uploaded on save)
+            Supports PNG, JPG, WebP, GIF up to 10MB each
           </p>
         </div>
       </div>

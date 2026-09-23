@@ -71,7 +71,7 @@ export const COMMAND_DEFINITIONS: CommandDef[] = [
   {
     name: "/data meals",
     syntax: "/data:meals [days=30]",
-    description: "Compress & inject meal logs, macro averages, and calorie adherence",
+    description: "Include meal logs, macro averages, and calorie adherence",
     category: "data",
     icon: UtensilsCrossed,
     defaultDays: 30,
@@ -81,7 +81,7 @@ export const COMMAND_DEFINITIONS: CommandDef[] = [
   {
     name: "/data workouts",
     syntax: "/data:workouts [days=14]",
-    description: "Compress & inject workout logs, volume per muscle group, and PRs",
+    description: "Include workout logs, volume per muscle group, and PRs",
     category: "data",
     icon: Dumbbell,
     defaultDays: 14,
@@ -91,7 +91,7 @@ export const COMMAND_DEFINITIONS: CommandDef[] = [
   {
     name: "/data bodycomp",
     syntax: "/data:bodycomp [days=60]",
-    description: "Compress & inject weigh-ins, body fat % trends, and physique notes",
+    description: "Include weigh-ins, body fat % trends, and physique notes",
     category: "data",
     icon: Scale,
     defaultDays: 60,
@@ -101,7 +101,7 @@ export const COMMAND_DEFINITIONS: CommandDef[] = [
   {
     name: "/data progress",
     syntax: "/data:progress [days=30]",
-    description: "Inject holistic progress: weight delta, calorie balance, and 1RM records",
+    description: "Include overall progress: weight delta, calorie balance, and 1RM records",
     category: "data",
     icon: TrendingUp,
     defaultDays: 30,
@@ -257,6 +257,7 @@ export function CoachClient() {
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const commandPaletteRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -265,6 +266,32 @@ export function CoachClient() {
   useEffect(() => {
     scrollToBottom();
   }, [messages, isLoading]);
+
+  useEffect(() => {
+    if (!showCommandPalette || !commandPaletteRef.current) return;
+    const container = commandPaletteRef.current;
+    if (selectedCmdIndex === 0) {
+      container.scrollTop = 0;
+      return;
+    }
+    const selectedEl = container.querySelector(
+      `[data-command-index="${selectedCmdIndex}"]`
+    ) as HTMLElement | null;
+
+    if (selectedEl) {
+      const containerRect = container.getBoundingClientRect();
+      const elRect = selectedEl.getBoundingClientRect();
+      const header = container.querySelector(".command-palette-header") as HTMLElement | null;
+      const headerHeight = header ? header.offsetHeight : 0;
+      const effectiveTop = containerRect.top + headerHeight;
+
+      if (elRect.bottom > containerRect.bottom) {
+        container.scrollTop += elRect.bottom - containerRect.bottom + 8;
+      } else if (elRect.top < effectiveTop) {
+        container.scrollTop -= effectiveTop - elRect.top + 8;
+      }
+    }
+  }, [selectedCmdIndex, showCommandPalette]);
 
   // Filter commands when user types after "/"
   const filteredCommands = input.startsWith("/")
@@ -854,12 +881,6 @@ export function CoachClient() {
                 {/* Message Footer: Timestamp & Reply Action Button */}
                 <div className={cn("flex items-center gap-2 px-1 text-[10px] text-zinc-500", isUser && "justify-end")}>
                   <span>{msg.timestamp}</span>
-                  {msg.modelUsed && (
-                    <>
-                      <span>•</span>
-                      <span className="text-zinc-400">{msg.modelUsed}</span>
-                    </>
-                  )}
 
                   {/* Reply Button */}
                   <button
@@ -885,7 +906,7 @@ export function CoachClient() {
         {isLoading && (
           <div className="flex items-center gap-3 text-zinc-400 text-xs py-3 px-4 bg-zinc-950/60 rounded-2xl border border-zinc-800/80 w-fit">
             <Loader2 className="w-4 h-4 animate-spin text-emerald-400" aria-hidden="true" />
-            <span>Analyzing multimodal context with {selectedModel}...</span>
+            <span>Analyzing fitness data with AI...</span>
           </div>
         )}
         <div ref={messagesEndRef} />
@@ -893,8 +914,11 @@ export function CoachClient() {
 
       {/* Floating Discord-Style Command Autocomplete Palette */}
       {showCommandPalette && filteredCommands.length > 0 && (
-        <div className="absolute bottom-24 inset-s-4 inset-e-4 max-h-72 overflow-y-auto rounded-2xl bg-zinc-950/95 border border-zinc-800 shadow-2xl backdrop-blur-md p-2 z-40 space-y-1 animate-in fade-in slide-in-from-bottom-2 duration-150">
-          <div className="flex items-center justify-between px-3 py-1.5 border-b border-zinc-800/60 text-[11px] text-zinc-400">
+        <div
+          ref={commandPaletteRef}
+          className="absolute bottom-24 inset-s-4 inset-e-4 max-h-72 overflow-y-auto rounded-2xl bg-zinc-950/95 border border-zinc-800 shadow-2xl backdrop-blur-md p-2 z-40 space-y-1 animate-in fade-in slide-in-from-bottom-2 duration-150"
+        >
+          <div className="command-palette-header sticky top-0 bg-zinc-950/95 backdrop-blur-sm z-10 flex items-center justify-between px-3 py-1.5 border-b border-zinc-800/60 text-[11px] text-zinc-400">
             <span className="font-semibold text-emerald-400 uppercase tracking-wider text-[10px]">
               Matching Commands ({filteredCommands.length})
             </span>
@@ -911,6 +935,7 @@ export function CoachClient() {
               return (
                 <button
                   key={cmd.name}
+                  data-command-index={idx}
                   type="button"
                   onClick={() => selectCommand(cmd)}
                   className={cn(

@@ -18,12 +18,15 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  Calculator,
 } from "lucide-react";
 import versionData from "@/version.json";
 import { ActivityLevel, FitnessGoal, Sex } from "@/types/fitness";
 import { SEX_OPTIONS, ACTIVITY_LEVELS, FITNESS_GOALS } from "@/constants/user";
 import { isAndroidNativeApp, triggerAppUpdateCheck } from "@/services/webview-bridge";
 import { updateProfileSettingsAction } from "@/lib/fitness/actions";
+import { calculateAllMacroTargets } from "@/lib/fitness/bmr";
+import { cn } from "@/lib/utils";
 import { Card, CardHeader, CardBody } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Select, SelectOption } from "@/components/ui/Select";
@@ -62,6 +65,15 @@ export function SettingsClient({ initialUser }: SettingsClientProps = {}) {
   const [heightCm, setHeightCm] = useState(user?.fitnessProfile?.heightCm ? String(user.fitnessProfile.heightCm) : "178");
   const [activityLevel, setActivityLevel] = useState<ActivityLevel>(user?.fitnessProfile?.activityLevel || "moderate");
   const [goal, setGoal] = useState<FitnessGoal>(user?.fitnessProfile?.goal || "maintain");
+  const [calorieAdjustment, setCalorieAdjustment] = useState<string>(
+    user?.fitnessProfile?.calorieAdjustment != null
+      ? String(user.fitnessProfile.calorieAdjustment)
+      : user?.fitnessProfile?.goal === "bulk"
+      ? "300"
+      : user?.fitnessProfile?.goal === "cut"
+      ? "500"
+      : ""
+  );
   const [stepGoal, setStepGoal] = useState(user?.preferences?.stepGoal ? String(user.preferences.stepGoal) : "10000");
   const [waterGoalMl, setWaterGoalMl] = useState(user?.preferences?.waterGoalMl ? String(user.preferences.waterGoalMl) : "3000");
   const [restTimerDefaultSec, setRestTimerDefaultSec] = useState(user?.preferences?.restTimerDefaultSec ? String(user.preferences.restTimerDefaultSec) : "90");
@@ -92,6 +104,15 @@ export function SettingsClient({ initialUser }: SettingsClientProps = {}) {
       if (user.fitnessProfile?.heightCm) setHeightCm(String(user.fitnessProfile.heightCm));
       if (user.fitnessProfile?.activityLevel) setActivityLevel(user.fitnessProfile.activityLevel);
       if (user.fitnessProfile?.goal) setGoal(user.fitnessProfile.goal);
+      if (user.fitnessProfile?.calorieAdjustment != null) {
+        setCalorieAdjustment(String(user.fitnessProfile.calorieAdjustment));
+      } else if (user.fitnessProfile?.goal === "bulk") {
+        setCalorieAdjustment("300");
+      } else if (user.fitnessProfile?.goal === "cut") {
+        setCalorieAdjustment("500");
+      } else {
+        setCalorieAdjustment("");
+      }
       if (user.preferences?.stepGoal) setStepGoal(String(user.preferences.stepGoal));
       if (user.preferences?.waterGoalMl) setWaterGoalMl(String(user.preferences.waterGoalMl));
       if (user.preferences?.restTimerDefaultSec) setRestTimerDefaultSec(String(user.preferences.restTimerDefaultSec));
@@ -129,6 +150,7 @@ export function SettingsClient({ initialUser }: SettingsClientProps = {}) {
           heightCm: parseFloat(heightCm) || null,
           activityLevel,
           goal,
+          calorieAdjustment: calorieAdjustment ? parseInt(calorieAdjustment, 10) : null,
           targetCalories: targetCalories ? parseInt(targetCalories, 10) : null,
           targetProteinG: targetProteinG ? parseInt(targetProteinG, 10) : null,
           targetCarbsG: targetCarbsG ? parseInt(targetCarbsG, 10) : null,
@@ -280,9 +302,47 @@ export function SettingsClient({ initialUser }: SettingsClientProps = {}) {
                 label="Fitness Goal"
                 options={goalOptions}
                 value={goal}
-                onChange={(val) => setGoal(val)}
+                onChange={(val) => {
+                  setGoal(val);
+                  if (val === "bulk" && (!calorieAdjustment || calorieAdjustment === "500")) {
+                    setCalorieAdjustment("300");
+                  } else if (val === "cut" && (!calorieAdjustment || calorieAdjustment === "300")) {
+                    setCalorieAdjustment("500");
+                  } else if (val === "maintain") {
+                    setCalorieAdjustment("");
+                  }
+                }}
                 placeholder="Select fitness goal"
               />
+
+              {goal === "bulk" && (
+                <Input
+                  label="Bulking Calorie Surplus (+kcal)"
+                  type="number"
+                  value={calorieAdjustment}
+                  onChange={(e) => setCalorieAdjustment(e.target.value)}
+                  placeholder="300"
+                  description="Adjust your bulk surplus calories (e.g. +300 kcal above TDEE)"
+                />
+              )}
+
+              {goal === "cut" && (
+                <Input
+                  label="Cutting Calorie Deficit (-kcal)"
+                  type="number"
+                  value={calorieAdjustment}
+                  onChange={(e) => setCalorieAdjustment(e.target.value)}
+                  placeholder="500"
+                  description="Adjust your cut deficit calories (e.g. -500 kcal below TDEE)"
+                />
+              )}
+
+              {goal === "maintain" && (
+                <div className="p-3 rounded-2xl bg-zinc-950/60 border border-white/5 flex items-center justify-between text-xs text-zinc-400">
+                  <span className="font-semibold text-zinc-300">Maintenance Target</span>
+                  <span>0 kcal surplus/deficit (Matches TDEE)</span>
+                </div>
+              )}
 
               <Input
                 label="Daily Step Goal"
@@ -372,9 +432,48 @@ export function SettingsClient({ initialUser }: SettingsClientProps = {}) {
         {/* Customized Macro Targets Card */}
         <Card variant="default">
           <CardHeader>
-            <div className="flex items-center gap-2 text-white font-bold text-base">
-              <Flame className="w-5 h-5 text-orange-400" aria-hidden="true" />
-              <span>Nutrition & Macro Targets</span>
+            <div className="flex items-center justify-between w-full flex-wrap gap-2">
+              <div className="flex items-center gap-2 text-white font-bold text-base">
+                <Flame className="w-5 h-5 text-orange-400" aria-hidden="true" />
+                <span>Nutrition & Macro Targets</span>
+              </div>
+              <Button
+                type="button"
+                variant="bordered"
+                size="sm"
+                onClick={() => {
+                  const w = parseFloat(weightKg) || 75;
+                  const h = parseFloat(heightCm) || 178;
+                  const adj = calorieAdjustment ? parseInt(calorieAdjustment, 10) : null;
+                  let userAge = 25;
+                  if (user?.fitnessProfile?.birthDate) {
+                    const diffMs = Date.now() - new Date(user.fitnessProfile.birthDate).getTime();
+                    userAge = Math.floor(diffMs / (365.25 * 24 * 60 * 60 * 1000));
+                  } else if (user?.fitnessProfile?.age) {
+                    userAge = user.fitnessProfile.age;
+                  }
+
+                  const result = calculateAllMacroTargets({
+                    weightKg: w,
+                    heightCm: h,
+                    age: userAge,
+                    sex,
+                    activityLevel,
+                    goal,
+                    calorieAdjustment: adj,
+                  });
+
+                  setTargetCalories(String(result.calories));
+                  setTargetProteinG(String(result.protein));
+                  setTargetCarbsG(String(result.carbs));
+                  setTargetFatG(String(result.fat));
+                  setTargetFiberG(String(result.fiber));
+                }}
+                startContent={<Calculator className="w-4 h-4 text-emerald-400" />}
+                className="text-xs font-bold text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
+              >
+                Auto-Calculate from Metrics & Goal
+              </Button>
             </div>
           </CardHeader>
 
@@ -382,6 +481,63 @@ export function SettingsClient({ initialUser }: SettingsClientProps = {}) {
             <p className="text-xs text-zinc-400">
               Customize your exact daily nutrition goals. These settings directly power your daily logs and remaining-macro trackers.
             </p>
+
+            {/* Live Macro Distribution & Calorie Integrity Verification */}
+            {(() => {
+              const cal = parseInt(targetCalories, 10) || 0;
+              const p = parseFloat(targetProteinG) || 0;
+              const c = parseFloat(targetCarbsG) || 0;
+              const f = parseFloat(targetFatG) || 0;
+              const macroSum = Math.round(p * 4 + c * 4 + f * 9);
+              const diff = cal - macroSum;
+              const isBalanced = cal > 0 && Math.abs(diff) <= 10;
+              const pPct = cal > 0 ? Math.round(((p * 4) / (macroSum || 1)) * 100) : 0;
+              const cPct = cal > 0 ? Math.round(((c * 4) / (macroSum || 1)) * 100) : 0;
+              const fPct = cal > 0 ? Math.max(0, 100 - pPct - cPct) : 0;
+
+              return (
+                <div className="p-4 rounded-2xl bg-zinc-950/80 border border-white/8 space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-zinc-300">Macro Energy Balance</span>
+                    <span
+                      className={cn(
+                        "px-2 py-0.5 rounded-md font-semibold text-[10px]",
+                        isBalanced
+                          ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                          : "bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                      )}
+                    >
+                      {isBalanced ? "✓ 100% Mathematically Balanced" : `${diff > 0 ? `+${diff}` : diff} kcal offset`}
+                    </span>
+                  </div>
+
+                  {/* Ratio bar */}
+                  <div className="h-2 rounded-full overflow-hidden flex bg-zinc-800">
+                    <div style={{ width: `${pPct}%` }} className="bg-emerald-500 transition-all duration-300" title={`Protein: ${pPct}%`} />
+                    <div style={{ width: `${cPct}%` }} className="bg-sky-500 transition-all duration-300" title={`Carbs: ${cPct}%`} />
+                    <div style={{ width: `${fPct}%` }} className="bg-amber-500 transition-all duration-300" title={`Fat: ${fPct}%`} />
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 text-center text-[11px] pt-1">
+                    <div className="p-2 rounded-xl bg-zinc-900 border border-white/5">
+                      <span className="text-zinc-500 block text-[10px] uppercase font-bold">Protein</span>
+                      <span className="font-bold text-emerald-400 tabular-nums">{pPct}%</span>
+                      <span className="text-[10px] text-zinc-400 block tabular-nums">{Math.round(p * 4)} kcal</span>
+                    </div>
+                    <div className="p-2 rounded-xl bg-zinc-900 border border-white/5">
+                      <span className="text-zinc-500 block text-[10px] uppercase font-bold">Carbs</span>
+                      <span className="font-bold text-sky-400 tabular-nums">{cPct}%</span>
+                      <span className="text-[10px] text-zinc-400 block tabular-nums">{Math.round(c * 4)} kcal</span>
+                    </div>
+                    <div className="p-2 rounded-xl bg-zinc-900 border border-white/5">
+                      <span className="text-zinc-500 block text-[10px] uppercase font-bold">Fat</span>
+                      <span className="font-bold text-amber-400 tabular-nums">{fPct}%</span>
+                      <span className="text-[10px] text-zinc-400 block tabular-nums">{Math.round(f * 9)} kcal</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input

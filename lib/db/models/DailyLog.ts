@@ -5,6 +5,15 @@ interface IWaterEntry {
   loggedAt: Date;
 }
 
+export interface IWorkoutEntry {
+  workoutId: mongoose.Types.ObjectId;
+  name: string;
+  caloriesBurned: number;
+  durationSeconds?: number | null;
+  totalVolume?: number;
+  loggedAt: Date;
+}
+
 export interface IDailyLog extends Document {
   userId: mongoose.Types.ObjectId;
   date: Date;
@@ -24,6 +33,8 @@ export interface IDailyLog extends Document {
   };
   waterMl: number;
   waterEntries: IWaterEntry[];
+  workoutEntries: IWorkoutEntry[];
+  workoutIds: mongoose.Types.ObjectId[];
   steps: number;
   stepsSyncedAt: Date | null;
   stepsSource: "step_counter" | "manual";
@@ -57,6 +68,17 @@ const DailyLogSchema = new Schema<IDailyLog>(
         loggedAt: { type: Date, default: Date.now },
       },
     ],
+    workoutEntries: [
+      {
+        workoutId: { type: Schema.Types.ObjectId, ref: "Workout", required: true },
+        name: { type: String, required: true },
+        caloriesBurned: { type: Number, default: 0 },
+        durationSeconds: { type: Number, default: null },
+        totalVolume: { type: Number, default: 0 },
+        loggedAt: { type: Date, default: Date.now },
+      },
+    ],
+    workoutIds: [{ type: Schema.Types.ObjectId, ref: "Workout" }],
     steps: { type: Number, default: 0 },
     stepsSyncedAt: { type: Date, default: null },
     stepsSource: {
@@ -71,6 +93,8 @@ const DailyLogSchema = new Schema<IDailyLog>(
 
 DailyLogSchema.index({ userId: 1, date: -1 });
 DailyLogSchema.index({ userId: 1, dateString: 1 }, { unique: true });
+DailyLogSchema.index({ "workoutEntries.workoutId": 1 });
+DailyLogSchema.index({ workoutIds: 1 });
 
 const DailyLog: Model<IDailyLog> =
   mongoose.models.DailyLog ||

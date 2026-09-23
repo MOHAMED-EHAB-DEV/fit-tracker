@@ -44,7 +44,7 @@ async function DashboardContent() {
     Workout.find({ userId: user?._id }).sort({ updatedAt: -1 }).lean(),
     BodyComp.find({ userId: user?._id }).sort({ checkInDate: 1 }).limit(10).lean(),
     Workout.find({ userId: user?._id, status: "completed" }).sort({ completedAt: -1 }).limit(20).lean(),
-    DailyLog.find({ userId: user?._id }).select("dateString caloriesIn steps waterMl completedHabitIds").lean(),
+    DailyLog.find({ userId: user?._id }).select("dateString caloriesIn steps waterMl completedHabitIds workoutEntries workoutIds").lean(),
     Habit.find({ userId: user?._id, isActive: true }).sort({ order: 1, createdAt: 1 }).lean(),
     PlannedEvent.find({
       userId: user?._id,
@@ -101,7 +101,9 @@ async function DashboardContent() {
       ((l.caloriesIn || 0) > 0 ||
         (l.steps || 0) > 0 ||
         (l.waterMl || 0) > 0 ||
-        (l.completedHabitIds && l.completedHabitIds.length > 0))
+        (l.completedHabitIds && l.completedHabitIds.length > 0) ||
+        (l.workoutEntries && l.workoutEntries.length > 0) ||
+        (l.workoutIds && l.workoutIds.length > 0))
     ) {
       activeDates.add(l.dateString);
     }

@@ -8,6 +8,12 @@ import ExerciseCatalog from "@/lib/db/models/ExerciseCatalog";
 import { calculateOneRM } from "@/lib/fitness/one-rm";
 import { getTodayDateString, getWeekStartDateString } from "@/lib/fitness/timezone";
 import { calculateSessionDoneCalories, calculateRoutinePlannedCalories } from "@/lib/fitness/workout-calories";
+import {
+  syncWorkoutToDailyLog,
+  removeWorkoutFromDailyLog,
+  cleanStaleWorkout,
+  isWorkoutStaleIncomplete,
+} from "@/lib/fitness/daily-log-sync";
 
 export async function GET(
   request: NextRequest,
@@ -25,10 +31,14 @@ export async function GET(
     const workout = await Workout.findOne({
       _id: id,
       userId: session.userId,
-    }).lean();
+    });
 
     if (!workout) {
       return NextResponse.json({ success: false, error: "Workout not found" }, { status: 404 });
+    }
+
+    if (isWorkoutStaleIncomplete(workout)) {
+      await cleanStaleWorkout(workout);
     }
 
     return NextResponse.json({ success: true, workout });
@@ -59,6 +69,9 @@ export async function PATCH(
 
     const prevStatus: string = existing.status;
     const prevCalories = existing.estimatedCalories || 0;
+    const prevDateStr = prevStatus === "completed"
+      ? getTodayDateString(existing.completedAt || existing.date || existing.startedAt)
+      : undefined;
 
     if (body.name !== undefined && typeof body.name === "string") {
       existing.name = body.name.trim();
@@ -167,47 +180,12 @@ export async function PATCH(
 
     await existing.save();
 
-    // If session is completed, accurately sync calories burned to DailyLog
+    // If session is completed, accurately sync calories burned and workout ID to DailyLog
     if (existing.status === "completed") {
-      const currentCal = existing.estimatedCalories || 0;
-      const caloriesToApply = prevStatus === "completed" ? currentCal - prevCalories : currentCal;
-
-      if (caloriesToApply !== 0) {
-        const logDateStr = getTodayDateString(existing.completedAt || existing.date || existing.startedAt);
-        const logDate = existing.completedAt || existing.date || existing.startedAt || new Date();
-        await DailyLog.findOneAndUpdate(
-          { userId: session.userId, dateString: logDateStr },
-          {
-            $inc: {
-              "caloriesOut.workouts": caloriesToApply,
-              "caloriesOut.total": caloriesToApply,
-            },
-            $setOnInsert: {
-              date: logDate,
-            },
-          },
-          { upsert: true, setDefaultsOnInsert: true }
-        );
-      }
-    } else if (prevStatus === "completed") {
-      // Reverted from completed back to active/routine: deduct previously logged calories
-      if (prevCalories > 0) {
-        const logDateStr = getTodayDateString(existing.completedAt || existing.date || existing.startedAt);
-        const logDate = existing.completedAt || existing.date || existing.startedAt || new Date();
-        await DailyLog.findOneAndUpdate(
-          { userId: session.userId, dateString: logDateStr },
-          {
-            $inc: {
-              "caloriesOut.workouts": -prevCalories,
-              "caloriesOut.total": -prevCalories,
-            },
-            $setOnInsert: {
-              date: logDate,
-            },
-          },
-          { upsert: true, setDefaultsOnInsert: true }
-        );
-      }
+      await syncWorkoutToDailyLog(session.userId, existing._id, prevDateStr);
+    } else if (prevStatus === "completed" && prevDateStr) {
+      // Reverted from completed back to active/routine: remove from DailyLog
+      await removeWorkoutFromDailyLog(session.userId, existing._id, prevDateStr);
     }
 
     return NextResponse.json({ success: true, workout: existing });
@@ -232,17 +210,9 @@ export async function DELETE(
 
     const existing = await Workout.findOne({ _id: id, userId: session.userId });
     if (existing) {
-      if (existing.status === "completed" && existing.estimatedCalories > 0) {
+      if (existing.status === "completed") {
         const logDateStr = getTodayDateString(existing.completedAt || existing.date || existing.startedAt);
-        await DailyLog.findOneAndUpdate(
-          { userId: session.userId, dateString: logDateStr },
-          {
-            $inc: {
-              "caloriesOut.workouts": -existing.estimatedCalories,
-              "caloriesOut.total": -existing.estimatedCalories,
-            },
-          }
-        );
+        await removeWorkoutFromDailyLog(session.userId, existing._id, logDateStr);
       }
       await Workout.deleteOne({ _id: id, userId: session.userId });
     }

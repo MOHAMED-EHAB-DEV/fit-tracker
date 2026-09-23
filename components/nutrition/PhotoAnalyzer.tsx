@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -20,6 +20,7 @@ import {
   Layers,
   Edit3,
   Trash2,
+  Plus,
 } from "lucide-react";
 import { useClientResize } from "@/hooks/useClientResize";
 import { MealType } from "@/types/fitness";
@@ -27,21 +28,29 @@ import { MEAL_TYPE_OPTIONS } from "@/constants/nutrition";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
 import { Select } from "@/components/ui/Select";
 import { Chip } from "@/components/ui/Chip";
 import { Card, CardHeader, CardBody } from "@/components/ui/Card";
+import { cn } from "@/lib/utils";
+
+interface AttachedPhoto {
+  id: string;
+  blob: Blob;
+  previewUrl: string;
+  name: string;
+}
 
 export function PhotoAnalyzer() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const dateParam = searchParams.get("date");
-  const galleryInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const { resizeImage, isResizing } = useClientResize();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { resizeImages, isResizing } = useClientResize();
 
   // Input states
-  const [selectedBlob, setSelectedBlob] = useState<Blob | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [attachedPhotos, setAttachedPhotos] = useState<AttachedPhoto[]>([]);
+  const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const [mealType, setMealType] = useState<MealType>("lunch");
   const [description, setDescription] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -49,7 +58,7 @@ export function PhotoAnalyzer() {
 
   // Analysis result & confirmation modal states
   const [analysisResult, setAnalysisResult] = useState<any | null>(null);
-  const [cloudinaryData, setCloudinaryData] = useState<any | null>(null);
+  const [imagesData, setImagesData] = useState<any[]>([]);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
@@ -65,24 +74,56 @@ export function PhotoAnalyzer() {
   const [editNotes, setEditNotes] = useState("");
   const [editItems, setEditItems] = useState<any[]>([]);
 
+  // Cleanup object URLs on unmount
+  useEffect(() => {
+    return () => {
+      attachedPhotos.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+    };
+  }, [attachedPhotos]);
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList);
     e.target.value = "";
-    if (!file) return;
 
     setError(null);
     try {
-      const resized = await resizeImage(file, { maxDimension: 800, quality: 0.82 });
-      setSelectedBlob(resized);
-      setPreviewUrl(URL.createObjectURL(resized));
+      const resizedBlobs = await resizeImages(files, {
+        maxDimension: 800,
+        quality: 0.82,
+      });
+
+      const newPhotos: AttachedPhoto[] = resizedBlobs.map((blob, idx) => ({
+        id: `${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 7)}`,
+        blob,
+        previewUrl: URL.createObjectURL(blob),
+        name: files[idx]?.name || `meal-photo-${idx + 1}.webp`,
+      }));
+
+      setAttachedPhotos((prev) => [...prev, ...newPhotos]);
     } catch {
-      setError("Failed to process image. Please try again.");
+      setError("Failed to process image(s). Please try again.");
     }
   };
 
+  const handleRemovePhoto = (id: string) => {
+    setAttachedPhotos((prev) => {
+      const toRemove = prev.find((p) => p.id === id);
+      if (toRemove) {
+        URL.revokeObjectURL(toRemove.previewUrl);
+      }
+      const filtered = prev.filter((p) => p.id !== id);
+      if (activePhotoIndex >= filtered.length) {
+        setActivePhotoIndex(Math.max(0, filtered.length - 1));
+      }
+      return filtered;
+    });
+  };
+
   const handleAnalyze = async () => {
-    if (!selectedBlob && !description.trim()) {
-      setError("Please select a photo or enter a meal description.");
+    if (attachedPhotos.length === 0 && !description.trim()) {
+      setError("Please attach at least one photo or enter a meal description.");
       return;
     }
 
@@ -91,9 +132,13 @@ export function PhotoAnalyzer() {
 
     try {
       const formData = new FormData();
-      if (selectedBlob) {
-        formData.append("file", selectedBlob, "meal.webp");
+      attachedPhotos.forEach((photo, idx) => {
+        formData.append("files", photo.blob, `meal_${idx + 1}.webp`);
+      });
+      if (attachedPhotos.length > 0) {
+        formData.append("file", attachedPhotos[0].blob, "meal_primary.webp");
       }
+
       formData.append("description", description);
       formData.append("mealType", mealType);
       formData.append("save", "false");
@@ -116,7 +161,7 @@ export function PhotoAnalyzer() {
 
       const analysis = data.analysis;
       setAnalysisResult(analysis);
-      setCloudinaryData(data.cloudinary || null);
+      setImagesData(data.images || []);
 
       // Populate editable fields for the confirmation modal
       setEditDescription(analysis.mealDescription || description || "Logged Meal");
@@ -187,7 +232,7 @@ export function PhotoAnalyzer() {
               modelUsed: analysisResult.modelUsed || "gemini-3.7-flash",
             }
           : null,
-        cloudinary: cloudinaryData,
+        images: imagesData,
       };
 
       const res = await fetch("/api/meals/analyze", {
@@ -221,10 +266,11 @@ export function PhotoAnalyzer() {
   };
 
   const handleReset = () => {
+    attachedPhotos.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+    setAttachedPhotos([]);
+    setActivePhotoIndex(0);
     setAnalysisResult(null);
-    setCloudinaryData(null);
-    setSelectedBlob(null);
-    setPreviewUrl(null);
+    setImagesData([]);
     setDescription("");
     setEditItems([]);
     setIsSaved(false);
@@ -270,6 +316,9 @@ export function PhotoAnalyzer() {
     );
   };
 
+  const activePhoto =
+    attachedPhotos[activePhotoIndex] || attachedPhotos[0] || null;
+
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       {/* Main Analysis Input Card */}
@@ -284,7 +333,7 @@ export function PhotoAnalyzer() {
                 AI Food Photo Analyzer
               </h2>
               <p className="text-xs text-zinc-400 mt-0.5">
-                Snap a picture or describe your plate to estimate calories, macros & confidence level
+                Snap or attach multiple photos of your plate to estimate calories & macros with AI
               </p>
             </div>
           </div>
@@ -301,101 +350,119 @@ export function PhotoAnalyzer() {
             </div>
           )}
 
-          {/* Hidden File Inputs */}
+          {/* Hidden File Input */}
           <input
             type="file"
-            ref={galleryInputRef}
+            ref={fileInputRef}
             onChange={handleFileChange}
             accept="image/*"
-            aria-label="Upload meal photo from gallery"
-            className="hidden"
-          />
-          <input
-            type="file"
-            ref={cameraInputRef}
-            onChange={handleFileChange}
-            accept="image/*"
-            capture="environment"
-            aria-label="Take meal photo with camera"
+            multiple
+            aria-label="Upload meal photos"
             className="hidden"
           />
 
           {/* Photo Capture / Upload Area */}
           <div className="space-y-3">
-            {previewUrl ? (
-              <div className="relative rounded-2xl overflow-hidden border border-white/10 bg-zinc-950 aspect-video max-h-72 flex items-center justify-center group">
-                <Image
-                  src={previewUrl}
-                  alt="Meal preview"
-                  fill
-                  onError={() => {
-                    setPreviewUrl(null);
-                    setSelectedBlob(null);
-                  }}
-                  className="object-cover"
-                />
-                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-3 text-white font-semibold text-sm transition">
+            {attachedPhotos.length > 0 ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+                    Attached Photos ({attachedPhotos.length})
+                  </span>
+
                   <Button
                     type="button"
                     variant="bordered"
                     size="sm"
-                    onClick={() => cameraInputRef.current?.click()}
-                    startContent={<Camera className="w-4 h-4 text-emerald-400" />}
+                    onClick={() => fileInputRef.current?.click()}
+                    startContent={<Plus className="w-3.5 h-3.5 text-emerald-400" />}
                   >
-                    Camera
+                    Add Photos
                   </Button>
-                  <Button
+                </div>
+
+                {/* Photo Grid Preview */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {attachedPhotos.map((photo, idx) => (
+                    <div
+                      key={photo.id}
+                      className="relative rounded-2xl overflow-hidden border border-white/10 bg-zinc-950 aspect-4/3 group"
+                    >
+                      <Image
+                        src={photo.previewUrl}
+                        alt={`Attached meal photo ${idx + 1}`}
+                        fill
+                        className="object-cover"
+                      />
+                      <div className="absolute inset-0 bg-linear-to-t from-zinc-950/80 via-transparent to-transparent pointer-events-none" />
+
+                      <div className="absolute top-2 inset-s-2">
+                        <span className="px-2 py-0.5 rounded-md bg-zinc-950/85 backdrop-blur-md border border-white/10 text-[10px] font-bold text-zinc-300">
+                          #{idx + 1}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemovePhoto(photo.id)}
+                        className="absolute top-2 inset-e-2 p-1.5 rounded-lg bg-zinc-950/85 border border-white/10 text-zinc-400 hover:text-red-400 hover:bg-red-500/20 transition cursor-pointer"
+                        title="Remove photo"
+                        aria-label={`Remove photo ${idx + 1}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+
+                  {/* Add more tile */}
+                  <button
                     type="button"
-                    variant="bordered"
-                    size="sm"
-                    onClick={() => galleryInputRef.current?.click()}
-                    startContent={<ImageIcon className="w-4 h-4 text-emerald-400" />}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="rounded-2xl border-2 border-dashed border-white/10 hover:border-emerald-500/50 bg-zinc-950/40 flex flex-col items-center justify-center p-3 gap-2 min-h-27.5 transition text-center cursor-pointer group focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                    aria-label="Add another photo"
                   >
-                    Gallery
-                  </Button>
+                    <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 group-hover:scale-105 transition">
+                      <Plus className="w-4 h-4" />
+                    </div>
+                    <span className="text-[11px] font-bold text-zinc-400 group-hover:text-zinc-200">
+                      Add photo
+                    </span>
+                  </button>
                 </div>
               </div>
             ) : (
-              <div className="border-2 border-dashed border-white/10 hover:border-emerald-500/50 rounded-2xl p-6 sm:p-8 flex flex-col items-center justify-center text-center transition bg-zinc-950/40 group">
-                <button
-                  type="button"
-                  onClick={() => galleryInputRef.current?.click()}
-                  aria-label="Upload photo from device"
-                  className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-                >
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="border-2 border-dashed border-white/10 hover:border-emerald-500/50 rounded-2xl p-6 sm:p-8 flex flex-col items-center justify-center text-center transition bg-zinc-950/40 group cursor-pointer"
+              >
+                <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
                   <Camera className="w-7 h-7" aria-hidden="true" />
-                </button>
-                <p className="font-bold text-sm text-zinc-200">Take Photo or Upload Meal Image</p>
+                </div>
+                <p className="font-bold text-sm text-zinc-200">
+                  Take Photo or Upload Meal Images
+                </p>
                 <p className="text-xs text-zinc-500 mt-1 mb-4">
-                  Automatic client-side optimization (800×800 WebP)
+                  Select single or multiple photos (plates, side dishes, nutrition labels)
                 </p>
 
-                <div className="flex flex-wrap items-center justify-center gap-2.5">
-                  <Button
-                    type="button"
-                    variant="flat"
-                    size="sm"
-                    onClick={() => cameraInputRef.current?.click()}
-                    startContent={<Camera className="w-4 h-4 text-emerald-400" />}
-                  >
-                    Take Photo
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="bordered"
-                    size="sm"
-                    onClick={() => galleryInputRef.current?.click()}
-                    startContent={<Upload className="w-4 h-4 text-zinc-400" />}
-                  >
-                    Choose from Gallery
-                  </Button>
-                </div>
+                <Button
+                  type="button"
+                  variant="flat"
+                  size="md"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    fileInputRef.current?.click();
+                  }}
+                  startContent={<Upload className="w-4 h-4 text-emerald-400" />}
+                >
+                  Choose or Take Photos
+                </Button>
               </div>
             )}
           </div>
 
           {/* Form Inputs: Meal Type & Description */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-4">
             <Select
               label="Meal Type"
               value={mealType}
@@ -403,11 +470,14 @@ export function PhotoAnalyzer() {
               options={MEAL_TYPE_OPTIONS}
             />
 
-            <Input
+            <Textarea
               label="Description (Optional)"
-              placeholder="e.g. 200g grilled chicken, 1 cup rice"
+              placeholder="e.g. 200g grilled chicken breast, 1 cup jasmine rice, steamed broccoli with 1 tbsp olive oil..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+              minRows={3}
+              maxRows={8}
+              description="Detail ingredients, exact weights, cooking oils, or sauces to boost AI precision."
             />
           </div>
 
@@ -419,14 +489,22 @@ export function PhotoAnalyzer() {
               size="lg"
               className="w-full"
               onClick={handleAnalyze}
-              disabled={isAnalyzing || isResizing || (!selectedBlob && !description.trim())}
+              disabled={
+                isAnalyzing ||
+                isResizing ||
+                (attachedPhotos.length === 0 && !description.trim())
+              }
               isLoading={isAnalyzing || isResizing}
-              startContent={!isAnalyzing && !isResizing ? <Sparkles className="w-5 h-5" /> : undefined}
+              startContent={
+                !isAnalyzing && !isResizing ? (
+                  <Sparkles className="w-5 h-5" />
+                ) : undefined
+              }
             >
-              {isResizing
-                ? "Optimizing photo..."
-                : isAnalyzing
-                ? "Analyzing with Gemini AI..."
+              {isResizing || isAnalyzing
+                ? "Analyzing meal with AI..."
+                : attachedPhotos.length > 1
+                ? `Analyze Meal (${attachedPhotos.length} Photos)`
                 : "Analyze Meal & Review Details"}
             </Button>
           )}
@@ -440,7 +518,10 @@ export function PhotoAnalyzer() {
         size="2xl"
         title={
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400" aria-hidden="true">
+            <div
+              className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400"
+              aria-hidden="true"
+            >
               <Sparkles className="w-4 h-4" />
             </div>
             <span>Confirm Meal Details</span>
@@ -476,22 +557,51 @@ export function PhotoAnalyzer() {
             {/* Left Column: Image Preview + AI Diagnostics + Caloric Ratio */}
             <div className="lg:col-span-5 space-y-4">
               {/* Photo Preview Thumbnail */}
-              {previewUrl && (
-                <div className="relative w-full h-44 rounded-2xl overflow-hidden border border-white/10 shadow-lg bg-zinc-950">
-                  <Image
-                    src={previewUrl}
-                    alt="Analyzed food photo"
-                    fill
-                    className="object-cover"
-                    sizes="(max-width: 1024px) 100vw, 360px"
-                  />
-                  <div className="absolute inset-0 bg-linear-to-t from-zinc-950/80 via-transparent to-transparent pointer-events-none" />
-                  <div className="absolute bottom-2.5 inset-s-3 flex items-center gap-2">
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-900/90 backdrop-blur-md border border-white/10 text-[10px] font-bold text-zinc-300">
-                      <Camera className="w-3 h-3 text-emerald-400" />
-                      Visual Snapshot
-                    </span>
+              {activePhoto && (
+                <div className="space-y-2">
+                  <div className="relative w-full h-44 rounded-2xl overflow-hidden border border-white/10 shadow-lg bg-zinc-950">
+                    <Image
+                      src={activePhoto.previewUrl}
+                      alt="Analyzed food photo"
+                      fill
+                      className="object-cover"
+                      sizes="(max-width: 1024px) 100vw, 360px"
+                    />
+                    <div className="absolute inset-0 bg-linear-to-t from-zinc-950/80 via-transparent to-transparent pointer-events-none" />
+                    <div className="absolute bottom-2.5 inset-s-3 flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-900/90 backdrop-blur-md border border-white/10 text-[10px] font-bold text-zinc-300">
+                        <Camera className="w-3 h-3 text-emerald-400" />
+                        Visual Snapshot #{activePhotoIndex + 1}
+                      </span>
+                    </div>
                   </div>
+
+                  {/* Multi-Photo Thumbnail Selector Strip */}
+                  {attachedPhotos.length > 1 && (
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                      {attachedPhotos.map((photo, idx) => (
+                        <button
+                          key={photo.id}
+                          type="button"
+                          onClick={() => setActivePhotoIndex(idx)}
+                          className={cn(
+                            "relative w-12 h-12 rounded-xl overflow-hidden shrink-0 border-2 transition-all cursor-pointer",
+                            activePhotoIndex === idx
+                              ? "border-emerald-400 ring-2 ring-emerald-400/30 scale-105"
+                              : "border-white/10 hover:border-white/30 opacity-70 hover:opacity-100"
+                          )}
+                          title={`View photo ${idx + 1}`}
+                        >
+                          <Image
+                            src={photo.previewUrl}
+                            alt={`Photo thumbnail ${idx + 1}`}
+                            fill
+                            className="object-cover"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -525,7 +635,8 @@ export function PhotoAnalyzer() {
                 const p = parseFloat(editProtein) || 0;
                 const c = parseFloat(editCarbs) || 0;
                 const f = parseFloat(editFat) || 0;
-                const cal = parseInt(editCalories, 10) || (p * 4 + c * 4 + f * 9) || 1;
+                const cal =
+                  parseInt(editCalories, 10) || p * 4 + c * 4 + f * 9 || 1;
                 const pCal = p * 4;
                 const cCal = c * 4;
                 const fCal = f * 9;
@@ -546,15 +657,33 @@ export function PhotoAnalyzer() {
                     </div>
 
                     <div className="w-full h-2.5 bg-zinc-900 rounded-full overflow-hidden flex border border-white/5">
-                      <div style={{ width: `${pPct}%` }} className="h-full bg-emerald-500 transition-all duration-300" title={`Protein: ${pPct}%`} />
-                      <div style={{ width: `${cPct}%` }} className="h-full bg-amber-400 transition-all duration-300" title={`Carbs: ${cPct}%`} />
-                      <div style={{ width: `${fPct}%` }} className="h-full bg-orange-500 transition-all duration-300" title={`Fat: ${fPct}%`} />
+                      <div
+                        style={{ width: `${pPct}%` }}
+                        className="h-full bg-emerald-500 transition-all duration-300"
+                        title={`Protein: ${pPct}%`}
+                      />
+                      <div
+                        style={{ width: `${cPct}%` }}
+                        className="h-full bg-amber-400 transition-all duration-300"
+                        title={`Carbs: ${cPct}%`}
+                      />
+                      <div
+                        style={{ width: `${fPct}%` }}
+                        className="h-full bg-orange-500 transition-all duration-300"
+                        title={`Fat: ${fPct}%`}
+                      />
                     </div>
 
                     <div className="flex items-center justify-between text-[11px] font-semibold pt-0.5">
-                      <span className="text-emerald-400 tabular-nums">P: {pPct}%</span>
-                      <span className="text-amber-400 tabular-nums">C: {cPct}%</span>
-                      <span className="text-orange-400 tabular-nums">F: {fPct}%</span>
+                      <span className="text-emerald-400 tabular-nums">
+                        P: {pPct}%
+                      </span>
+                      <span className="text-amber-400 tabular-nums">
+                        C: {cPct}%
+                      </span>
+                      <span className="text-orange-400 tabular-nums">
+                        F: {fPct}%
+                      </span>
                     </div>
                   </div>
                 );
@@ -565,12 +694,13 @@ export function PhotoAnalyzer() {
             <div className="lg:col-span-7 space-y-4">
               {/* Editable Main Details */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                <Input
+                <Textarea
                   label="Meal Description"
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                   startContent={<Edit3 className="w-4 h-4" />}
                   placeholder="e.g. Grilled Chicken Bowl"
+                  minRows={2}
                 />
                 <Select
                   label="Meal Type"
@@ -599,7 +729,9 @@ export function PhotoAnalyzer() {
                     step="0.1"
                     value={editProtein}
                     onChange={(e) => setEditProtein(e.target.value)}
-                    startContent={<Dumbbell className="w-3.5 h-3.5 text-emerald-400" />}
+                    startContent={
+                      <Dumbbell className="w-3.5 h-3.5 text-emerald-400" />
+                    }
                   />
                   <Input
                     label="Carbs (g)"
@@ -607,7 +739,9 @@ export function PhotoAnalyzer() {
                     step="0.1"
                     value={editCarbs}
                     onChange={(e) => setEditCarbs(e.target.value)}
-                    startContent={<Wheat className="w-3.5 h-3.5 text-amber-300" />}
+                    startContent={
+                      <Wheat className="w-3.5 h-3.5 text-amber-300" />
+                    }
                   />
                   <Input
                     label="Fat (g)"
@@ -615,7 +749,9 @@ export function PhotoAnalyzer() {
                     step="0.1"
                     value={editFat}
                     onChange={(e) => setEditFat(e.target.value)}
-                    startContent={<Droplet className="w-3.5 h-3.5 text-orange-400" />}
+                    startContent={
+                      <Droplet className="w-3.5 h-3.5 text-orange-400" />
+                    }
                   />
                   <Input
                     label="Fiber (g)"
@@ -653,7 +789,9 @@ export function PhotoAnalyzer() {
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div className="truncate me-2">
-                            <span className="text-zinc-200 font-bold text-xs">{item.name}</span>
+                            <span className="text-zinc-200 font-bold text-xs">
+                              {item.name}
+                            </span>
                             {item.quantity && (
                               <span className="text-zinc-400 text-[11px] font-medium ms-1.5">
                                 ({item.quantity})
@@ -698,11 +836,12 @@ export function PhotoAnalyzer() {
               )}
 
               {/* Additional Notes */}
-              <Input
+              <Textarea
                 label="Additional Notes / Cooking Details (Optional)"
                 placeholder="e.g. 1 tbsp extra virgin olive oil used for cooking"
                 value={editNotes}
                 onChange={(e) => setEditNotes(e.target.value)}
+                minRows={2}
               />
             </div>
           </div>
@@ -711,7 +850,10 @@ export function PhotoAnalyzer() {
 
       {/* Saved Success Region */}
       {isSaved && analysisResult && (
-        <Card variant="bordered" className="border-emerald-500/40 shadow-2xl space-y-5 animate-in fade-in duration-200">
+        <Card
+          variant="bordered"
+          className="border-emerald-500/40 shadow-2xl space-y-5 animate-in fade-in duration-200"
+        >
           <CardHeader>
             <div className="flex items-center justify-between w-full">
               <div className="flex items-center gap-2 text-emerald-400 font-bold text-base">
@@ -727,39 +869,81 @@ export function PhotoAnalyzer() {
               {editDescription || analysisResult.mealDescription}
             </p>
 
+            {/* Saved Photos Thumbnails */}
+            {attachedPhotos.length > 0 && (
+              <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                {attachedPhotos.map((photo, idx) => (
+                  <div
+                    key={photo.id}
+                    className="relative w-16 h-16 rounded-xl overflow-hidden border border-white/10 shrink-0 bg-zinc-950"
+                  >
+                    <Image
+                      src={photo.previewUrl}
+                      alt={`Logged photo ${idx + 1}`}
+                      fill
+                      className="object-cover"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="grid grid-cols-4 gap-2 text-center">
               <div className="p-3 rounded-2xl bg-zinc-950/80 border border-white/10">
-                <span className="text-[10px] text-zinc-400 uppercase font-semibold block">Calories</span>
+                <span className="text-[10px] text-zinc-400 uppercase font-semibold block">
+                  Calories
+                </span>
                 <span className="text-lg font-bold text-white mt-0.5 block tabular-nums">
                   {editCalories}
                 </span>
                 <span className="text-[10px] text-zinc-500">kcal</span>
               </div>
               <div className="p-3 rounded-2xl bg-zinc-950/80 border border-white/10">
-                <span className="text-[10px] text-emerald-400 uppercase font-semibold block">Protein</span>
+                <span className="text-[10px] text-emerald-400 uppercase font-semibold block">
+                  Protein
+                </span>
                 <span className="text-lg font-bold text-emerald-300 mt-0.5 block tabular-nums">
                   {editProtein}g
                 </span>
                 <span className="text-[10px] text-zinc-500 tabular-nums">
-                  {Math.round(((parseFloat(editProtein) * 4) / (parseFloat(editCalories) || 1)) * 100 || 0)}%
+                  {Math.round(
+                    ((parseFloat(editProtein) * 4) /
+                      (parseFloat(editCalories) || 1)) *
+                      100 || 0
+                  )}
+                  %
                 </span>
               </div>
               <div className="p-3 rounded-2xl bg-zinc-950/80 border border-white/10">
-                <span className="text-[10px] text-amber-400 uppercase font-semibold block">Carbs</span>
+                <span className="text-[10px] text-amber-400 uppercase font-semibold block">
+                  Carbs
+                </span>
                 <span className="text-lg font-bold text-amber-300 mt-0.5 block tabular-nums">
                   {editCarbs}g
                 </span>
                 <span className="text-[10px] text-zinc-500 tabular-nums">
-                  {Math.round(((parseFloat(editCarbs) * 4) / (parseFloat(editCalories) || 1)) * 100 || 0)}%
+                  {Math.round(
+                    ((parseFloat(editCarbs) * 4) /
+                      (parseFloat(editCalories) || 1)) *
+                      100 || 0
+                  )}
+                  %
                 </span>
               </div>
               <div className="p-3 rounded-2xl bg-zinc-950/80 border border-white/10">
-                <span className="text-[10px] text-orange-400 uppercase font-semibold block">Fat</span>
+                <span className="text-[10px] text-orange-400 uppercase font-semibold block">
+                  Fat
+                </span>
                 <span className="text-lg font-bold text-orange-300 mt-0.5 block tabular-nums">
                   {editFat}g
                 </span>
                 <span className="text-[10px] text-zinc-500 tabular-nums">
-                  {Math.round(((parseFloat(editFat) * 9) / (parseFloat(editCalories) || 1)) * 100 || 0)}%
+                  {Math.round(
+                    ((parseFloat(editFat) * 9) /
+                      (parseFloat(editCalories) || 1)) *
+                      100 || 0
+                  )}
+                  %
                 </span>
               </div>
             </div>

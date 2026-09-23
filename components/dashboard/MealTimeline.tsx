@@ -150,7 +150,7 @@ export function MealTimeline({ meals }: MealTimelineProps) {
               >
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   <MealImageThumbnail
-                    src={meal.cloudinary?.secureUrl}
+                    src={meal.images?.[0]?.secureUrl}
                     alt={meal.description || "Meal photo"}
                   />
 

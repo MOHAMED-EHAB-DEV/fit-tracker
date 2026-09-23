@@ -62,10 +62,12 @@ export interface MealData {
     geminiNotes?: string;
     modelUsed?: string;
   } | null;
-  cloudinary?: {
+  images?: Array<{
     secureUrl: string;
     publicId?: string;
-  } | null;
+    width?: number;
+    height?: number;
+  }>;
   createdAt?: string | Date;
   updatedAt?: string | Date;
 }
@@ -153,7 +155,8 @@ export function EditMealModal({
   };
 
   const handleRegenerateWithAi = async () => {
-    if (!description.trim() && !meal.cloudinary?.secureUrl) {
+    const primaryImageUrl = meal.images?.[0]?.secureUrl;
+    if (!description.trim() && !primaryImageUrl) {
       setErrorMsg("Please enter a meal description first to regenerate with AI.");
       return;
     }
@@ -167,8 +170,8 @@ export function EditMealModal({
       formData.append("description", description.trim() || meal.description || "Logged Meal");
       formData.append("mealType", mealType);
       formData.append("save", "false");
-      if (meal.cloudinary?.secureUrl) {
-        formData.append("imageUrl", meal.cloudinary.secureUrl);
+      if (primaryImageUrl) {
+        formData.append("imageUrl", primaryImageUrl);
       }
       if (meal.dateString) {
         formData.append("dateString", meal.dateString);
@@ -226,7 +229,7 @@ export function EditMealModal({
           setSuccessMsg("Macronutrients & ingredients successfully updated with AI!");
         }
       } else {
-        setSuccessMsg("Macronutrients successfully regenerated with Gemini AI!");
+        setSuccessMsg("Macronutrients successfully regenerated with AI!");
       }
 
       const updatedAi = {
@@ -390,7 +393,7 @@ export function EditMealModal({
           <span>Edit Meal Entry & Macros</span>
         </div>
       }
-      description="Update meal description, category timing, or regenerate accurate nutritional breakdown with Gemini AI."
+      description="Update meal description, category timing, or regenerate accurate nutritional breakdown with AI."
     >
       <form onSubmit={handleSubmit} className="space-y-5 text-start">
         {/* Status Alerts */}
@@ -411,10 +414,10 @@ export function EditMealModal({
         {/* Meal Context Card & Photo Header */}
         <div className="p-4 rounded-2xl bg-zinc-950/70 border border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5 flex-1 min-w-0">
-            {meal.cloudinary?.secureUrl ? (
+            {meal.images?.[0]?.secureUrl ? (
               <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border border-white/10 shrink-0 bg-zinc-900 shadow-md">
                 <Image
-                  src={meal.cloudinary.secureUrl}
+                  src={meal.images[0].secureUrl}
                   alt={meal.description || "Meal photo"}
                   fill
                   sizes="80px"
@@ -634,7 +637,7 @@ export function EditMealModal({
               onClick={handleRegenerateWithAi}
               disabled={isRegenerating || isSubmitting}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-500/15 hover:bg-teal-500/25 border border-teal-500/30 text-teal-300 hover:text-white text-xs font-bold transition active:scale-95 cursor-pointer disabled:opacity-50"
-              title="Recalculate calories and macronutrient grams using Gemini AI"
+              title="Recalculate calories and macronutrient breakdown with AI"
             >
               {isRegenerating ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-300" />

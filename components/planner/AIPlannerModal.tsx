@@ -169,7 +169,7 @@ export default function AIPlannerModal({
             <p className="text-sm font-medium text-zinc-200">
               Architecting your day with habits, nutrition & workouts...
             </p>
-            <p className="text-xs text-zinc-400">Powered by Gemini AI</p>
+            <p className="text-xs text-zinc-400">Powered by AI</p>
           </div>
         )}
 

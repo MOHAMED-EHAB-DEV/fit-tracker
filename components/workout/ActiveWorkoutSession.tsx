@@ -238,6 +238,38 @@ export function ActiveWorkoutSession({ initialWorkout }: ActiveWorkoutSessionPro
     }
   };
 
+  const handleDiscardWorkout = async () => {
+    try {
+      const cleanedExercises = exercises.map((ex) => ({
+        ...ex,
+        oneRM: null,
+        sets: ex.sets.map((s) => ({
+          ...s,
+          completedReps: null,
+          weight: null,
+          completedAt: null,
+          rpe: null,
+          isPR: false,
+          restSeconds: null,
+        })),
+      }));
+
+      await fetch(`/api/workouts/${initialWorkout.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          exercises: cleanedExercises,
+          status: "active",
+        }),
+      });
+    } catch (err) {
+      console.error("Discard cleanup error:", err);
+    } finally {
+      router.push(`/workouts/${initialWorkout.id}`);
+      router.refresh();
+    }
+  };
+
   // Live Calculations
   let totalVolumeKg = 0;
   let totalSetsCount = 0;
@@ -339,9 +371,7 @@ export function ActiveWorkoutSession({ initialWorkout }: ActiveWorkoutSessionPro
         discardTitle="Discard Gym Session?"
         discardDescription="Are you sure you want to discard this workout session? Any logged weights and completed sets will not be saved."
         onSave={handleFinishWorkout}
-        onDiscard={() => {
-          router.push(`/workouts/${initialWorkout.id}`);
-        }}
+        onDiscard={handleDiscardWorkout}
       />
 
       {/* Catalog Search Modal */}

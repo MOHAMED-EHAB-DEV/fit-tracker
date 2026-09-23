@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, Model } from "mongoose";
 
-interface ICloudinaryMeta {
+export interface ICloudinaryMeta {
   publicId: string;
   secureUrl: string;
   deliveryType: "upload" | "private";
@@ -8,6 +8,8 @@ interface ICloudinaryMeta {
   height: number;
   bytes: number;
 }
+
+export type IMealImage = ICloudinaryMeta;
 
 interface IAiMacros {
   calories: number;
@@ -38,7 +40,7 @@ export interface IMeal extends Document {
   mealType: "breakfast" | "lunch" | "dinner" | "snack" | "pre_workout" | "post_workout";
   description: string;
   imageSource: "photo" | "text_only";
-  cloudinary: ICloudinaryMeta | null;
+  images: ICloudinaryMeta[];
   aiMacros: IAiMacros | null;
   items?: IMealItem[];
   macros: {
@@ -65,16 +67,18 @@ const MealSchema = new Schema<IMeal>(
     },
     description: { type: String, default: "" },
     imageSource: { type: String, enum: ["photo", "text_only"], default: "text_only" },
-    cloudinary: {
-      type: {
-        publicId: String,
-        secureUrl: String,
-        deliveryType: { type: String, enum: ["upload", "private"] },
-        width: Number,
-        height: Number,
-        bytes: Number,
-      },
-      default: null,
+    images: {
+      type: [
+        {
+          publicId: String,
+          secureUrl: String,
+          deliveryType: { type: String, enum: ["upload", "private"] },
+          width: Number,
+          height: Number,
+          bytes: Number,
+        },
+      ],
+      default: [],
     },
     aiMacros: {
       type: {

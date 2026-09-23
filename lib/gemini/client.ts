@@ -165,7 +165,105 @@ export async function generateContentWithFallback(options: {
       console.error(`[Gemini Auto-Switch] Fallback model (${fallback}) also failed:`, fallbackErr);
       throw fallbackErr;
     }
+}
+
+/**
+ * Translates raw AI/Gemini errors and error codes into clean, user-friendly messages.
+ * Prevents raw JSON objects (e.g. {"error": {"code": 429...}}) from leaking to the UI.
+ */
+export function formatAiErrorMessage(err: any): string {
+  if (!err) return "Failed to communicate with AI service";
+
+  let code: number | string | undefined =
+    err?.status || err?.code || err?.statusCode || err?.error?.code || err?.error?.status;
+  let rawMessage = err?.message || String(err);
+
+  // Check if rawMessage contains a JSON string
+  try {
+    const jsonMatch = rawMessage.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed.error) {
+        code = parsed.error.code || parsed.error.status || code;
+        if (parsed.error.message && !code) {
+          rawMessage = parsed.error.message;
+        }
+      }
+    }
+  } catch {
+    // ignore JSON parsing issues
   }
+
+  const strCode = String(code || "").toUpperCase();
+  const lowerMsg = rawMessage.toLowerCase();
+
+  if (
+    strCode === "429" ||
+    strCode.includes("RESOURCE_EXHAUSTED") ||
+    lowerMsg.includes("429") ||
+    lowerMsg.includes("quota") ||
+    lowerMsg.includes("resource_exhausted") ||
+    lowerMsg.includes("rate limit")
+  ) {
+    return "AI request limit reached. Please wait a moment and try again, or add a custom Gemini API key in Settings.";
+  }
+
+  if (
+    strCode === "403" ||
+    strCode.includes("PERMISSION_DENIED") ||
+    lowerMsg.includes("403") ||
+    lowerMsg.includes("api key not valid") ||
+    lowerMsg.includes("permission_denied") ||
+    lowerMsg.includes("invalid api key")
+  ) {
+    return "Invalid or unauthorized API key. Please check your Gemini API key in Settings.";
+  }
+
+  if (
+    strCode === "503" ||
+    strCode.includes("UNAVAILABLE") ||
+    lowerMsg.includes("503") ||
+    lowerMsg.includes("unavailable") ||
+    lowerMsg.includes("high demand") ||
+    lowerMsg.includes("overloaded")
+  ) {
+    return "AI service is temporarily experiencing high traffic. Please try again in a few moments.";
+  }
+
+  if (
+    strCode === "400" ||
+    strCode.includes("INVALID_ARGUMENT") ||
+    lowerMsg.includes("safety") ||
+    lowerMsg.includes("blocked")
+  ) {
+    return "The input could not be processed by AI. Please adjust the input or upload a clearer photo.";
+  }
+
+  if (
+    strCode === "504" ||
+    strCode === "408" ||
+    strCode.includes("DEADLINE_EXCEEDED") ||
+    lowerMsg.includes("timeout") ||
+    lowerMsg.includes("deadline_exceeded")
+  ) {
+    return "AI request timed out. Please try again.";
+  }
+
+  if (
+    lowerMsg.includes("fetch failed") ||
+    lowerMsg.includes("enotfound") ||
+    lowerMsg.includes("network") ||
+    lowerMsg.includes("econnreset")
+  ) {
+    return "Network error communicating with AI service. Please check your internet connection.";
+  }
+
+  // Ensure raw JSON is never returned
+  if (rawMessage.startsWith("{") || rawMessage.includes('{"error"')) {
+    return "AI service encountered an unexpected error. Please try again.";
+  }
+
+  return rawMessage;
 }
 
 export default genAI;

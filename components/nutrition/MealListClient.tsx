@@ -133,7 +133,7 @@ export function MealListClient({ initialMeals, selectedDate }: MealListClientPro
               >
                 <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
                   <MealImageThumbnail
-                    src={m.cloudinary?.secureUrl}
+                    src={m.images?.[0]?.secureUrl}
                     alt={m.description || "Meal"}
                   />
 

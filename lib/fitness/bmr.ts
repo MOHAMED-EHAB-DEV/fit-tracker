@@ -33,12 +33,26 @@ export function calculateTDEE(bmr: number, activityLevel: ActivityLevel): number
 /**
  * Calculates target calories based on fitness goal.
  */
-export function calculateTargetCalories(tdee: number, goal: FitnessGoal): number {
+export function calculateTargetCalories(
+  tdee: number,
+  goal: FitnessGoal,
+  adjustment?: number | null
+): number {
   switch (goal) {
-    case "cut":
-      return Math.round(tdee - 500); // 500 kcal deficit
-    case "bulk":
-      return Math.round(tdee + 300); // 300 kcal surplus
+    case "cut": {
+      const deficit =
+        adjustment != null && !isNaN(Number(adjustment)) && Number(adjustment) > 0
+          ? Math.round(Number(adjustment))
+          : 500;
+      return Math.max(1000, Math.round(tdee - deficit));
+    }
+    case "bulk": {
+      const surplus =
+        adjustment != null && !isNaN(Number(adjustment)) && Number(adjustment) > 0
+          ? Math.round(Number(adjustment))
+          : 300;
+      return Math.round(tdee + surplus);
+    }
     case "maintain":
     default:
       return Math.round(tdee);
@@ -84,6 +98,37 @@ export interface IUserMacroTargets {
 }
 
 /**
+ * Calculates complete 100% mathematically consistent BMR, TDEE, and macro targets.
+ */
+export function calculateAllMacroTargets(params: {
+  weightKg: number;
+  heightCm: number;
+  age: number;
+  sex: Sex;
+  activityLevel: ActivityLevel;
+  goal: FitnessGoal;
+  calorieAdjustment?: number | null;
+}) {
+  const bmr = calculateBMR(params.weightKg, params.heightCm, params.age, params.sex);
+  const tdee = calculateTDEE(bmr, params.activityLevel);
+  const calories = calculateTargetCalories(tdee, params.goal, params.calorieAdjustment);
+  const protein = calculateProteinTarget(params.weightKg, params.goal);
+  const fat = calculateFatTarget(calories);
+  const carbs = calculateCarbsTarget(calories, protein, fat);
+  const fiber = calculateFiberTarget(calories);
+
+  return {
+    bmr,
+    tdee,
+    calories,
+    protein,
+    carbs,
+    fat,
+    fiber,
+  };
+}
+
+/**
  * Resolves all 5 macro targets strictly from user customized settings or biometric calculations.
  */
 export function getUserCustomizedMacroTargets(user: any): IUserMacroTargets {
@@ -94,6 +139,7 @@ export function getUserCustomizedMacroTargets(user: any): IUserMacroTargets {
   const sex: Sex = fp?.sex || "male";
   const activity: ActivityLevel = fp?.activityLevel || "moderate";
   const goal: FitnessGoal = fp?.goal || "maintain";
+  const calorieAdjustment = fp?.calorieAdjustment;
 
   let age = fp?.age || 25;
   if (birthDate) {
@@ -108,8 +154,10 @@ export function getUserCustomizedMacroTargets(user: any): IUserMacroTargets {
     computedTdee = calculateTDEE(computedBmr, activity);
   }
 
-  const calculatedCalories = computedTdee ? calculateTargetCalories(computedTdee, goal) : (computedBmr ? Math.round(computedBmr * 1.55) : 2000);
-  const targetCalories = fp?.targetCalories || user?.computed?.tdee || calculatedCalories;
+  const calculatedCalories = computedTdee
+    ? calculateTargetCalories(computedTdee, goal, calorieAdjustment)
+    : (computedBmr ? Math.round(computedBmr * 1.55) : 2000);
+  const targetCalories = fp?.targetCalories || calculatedCalories;
 
   const calculatedProtein = weight ? calculateProteinTarget(weight, goal) : Math.round((targetCalories * 0.25) / 4);
   const targetProtein = fp?.targetProteinG || user?.computed?.proteinTargetG || calculatedProtein;

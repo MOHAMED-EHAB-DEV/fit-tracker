@@ -36,23 +36,40 @@ async function ActiveWorkoutDataLoader({
   const workoutDoc = await Workout.findOne({
     _id: id,
     userId: user._id,
-  }).lean();
+  });
 
   if (!workoutDoc) {
     notFound();
   }
+
+  const { isWorkoutStaleIncomplete, cleanStaleWorkout } = await import("@/lib/fitness/daily-log-sync");
+  const { getTodayDateString } = await import("@/lib/fitness/timezone");
+
+  const todayStr = getTodayDateString(new Date());
+  const lastUpdateDay = getTodayDateString(
+    workoutDoc.updatedAt || workoutDoc.completedAt || workoutDoc.startedAt || workoutDoc.createdAt
+  );
+  const isDifferentDay = todayStr > lastUpdateDay;
+
+  // If incomplete and last touched on an earlier date, wipe stale sets in DB
+  if (isWorkoutStaleIncomplete(workoutDoc)) {
+    await cleanStaleWorkout(workoutDoc);
+  }
+
+  // If this workout was already completed on a past date, provide a completely clean sheet for today's session
+  const shouldCleanForNewSession = isDifferentDay;
 
   const mappedExercises: ActiveExerciseItem[] = (workoutDoc.exercises || []).map((ex: any) => {
     const sets: SetData[] = (ex.sets || []).map((s: any, sIdx: number) => ({
       setNumber: s.setNumber || sIdx + 1,
       targetWeight: s.targetWeight ?? 50,
       targetReps: s.targetReps ?? 10,
-      weight: s.weight ?? s.targetWeight ?? null,
-      completedReps: s.completedReps ?? s.targetReps ?? null,
-      rpe: s.rpe ?? null,
+      weight: shouldCleanForNewSession ? null : (s.weight ?? null),
+      completedReps: shouldCleanForNewSession ? null : (s.completedReps ?? null),
+      rpe: shouldCleanForNewSession ? null : (s.rpe ?? null),
       isWarmup: s.isWarmup ?? false,
-      isPR: s.isPR ?? false,
-      completedAt: s.completedAt ? new Date(s.completedAt).toISOString() : null,
+      isPR: shouldCleanForNewSession ? false : (s.isPR ?? false),
+      completedAt: shouldCleanForNewSession || !s.completedAt ? null : new Date(s.completedAt).toISOString(),
     }));
 
     return {
@@ -76,7 +93,7 @@ async function ActiveWorkoutDataLoader({
         },
       ],
       notes: ex.notes || null,
-      oneRM: ex.oneRM || null,
+      oneRM: shouldCleanForNewSession ? null : (ex.oneRM || null),
     };
   });
 

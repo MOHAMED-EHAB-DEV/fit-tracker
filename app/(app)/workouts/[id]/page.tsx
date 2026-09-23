@@ -35,10 +35,15 @@ async function RoutineBuilderDataLoader({
   const workoutDoc = await Workout.findOne({
     _id: id,
     userId: user._id,
-  }).lean();
+  });
 
   if (!workoutDoc) {
     notFound();
+  }
+
+  const { isWorkoutStaleIncomplete, cleanStaleWorkout } = await import("@/lib/fitness/daily-log-sync");
+  if (isWorkoutStaleIncomplete(workoutDoc)) {
+    await cleanStaleWorkout(workoutDoc);
   }
 
   const mappedExercises: DefaultExerciseItem[] = (workoutDoc.exercises || []).map((ex: any) => {

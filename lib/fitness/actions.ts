@@ -49,17 +49,10 @@ export async function deleteWorkoutAction(workoutId: string): Promise<{ success:
     const Workout = (await import("@/lib/db/models/Workout")).default;
 
     const deleted = await Workout.findOneAndDelete({ _id: workoutId, userId: user._id });
-    if (deleted && deleted.status === "completed" && deleted.estimatedCalories > 0) {
+    if (deleted && deleted.status === "completed") {
+      const { removeWorkoutFromDailyLog } = await import("@/lib/fitness/daily-log-sync");
       const dateStr = getTodayDateString(deleted.completedAt || deleted.date || deleted.startedAt || deleted.createdAt);
-      await DailyLog.findOneAndUpdate(
-        { userId: user._id, dateString: dateStr },
-        {
-          $inc: {
-            "caloriesOut.workouts": -deleted.estimatedCalories,
-            "caloriesOut.total": -deleted.estimatedCalories,
-          },
-        }
-      );
+      await removeWorkoutFromDailyLog(user._id, deleted._id, dateStr);
     }
 
     revalidatePath("/");
@@ -173,6 +166,9 @@ export async function updateProfileSettingsAction(payload: {
     const age = payload.fitnessProfile.age || user.fitnessProfile?.age || 25;
     const activityLevel = payload.fitnessProfile.activityLevel || user.fitnessProfile?.activityLevel || "moderate";
     const goal = payload.fitnessProfile.goal || user.fitnessProfile?.goal || "maintain";
+    const calorieAdjustment = payload.fitnessProfile.calorieAdjustment !== undefined
+      ? payload.fitnessProfile.calorieAdjustment
+      : user.fitnessProfile?.calorieAdjustment;
 
     let bmr = null;
     let tdee = null;
@@ -182,7 +178,7 @@ export async function updateProfileSettingsAction(payload: {
     if (weightKg && heightCm && age) {
       bmr = calculateBMR(weightKg, heightCm, age, sex);
       tdee = calculateTDEE(bmr, activityLevel);
-      computedCalories = calculateTargetCalories(tdee, goal);
+      computedCalories = calculateTargetCalories(tdee, goal, calorieAdjustment);
       computedProtein = calculateProteinTarget(weightKg, goal);
     }
 
@@ -196,6 +192,7 @@ export async function updateProfileSettingsAction(payload: {
       name: payload.name,
       fitnessProfile: {
         ...payload.fitnessProfile,
+        calorieAdjustment,
         targetCalories,
         targetProteinG,
         targetCarbsG,

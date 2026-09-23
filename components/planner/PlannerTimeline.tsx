@@ -133,7 +133,7 @@ export default function PlannerTimeline({
               className="text-emerald-300 border-emerald-500/30"
               startContent={<Sparkles className="w-3.5 h-3.5 text-emerald-400" />}
             >
-              Generate with Gemini AI
+              Generate with AI
             </Button>
             <Button
               variant="solid"

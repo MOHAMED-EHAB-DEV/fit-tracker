@@ -8,6 +8,7 @@ import genAI, {
   fallbackFlashModel,
   createGeminiConfig,
   generateContentWithFallback,
+  formatAiErrorMessage,
 } from "@/lib/gemini/client";
 import { bodyCompAnalysisSchema } from "@/lib/gemini/schemas";
 import { BODY_COMP_SYSTEM_PROMPT } from "@/lib/gemini/prompts";
@@ -71,8 +72,9 @@ export async function POST(request: NextRequest) {
       .select("fitnessProfile")
       .lean();
 
-    const previousCheckIn = await BodyComp.findOne({ userId: session.userId })
+    const previousRecords = await BodyComp.find({ userId: session.userId })
       .sort({ checkInDate: -1 })
+      .limit(2)
       .lean();
 
     const sex = user?.fitnessProfile?.sex || "Unspecified";
@@ -80,9 +82,46 @@ export async function POST(request: NextRequest) {
     const age = user?.fitnessProfile?.age ? `${user.fitnessProfile.age} years old` : "Not provided";
     const goal = user?.fitnessProfile?.goal || "Not specified";
 
-    const prevContext = previousCheckIn
-      ? `Previous Check-in: Weight ${previousCheckIn.weight ? `${previousCheckIn.weight}kg` : "N/A"}, Body Fat: ${previousCheckIn.bodyFatPercent ? `${previousCheckIn.bodyFatPercent}%` : (previousCheckIn.aiAnalysis?.estimatedBodyFatRange || "N/A")}`
-      : "Previous Check-in: None (First check-in)";
+    let prevContext = "Previous Check-ins: None (First check-in)";
+    if (previousRecords.length > 0) {
+      const recordsSummary = previousRecords.map((rec: any, idx: number) => {
+        const dStr =
+          rec.dateString ||
+          (rec.checkInDate
+            ? new Date(rec.checkInDate).toISOString().split("T")[0]
+            : `Record #${idx + 1}`);
+        const wt = rec.weight != null ? `${rec.weight} kg` : "N/A";
+        const bf =
+          rec.bodyFatPercent != null
+            ? `${rec.bodyFatPercent}%`
+            : rec.aiAnalysis?.estimatedBodyFatPercent != null
+            ? `${rec.aiAnalysis.estimatedBodyFatPercent}%`
+            : rec.aiAnalysis?.estimatedBodyFatRange || "N/A";
+
+        let measurementsSummary = "";
+        if (rec.measurements) {
+          const parts = Object.entries(rec.measurements)
+            .filter(([_, v]) => v != null && v !== "")
+            .map(([k, v]) => `${k}: ${v}cm`);
+          if (parts.length > 0) {
+            measurementsSummary = ` | Circumferences: [${parts.join(", ")}]`;
+          }
+        }
+
+        const notesSummary = rec.notes ? ` | Notes: "${rec.notes}"` : "";
+        const aiSummary = rec.aiAnalysis?.qualitativeNotes
+          ? ` | Previous AI Notes: "${rec.aiAnalysis.qualitativeNotes}"`
+          : "";
+
+        return `  - Record #${idx + 1} (${dStr}): Weight: ${wt}, Body Fat: ${bf}${measurementsSummary}${notesSummary}${aiSummary}`;
+      });
+
+      prevContext = [
+        `Historical Baseline Context (Latest ${previousRecords.length} Record${previousRecords.length > 1 ? "s" : ""}):`,
+        ...recordsSummary,
+        "Trend & Progression Directive: Objectively compare current physique conditioning against these latest 2 records to determine 'comparedToPrevious' and rate of fat loss / lean mass preservation.",
+      ].join("\n");
+    }
 
     const promptText = [
       "--- PHYSIQUE BODY FAT & CONDITIONING ANALYSIS ---",
@@ -165,7 +204,7 @@ export async function POST(request: NextRequest) {
   } catch (err: any) {
     console.error("AI Body Comp estimation error:", err);
     return NextResponse.json(
-      { success: false, error: err.message || "Failed to estimate body fat with AI" },
+      { success: false, error: formatAiErrorMessage(err) },
       { status: 500 }
     );
   }

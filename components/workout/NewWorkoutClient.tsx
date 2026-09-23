@@ -43,7 +43,7 @@ export function NewWorkoutClient() {
           name: name.trim() || `${dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1)} Workout`,
           dayOfWeek,
           templateId: templateIdParam || undefined,
-          status: "in_progress",
+          status: "active",
         }),
       });
 

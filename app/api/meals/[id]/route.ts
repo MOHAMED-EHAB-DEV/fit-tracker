@@ -167,12 +167,16 @@ export async function DELETE(
       }
     );
 
-    // Optional: remove image from Cloudinary if existed
-    if (existingMeal.cloudinary?.publicId) {
-      try {
-        await cloudinary.uploader.destroy(existingMeal.cloudinary.publicId);
-      } catch (cloudErr) {
-        console.warn("Could not delete Cloudinary image for meal:", cloudErr);
+    // Optional: remove images from Cloudinary if existed
+    if (Array.isArray(existingMeal.images) && existingMeal.images.length > 0) {
+      for (const img of existingMeal.images) {
+        if (img?.publicId) {
+          try {
+            await cloudinary.uploader.destroy(img.publicId);
+          } catch (cloudErr) {
+            console.warn("Could not delete Cloudinary image for meal:", cloudErr);
+          }
+        }
       }
     }
 

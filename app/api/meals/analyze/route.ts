@@ -10,6 +10,7 @@ import genAI, {
   fallbackFlashModel,
   createGeminiConfig,
   generateContentWithFallback,
+  formatAiErrorMessage,
 } from "@/lib/gemini/client";
 import { mealAnalysisSchema } from "@/lib/gemini/schemas";
 import { MEAL_ANALYZER_SYSTEM_PROMPT } from "@/lib/gemini/prompts";
@@ -36,7 +37,8 @@ export async function POST(request: NextRequest) {
         macros,
         aiMacros,
         items,
-        cloudinary: cloudinaryData,
+        images: imagesData,
+        cloudinary: fallbackCloudinary,
       } = body;
 
       if (!macros || typeof macros.calories === "undefined") {
@@ -49,14 +51,20 @@ export async function POST(request: NextRequest) {
       await getDb();
       const targetDateStr = dateString || getTodayDateString();
 
+      const finalImages = Array.isArray(imagesData) && imagesData.length > 0
+        ? imagesData
+        : fallbackCloudinary
+        ? [fallbackCloudinary]
+        : [];
+
       const meal = await Meal.create({
         userId: session.userId,
         loggedAt: new Date(),
         dateString: targetDateStr,
         mealType,
         description: description || "Logged Meal",
-        imageSource: cloudinaryData ? "photo" : "text_only",
-        cloudinary: cloudinaryData || null,
+        imageSource: finalImages.length > 0 ? "photo" : "text_only",
+        images: finalImages,
         items: Array.isArray(items)
           ? items.map((it: any) => ({
               name: String(it.name || "Item"),
@@ -119,7 +127,11 @@ export async function POST(request: NextRequest) {
     }
 
     const formData = await request.formData();
-    const file = formData.get("file") as File | null;
+    const allFiles = formData.getAll("files") as File[];
+    const singleFile = formData.get("file") as File | null;
+    const rawFiles = allFiles.length > 0 ? allFiles : singleFile ? [singleFile] : [];
+    const files = rawFiles.filter((f) => f && f.size > 0);
+
     const imageUrl = (formData.get("imageUrl") as string) || "";
     const description = (formData.get("description") as string) || "";
     const mealType = ((formData.get("mealType") as string) || "lunch") as MealType;
@@ -147,35 +159,48 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    let cloudinaryResult: UploadApiResponse | null = null;
-    let base64Image: string | null = null;
+    const base64Images: string[] = [];
+    const cloudinaryResults: UploadApiResponse[] = [];
 
-    if (file && file.size > 0) {
-      const arrayBuffer = await file.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-      base64Image = buffer.toString("base64");
+    if (files.length > 0) {
+      const uploadPromises = files.map(async (fileItem) => {
+        const arrayBuffer = await fileItem.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const base64 = buffer.toString("base64");
 
-      // Server-side upload to Cloudinary using SDK singleton
-      cloudinaryResult = await new Promise<UploadApiResponse>((resolve, reject) => {
-        const uploadStream = cloudinary.uploader.upload_stream(
-          {
-            folder: "fit-tracker/meals",
-            resource_type: "image",
-            format: "webp",
-          },
-          (error, result) => {
-            if (error || !result) reject(error || new Error("Cloudinary upload failed"));
-            else resolve(result);
-          }
-        );
-        uploadStream.end(buffer);
+        const cResult = await new Promise<UploadApiResponse>((resolve, reject) => {
+          const uploadStream = cloudinary.uploader.upload_stream(
+            {
+              folder: "fit-tracker/meals",
+              resource_type: "image",
+              format: "webp",
+            },
+            (error, result) => {
+              if (error || !result) reject(error || new Error("Cloudinary upload failed"));
+              else resolve(result);
+            }
+          );
+          uploadStream.end(buffer);
+        });
+
+        return { base64, cloudinary: cResult };
       });
+
+      const settled = await Promise.allSettled(uploadPromises);
+      for (const res of settled) {
+        if (res.status === "fulfilled") {
+          base64Images.push(res.value.base64);
+          cloudinaryResults.push(res.value.cloudinary);
+        } else {
+          console.warn("One meal image upload failed:", res.reason);
+        }
+      }
     } else if (imageUrl && typeof imageUrl === "string" && imageUrl.startsWith("http")) {
       try {
         const imgRes = await fetch(imageUrl);
         if (imgRes.ok) {
           const arrayBuffer = await imgRes.arrayBuffer();
-          base64Image = Buffer.from(arrayBuffer).toString("base64");
+          base64Images.push(Buffer.from(arrayBuffer).toString("base64"));
         }
       } catch (e) {
         console.warn("Could not fetch existing imageUrl for re-analysis:", e);
@@ -209,10 +234,10 @@ export async function POST(request: NextRequest) {
     try {
       const contents: any[] = [];
 
-      if (base64Image) {
+      for (const base64 of base64Images) {
         contents.push({
           inlineData: {
-            data: base64Image,
+            data: base64,
             mimeType: "image/webp",
           },
         });
@@ -245,9 +270,15 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      const multiPhotoDirective =
+        base64Images.length > 1
+          ? `NOTE: The user has attached ${base64Images.length} photos of this meal (different angles, sides, courses, or labels). Cross-reference and analyze all provided images together to identify all food items.`
+          : "";
+
       const promptText = [
         `User Meal Context / Description: "${description || "(No description provided, analyze from image)"}"`,
         `Logged Date: ${targetDateStr}`,
+        multiPhotoDirective,
         "",
         ...previousContextParts,
         "",
@@ -348,23 +379,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const cloudinaryPayload = cloudinaryResult
-      ? {
-          publicId: cloudinaryResult.public_id,
-          secureUrl: cloudinaryResult.secure_url,
-          deliveryType: "upload" as const,
-          width: cloudinaryResult.width,
-          height: cloudinaryResult.height,
-          bytes: cloudinaryResult.bytes,
-        }
-      : null;
+    const imagesPayload = cloudinaryResults.map((r) => ({
+      publicId: r.public_id,
+      secureUrl: r.secure_url,
+      deliveryType: "upload" as const,
+      width: r.width,
+      height: r.height,
+      bytes: r.bytes,
+    }));
 
     // If immediate save is not requested (default flow for opening the confirmation modal)
     if (!shouldSaveImmediately) {
       return NextResponse.json({
         success: true,
         analysis,
-        cloudinary: cloudinaryPayload,
+        images: imagesPayload,
       });
     }
 
@@ -377,8 +406,8 @@ export async function POST(request: NextRequest) {
       dateString: targetDateStr,
       mealType,
       description: analysis.mealDescription || description || "Logged Meal",
-      imageSource: cloudinaryResult ? "photo" : "text_only",
-      cloudinary: cloudinaryPayload,
+      imageSource: imagesPayload.length > 0 ? "photo" : "text_only",
+      images: imagesPayload,
       items: analysis.items || [],
       aiMacros: {
         calories: analysis.totals.calories,
@@ -425,10 +454,10 @@ export async function POST(request: NextRequest) {
       mealId: meal._id.toString(),
       analysis,
       meal,
-      cloudinary: cloudinaryPayload,
+      images: imagesPayload,
     });
   } catch (err: any) {
     console.error("Meal analyze route error:", err);
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: formatAiErrorMessage(err) }, { status: 500 });
   }
 }

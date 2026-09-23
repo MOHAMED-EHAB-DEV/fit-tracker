@@ -11,6 +11,7 @@ import genAI, {
   resolveGeminiModel,
   createGeminiConfig,
   generateContentWithFallback,
+  formatAiErrorMessage,
 } from "@/lib/gemini/client";
 import { multiLogSchema } from "@/lib/gemini/schemas";
 import { MULTI_LOG_SYSTEM_PROMPT, AI_COACH_SYSTEM_PROMPT } from "@/lib/gemini/prompts";
@@ -25,26 +26,8 @@ import {
 } from "@/lib/security/file-validator";
 
 function extractGeminiErrorMessage(err: any): { status: number; message: string } {
-  const status =
-    err?.status ||
-    err?.statusCode ||
-    (typeof err?.message === "string" && err.message.includes("503")
-      ? 503
-      : typeof err?.message === "string" && err.message.includes("404")
-      ? 404
-      : 503);
-
-  let rawMsg = err?.message || "AI Service temporarily unavailable";
-  try {
-    const jsonMatch = typeof rawMsg === "string" ? rawMsg.match(/\{[\s\S]*\}/) : null;
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (parsed?.error?.message) {
-        rawMsg = parsed.error.message;
-      }
-    }
-  } catch {}
-  return { status, message: rawMsg };
+  const status = err?.status || err?.statusCode || 500;
+  return { status, message: formatAiErrorMessage(err) };
 }
 
 export async function POST(request: NextRequest) {

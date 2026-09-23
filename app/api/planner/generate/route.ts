@@ -9,6 +9,7 @@ import {
   generateContentWithFallback,
   createGeminiConfig,
   flashModel,
+  formatAiErrorMessage,
 } from "@/lib/gemini/client";
 import {
   PLANNER_SYSTEM_INSTRUCTION,
@@ -118,6 +119,6 @@ export async function POST(request: NextRequest) {
       modelUsed: result.modelUsed,
     });
   } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: formatAiErrorMessage(err) }, { status: 500 });
   }
 }

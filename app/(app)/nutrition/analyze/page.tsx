@@ -5,7 +5,7 @@ import { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Analyze Meal — AI Fit Tracker",
-  description: "Snap or upload a meal photo to calculate calories and macros with Gemini AI.",
+  description: "Snap or upload meal photos to calculate calories and macros with AI.",
 };
 
 export default function AnalyzeMealPage() {

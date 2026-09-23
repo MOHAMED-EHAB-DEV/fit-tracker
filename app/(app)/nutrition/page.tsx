@@ -133,10 +133,14 @@ async function NutritionContent({ searchParams }: NutritionPageProps) {
       geminiNotes: m.aiMacros.geminiNotes,
       modelUsed: m.aiMacros.modelUsed,
     } : null,
-    cloudinary: m.cloudinary?.secureUrl ? {
-      secureUrl: m.cloudinary.secureUrl,
-      publicId: m.cloudinary.publicId,
-    } : null,
+    images: Array.isArray(m.images)
+      ? m.images.map((img: any) => ({
+          secureUrl: img.secureUrl,
+          publicId: img.publicId,
+          width: img.width,
+          height: img.height,
+        }))
+      : [],
     createdAt: m.createdAt ? new Date(m.createdAt).toISOString() : undefined,
     updatedAt: m.updatedAt ? new Date(m.updatedAt).toISOString() : undefined,
   }));

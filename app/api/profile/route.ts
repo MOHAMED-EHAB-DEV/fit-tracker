@@ -72,7 +72,7 @@ export async function PATCH(request: NextRequest) {
       if (weight && height) {
         const bmr = calculateBMR(weight, height, age, sex);
         const tdee = calculateTDEE(bmr, activity);
-        const targetCal = user.fitnessProfile.targetCalories || calculateTargetCalories(tdee, goal);
+        const targetCal = user.fitnessProfile.targetCalories || calculateTargetCalories(tdee, goal, user.fitnessProfile.calorieAdjustment);
         const targetProtein = user.fitnessProfile.targetProteinG || calculateProteinTarget(weight, goal);
         const targetFat = user.fitnessProfile.targetFatG || calculateFatTarget(targetCal);
         const targetCarbs = user.fitnessProfile.targetCarbsG || calculateCarbsTarget(targetCal, targetProtein, targetFat);

@@ -59,15 +59,16 @@ export function calculateSessionDoneCalories(
   exercises: any[],
   userWeightKg: number
 ): number {
-  if (!userWeightKg || userWeightKg <= 0 || !Array.isArray(exercises)) {
+  if (!Array.isArray(exercises) || exercises.length === 0) {
     return 0;
   }
 
+  const effectiveWeightKg = userWeightKg && userWeightKg > 0 ? userWeightKg : 70;
   let totalCalories = 0;
 
   for (const ex of exercises) {
-    const met = Number(ex.metValue);
-    if (!met || met <= 0) continue;
+    const rawMet = Number(ex.metValue);
+    const met = rawMet && rawMet > 0 ? rawMet : 5.0;
 
     const unit = ex.weightUnit;
     const sets = Array.isArray(ex.sets) ? ex.sets : [];
@@ -85,7 +86,7 @@ export function calculateSessionDoneCalories(
           reps,
           weight,
           metValue: met,
-          userWeightKg,
+          userWeightKg: effectiveWeightKg,
           isWarmup: Boolean(s.isWarmup),
           restSeconds,
           weightUnit: unit,
@@ -104,15 +105,16 @@ export function calculateRoutinePlannedCalories(
   exercises: any[],
   userWeightKg: number
 ): number {
-  if (!userWeightKg || userWeightKg <= 0 || !Array.isArray(exercises)) {
+  if (!Array.isArray(exercises) || exercises.length === 0) {
     return 0;
   }
 
+  const effectiveWeightKg = userWeightKg && userWeightKg > 0 ? userWeightKg : 70;
   let totalCalories = 0;
 
   for (const ex of exercises) {
-    const met = Number(ex.metValue);
-    if (!met || met <= 0) continue;
+    const rawMet = Number(ex.metValue);
+    const met = rawMet && rawMet > 0 ? rawMet : 5.0;
 
     const unit = ex.weightUnit;
     const sets = Array.isArray(ex.sets) ? ex.sets : [];
@@ -127,7 +129,7 @@ export function calculateRoutinePlannedCalories(
           reps,
           weight,
           metValue: met,
-          userWeightKg,
+          userWeightKg: effectiveWeightKg,
           isWarmup: Boolean(s.isWarmup),
           restSeconds,
           weightUnit: unit,

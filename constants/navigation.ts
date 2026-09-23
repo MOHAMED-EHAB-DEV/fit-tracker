@@ -8,6 +8,7 @@ import {
   Settings,
   Users,
   CalendarClock,
+  LayoutGrid,
   type LucideIcon,
 } from "lucide-react";
 
@@ -26,6 +27,7 @@ export const MAIN_NAV_ITEMS: NavItem[] = [
   { label: "Nutrition", href: "/nutrition", icon: UtensilsCrossed, mobileLabel: "Nutrition" },
   { label: "Body Comp", href: "/body-comp", icon: Scale, mobileLabel: "Body" },
   { label: "AI Coach", href: "/coach", icon: Sparkles, mobileLabel: "Coach" },
+  { label: "Widgets", href: "/widgets", icon: LayoutGrid, mobileLabel: "Widgets" },
   { label: "Settings", href: "/settings", icon: Settings, mobileLabel: "Settings" },
 ];
 

@@ -28,6 +28,7 @@ export interface IUser extends Document {
     targetCarbsG: number | null;
     targetFatG: number | null;
     targetFiberG: number | null;
+    calorieAdjustment?: number | null;
   };
   preferences: {
     stepGoal: number | null;
@@ -89,6 +90,7 @@ const UserSchema = new Schema<IUser>(
       targetCarbsG: { type: Number, default: null },
       targetFatG: { type: Number, default: null },
       targetFiberG: { type: Number, default: null },
+      calorieAdjustment: { type: Number, default: null },
     },
     preferences: {
       stepGoal: { type: Number, default: null },

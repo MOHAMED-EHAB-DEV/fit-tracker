@@ -7,6 +7,7 @@ import User from "@/lib/db/models/User";
 import ExerciseCatalog from "@/lib/db/models/ExerciseCatalog";
 import { getTodayDateString, getWeekStartDateString } from "@/lib/fitness/timezone";
 import { calculateSessionDoneCalories, calculateRoutinePlannedCalories } from "@/lib/fitness/workout-calories";
+import { syncWorkoutToDailyLog, cleanStaleWorkout, isWorkoutStaleIncomplete } from "@/lib/fitness/daily-log-sync";
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,6 +21,22 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "20", 10);
 
     await getDb();
+
+    if (status === "active") {
+      const activeWorkouts = await Workout.find({ userId: session.userId, status: "active" });
+      const todayStr = getTodayDateString(new Date());
+
+      const validActiveWorkouts: any[] = [];
+      for (const w of activeWorkouts) {
+        if (isWorkoutStaleIncomplete(w)) {
+          await cleanStaleWorkout(w);
+        } else if (getTodayDateString(w.startedAt || w.createdAt) === todayStr) {
+          validActiveWorkouts.push(w.toObject ? w.toObject() : w);
+        }
+      }
+
+      return NextResponse.json({ success: true, workouts: validActiveWorkouts.slice(0, limit) });
+    }
 
     const query: any = { userId: session.userId };
     if (status) {
@@ -57,7 +74,7 @@ export async function POST(request: NextRequest) {
     const workoutDate = body.startedAt || body.date ? new Date(body.startedAt || body.date) : new Date();
     const weekStartDate = getWeekStartDateString(workoutDate);
     const dayOfWeek = (body.dayOfWeek || "saturday").toLowerCase();
-    const status = body.status || "in_progress";
+    const status = body.status === "completed" ? "completed" : "active";
 
     let totalVolume = 0;
     let exerciseList = exercises || [];
@@ -151,18 +168,8 @@ export async function POST(request: NextRequest) {
       date: workoutDate,
     });
 
-    if (status === "completed" && estimatedCalories > 0) {
-      const logDateStr = getTodayDateString(workoutDate);
-      await DailyLog.findOneAndUpdate(
-        { userId: session.userId, dateString: logDateStr },
-        {
-          $inc: {
-            "caloriesOut.workouts": estimatedCalories,
-            "caloriesOut.total": estimatedCalories,
-          },
-        },
-        { upsert: true }
-      );
+    if (status === "completed") {
+      await syncWorkoutToDailyLog(session.userId, workout._id);
     }
 
     return NextResponse.json({ success: true, workout }, { status: 201 });
