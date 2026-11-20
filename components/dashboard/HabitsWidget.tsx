@@ -1,240 +1,245 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CheckSquare, Check, Plus, ChevronRight, Sparkles, Pencil } from "lucide-react";
+import { Check, CheckSquare, ChevronRight, Loader2, Pencil, Plus, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { IHabitData } from "@/components/habits/HabitCard";
-import { EditHabitModal } from "@/components/habits/EditHabitModal";
+import type { HabitDTO } from "@/lib/habits/dto";
+import { completionForDay } from "@/lib/habits/completion";
+import { DEFAULT_HABIT_EMOJI, safeHabitColor } from "@/lib/habits/colors";
+import { getTodayDateString } from "@/lib/fitness/timezone";
+import { claimRefresh } from "@/lib/dashboard/stale";
+import { HabitFormModal } from "@/components/habits/HabitFormModal";
+import { useHabitArchive } from "@/components/habits/useHabitArchive";
+import { useHabitLogs } from "@/components/habits/useHabitLogs";
+import { useDashboardFreshness } from "@/components/habits/useLiveToday";
+import { useToast } from "@/components/ui/Toast";
 
-interface HabitsWidgetProps {
-  habits: IHabitData[];
+export interface HabitsWidgetProps {
+  /** Active habits in display order (getTodayHabitsData().habits). */
+  habits: HabitDTO[];
+  /** Today's completed ids, already restricted to active habits. */
   initialCompletedHabitIds: string[];
+  /** Today in the user's zone, as rendered on the server. */
   todayStr: string;
+  /** The user's IANA zone (session.timezone). */
+  timeZone: string;
 }
 
-export function HabitsWidget({
-  habits: initialHabits,
-  initialCompletedHabitIds,
-  todayStr,
-}: HabitsWidgetProps) {
+const MAX_VISIBLE = 6;
+
+export function HabitsWidget({ habits, initialCompletedHabitIds, todayStr, timeZone }: HabitsWidgetProps) {
   const router = useRouter();
-  const [habitsList, setHabitsList] = useState<IHabitData[]>(initialHabits);
-  const [completedIds, setCompletedIds] = useState<Set<string>>(
-    new Set(initialCompletedHabitIds)
-  );
-  const [editingHabit, setEditingHabit] = useState<IHabitData | null>(null);
+  const { toast } = useToast();
+  const liveToday = useDashboardFreshness(todayStr, timeZone);
+  const dayIsStale = liveToday !== todayStr;
 
+  const [habitsList, setHabitsList] = useState<HabitDTO[]>(habits);
+  const [prevHabits, setPrevHabits] = useState(habits);
+  if (habits !== prevHabits) {
+    setPrevHabits(habits);
+    setHabitsList(habits);
+  }
+
+  const { logsMap, toggle, isPending, hasPending, setDay } = useHabitLogs({ [todayStr]: initialCompletedHabitIds });
+  const [prevCompleted, setPrevCompleted] = useState({ todayStr, ids: initialCompletedHabitIds });
+  if (prevCompleted.ids !== initialCompletedHabitIds || prevCompleted.todayStr !== todayStr) {
+    setPrevCompleted({ todayStr, ids: initialCompletedHabitIds });
+    setDay(todayStr, initialCompletedHabitIds);
+  }
+
+  const [editing, setEditing] = useState<HabitDTO | null>(null);
+
+  // Refresh the server-rendered dashboard (streak etc.) once toggles settle.
+  const refreshTimer = useRef<number | null>(null);
+  const [needsRefresh, setNeedsRefresh] = useState(false);
   useEffect(() => {
-    setHabitsList(initialHabits);
-  }, [initialHabits]);
+    if (!needsRefresh || hasPending) return;
+    refreshTimer.current = window.setTimeout(() => {
+      setNeedsRefresh(false);
+      router.refresh();
+    }, 1200);
+    return () => {
+      if (refreshTimer.current) window.clearTimeout(refreshTimer.current);
+    };
+  }, [needsRefresh, hasPending, router]);
 
-  useEffect(() => {
-    setCompletedIds(new Set(initialCompletedHabitIds));
-  }, [initialCompletedHabitIds]);
+  const archiveFlow = useHabitArchive({
+    onArchived: (habit) => {
+      setHabitsList((prev) => prev.filter((h) => h._id !== habit._id));
+      setEditing(null);
+      setNeedsRefresh(true);
+    },
+    onRestored: (habit) => {
+      setHabitsList((prev) => [...prev.filter((h) => h._id !== habit._id), habit]);
+      setNeedsRefresh(true);
+    },
+  });
 
-  const handleUpdateHabit = (updated: IHabitData) => {
-    setHabitsList((prev) => prev.map((h) => (h._id === updated._id ? updated : h)));
-    router.refresh();
-  };
-
-  const handleHabitDeleted = (habitId: string) => {
-    setHabitsList((prev) => prev.filter((h) => h._id !== habitId));
-    setCompletedIds((prev) => {
-      const next = new Set(prev);
-      next.delete(habitId);
-      return next;
-    });
-    router.refresh();
-  };
-
-  const handleToggle = async (habitId: string) => {
-    const isChecked = completedIds.has(habitId);
-    const next = new Set(completedIds);
-    if (isChecked) {
-      next.delete(habitId);
-    } else {
-      next.add(habitId);
+  const handleToggle = async (habitId: string, checked: boolean) => {
+    const now = getTodayDateString(new Date(), timeZone);
+    if (now !== todayStr) {
+      toast("A new day has started. Updating your dashboard…", "info");
+      if (claimRefresh()) router.refresh();
+      return;
     }
-    setCompletedIds(next);
-
-    try {
-      const res = await fetch("/api/habits/log", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          habitId,
-          dateString: todayStr,
-          action: isChecked ? "uncheck" : "check",
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setCompletedIds(completedIds);
-      } else if (Array.isArray(data.completedHabitIds)) {
-        setCompletedIds(new Set(data.completedHabitIds.map(String)));
-        router.refresh();
-      }
-    } catch {
-      // rollback
-      setCompletedIds(completedIds);
-    }
+    const saved = await toggle(habitId, todayStr, checked);
+    if (saved) setNeedsRefresh(true);
   };
 
-  const total = habitsList.length;
-  const done = completedIds.size;
-  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const today = completionForDay(habitsList, logsMap[todayStr], todayStr);
+  const completed = new Set(today.completedIds);
+  const pct = today.total > 0 ? Math.round((today.completed / today.total) * 100) : 0;
 
   return (
-    <div className="p-4 sm:p-5 rounded-3xl bg-zinc-900/80 border border-zinc-800/80 shadow-lg backdrop-blur-md relative overflow-hidden group">
-      {/* Header */}
+    <section
+      aria-labelledby="habits-widget-title"
+      className="p-4 sm:p-5 rounded-3xl bg-zinc-900/80 border border-zinc-800/80 shadow-lg relative overflow-hidden"
+    >
       <div className="flex items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0" aria-hidden="true">
             <CheckSquare className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-black uppercase tracking-wider text-emerald-400">
-                Daily Rituals
-              </span>
-              {total > 0 && (
-                <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  {done}/{total}
+              <span className="text-xs font-black uppercase tracking-wider text-emerald-400">Daily Rituals</span>
+              {today.total > 0 && (
+                <span className="text-xs font-bold px-2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  {today.completed}/{today.total}
                 </span>
               )}
             </div>
-            <h3 className="font-extrabold text-sm sm:text-base text-white mt-0.5">
+            <h3 id="habits-widget-title" className="font-extrabold text-sm sm:text-base text-white mt-0.5">
               Habits Checklist
             </h3>
           </div>
         </div>
-
         <Link
           href="/habits"
-          className="flex items-center gap-1 text-xs font-semibold text-emerald-400 hover:text-emerald-300 transition shrink-0"
+          className="min-h-11 flex items-center gap-1 px-2 text-sm font-semibold text-emerald-400 hover:text-emerald-300 transition shrink-0"
         >
-          <span>Habit Trends</span>
-          <ChevronRight className="w-3.5 h-3.5" />
+          <span>Habit trends</span>
+          <ChevronRight className="w-4 h-4" aria-hidden="true" />
         </Link>
       </div>
 
-      {/* Habits or Empty State */}
-      {total === 0 ? (
-        <div className="py-5 px-4 rounded-2xl bg-zinc-900/40 border border-dashed border-zinc-800 flex items-center justify-between gap-4">
+      {dayIsStale && (
+        <p role="status" className="mb-3 flex items-center gap-2 text-xs text-amber-300">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+          A new day has started. Updating…
+        </p>
+      )}
+
+      {habitsList.length === 0 ? (
+        <div className="py-4 px-4 rounded-2xl bg-zinc-900/40 border border-dashed border-zinc-800 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <Sparkles className="w-5 h-5 text-emerald-400 shrink-0" />
-            <p className="text-xs text-zinc-400">
-              No daily habits configured yet.
-            </p>
+            <Sparkles className="w-5 h-5 text-emerald-400 shrink-0" aria-hidden="true" />
+            <p className="text-sm text-zinc-400">No daily habits yet.</p>
           </div>
           <Link
             href="/habits"
-            className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 text-xs font-bold transition shrink-0 flex items-center gap-1.5"
+            className="min-h-11 px-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 text-sm font-bold transition shrink-0 flex items-center gap-1.5"
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Add Habit</span>
+            <Plus className="w-4 h-4" aria-hidden="true" />
+            <span>Add habit</span>
           </Link>
         </div>
       ) : (
-        <div className="space-y-2">
-          {/* Progress bar */}
-          <div className="w-full h-1.5 rounded-full bg-zinc-800 overflow-hidden mb-3">
-            <div
-              className="h-full bg-linear-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-300"
-              style={{ width: `${pct}%` }}
-            />
+        <div className="space-y-2 @container">
+          <div
+            role="progressbar"
+            aria-valuenow={pct}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Habits completed today"
+            className="w-full h-1.5 rounded-full bg-zinc-800 overflow-hidden mb-3"
+          >
+            <div className="h-full bg-linear-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-300" style={{ width: `${pct}%` }} />
           </div>
 
-          {/* Quick checklist items */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {habitsList.slice(0, 6).map((h) => {
-              const isChecked = completedIds.has(h._id);
-              const color = h.color || "#10b981";
+          <ul className="grid grid-cols-1 @sm:grid-cols-2 @3xl:grid-cols-3 gap-2">
+            {habitsList.slice(0, MAX_VISIBLE).map((habit) => {
+              const isChecked = completed.has(habit._id);
+              const pending = isPending(todayStr, habit._id);
+              const color = safeHabitColor(habit.color);
               return (
-                <div
-                  key={h._id}
+                <li
+                  key={habit._id}
                   className={cn(
-                    "flex items-center justify-between p-2.5 rounded-xl border text-start transition-all duration-150 select-none group",
-                    isChecked
-                      ? "bg-zinc-800/80 border-zinc-700/60 shadow-xs"
-                      : "bg-zinc-900/50 border-zinc-800/80 hover:bg-zinc-800/40"
+                    "flex items-stretch rounded-xl border transition-colors",
+                    isChecked ? "bg-zinc-800/80 border-zinc-700/60" : "bg-zinc-900/50 border-zinc-800/80"
                   )}
                 >
                   <button
                     type="button"
-                    onClick={() => handleToggle(h._id)}
-                    className="flex items-center gap-2 min-w-0 flex-1 text-start cursor-pointer"
+                    role="checkbox"
+                    aria-checked={isChecked}
+                    aria-busy={pending}
+                    aria-label={`${habit.name}: ${isChecked ? "completed" : "not completed"}`}
+                    disabled={pending || dayIsStale}
+                    onClick={() => handleToggle(habit._id, !isChecked)}
+                    className="flex-1 min-w-0 min-h-11 flex items-center gap-2.5 ps-3 pe-2 text-start cursor-pointer disabled:cursor-wait rounded-s-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
                   >
-                    <span className="text-base shrink-0">{h.emoji || "⚡"}</span>
                     <span
+                      aria-hidden="true"
                       className={cn(
-                        "text-xs font-semibold truncate transition-colors",
-                        isChecked ? "text-zinc-400 line-through" : "text-zinc-200"
+                        "w-6 h-6 rounded-md flex items-center justify-center border shrink-0",
+                        isChecked ? "border-transparent text-zinc-950" : "border-zinc-600 bg-zinc-800"
                       )}
+                      style={{ backgroundColor: isChecked ? color : undefined }}
                     >
-                      {h.name}
+                      {pending ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-300" />
+                      ) : (
+                        isChecked && <Check className="w-3.5 h-3.5 stroke-3" />
+                      )}
+                    </span>
+                    <span className="text-base shrink-0" aria-hidden="true">
+                      {habit.emoji || DEFAULT_HABIT_EMOJI}
+                    </span>
+                    <span className={cn("text-sm font-semibold truncate", isChecked ? "text-zinc-400 line-through" : "text-zinc-200")}>
+                      {habit.name}
                     </span>
                   </button>
-
-                  <div className="flex items-center gap-1.5 shrink-0 ms-2">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingHabit(h);
-                      }}
-                      title="Edit habit"
-                      aria-label="Edit habit"
-                      className="p-1 text-zinc-400 hover:text-white hover:bg-zinc-700/60 rounded-lg transition cursor-pointer"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleToggle(h._id)}
-                      aria-label={isChecked ? "Mark incomplete" : "Mark complete"}
-                      className={cn(
-                        "w-5 h-5 rounded-md flex items-center justify-center transition shrink-0 border cursor-pointer",
-                        isChecked
-                          ? "border-transparent text-zinc-950 font-bold"
-                          : "border-zinc-700 bg-zinc-800"
-                      )}
-                      style={{
-                        backgroundColor: isChecked ? color : undefined,
-                      }}
-                    >
-                      {isChecked && <Check className="w-3 h-3 stroke-3" />}
-                    </button>
-                  </div>
-                </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditing(habit)}
+                    aria-label={`Edit ${habit.name}`}
+                    className="w-11 shrink-0 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-700/60 rounded-e-xl transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                  >
+                    <Pencil className="w-4 h-4" aria-hidden="true" />
+                  </button>
+                </li>
               );
             })}
-          </div>
+          </ul>
 
-          {habitsList.length > 6 && (
+          {habitsList.length > MAX_VISIBLE && (
             <div className="pt-1 text-center">
-              <Link
-                href="/habits"
-                className="text-[11px] font-semibold text-zinc-500 hover:text-emerald-400 transition"
-              >
-                +{habitsList.length - 6} more habits in full view →
+              <Link href="/habits" className="inline-flex min-h-11 items-center text-sm font-semibold text-zinc-400 hover:text-emerald-400 transition">
+                +{habitsList.length - MAX_VISIBLE} more habits on the Habits page →
               </Link>
             </div>
           )}
         </div>
       )}
 
-      {/* Edit Habit Modal */}
-      <EditHabitModal
-        isOpen={!!editingHabit}
-        habit={editingHabit}
-        onClose={() => setEditingHabit(null)}
-        onUpdated={handleUpdateHabit}
-        onDeleted={handleHabitDeleted}
+      <HabitFormModal
+        isOpen={Boolean(editing)}
+        habit={editing}
+        onClose={() => setEditing(null)}
+        onSaved={(saved) => {
+          setHabitsList((prev) => prev.map((h) => (h._id === saved._id ? saved : h)));
+          setNeedsRefresh(true);
+        }}
+        onRequestArchive={(habit) => {
+          setEditing(null);
+          archiveFlow.requestArchive(habit);
+        }}
       />
-    </div>
+      {archiveFlow.element}
+    </section>
   );
 }

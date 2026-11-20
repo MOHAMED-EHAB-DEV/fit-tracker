@@ -57,8 +57,9 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="4dp"
+                android:id="@+id/tv_large_status"
                 android:fontFamily="sans-serif-bold"
-                android:text="LIVE"
+                android:text="TODAY"
                 android:textColor="@color/primary_light"
                 android:textSize="9sp" />
         </LinearLayout>
@@ -376,7 +377,7 @@
         android:layout_alignParentBottom="true"
         android:layout_centerHorizontal="true"
         android:fontFamily="sans-serif"
-        android:text="FitTracker Live Telemetry"
+        android:text="FitTracker"
         android:textColor="@color/widget_text_muted"
         android:textSize="9sp" />
 

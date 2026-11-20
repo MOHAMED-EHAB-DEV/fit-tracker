@@ -1,13 +1,23 @@
 import mongoose, { Schema, Document, Model } from "mongoose";
 
-interface IBodyPhoto {
+export interface IBodyPhoto {
+  /** Cloudinary public id. Photos are delivered only through short-lived signed URLs. */
   cloudinaryPublicId: string;
   angle: "front" | "side" | "back";
-  signedUrl: string; // Regenerated server-side on each GET (expires quickly)
-  urlExpiresAt: Date;
+  /** Cloudinary delivery type ("private" for every upload since the fix). */
+  deliveryType?: "private" | "upload" | "authenticated" | null;
+  /** Stored file format (e.g. "webp"); needed to sign download URLs. */
+  format?: string | null;
+  /**
+   * @deprecated Legacy: the upload's secure_url, saved by old versions. Never
+   * sent to the browser; only used to recover the public id when missing.
+   */
+  signedUrl?: string | null;
+  /** @deprecated Legacy, unused. */
+  urlExpiresAt?: Date | null;
 }
 
-interface IAiAnalysis {
+export interface IAiAnalysis {
   qualitativeNotes: string;
   estimatedBodyFatPercent?: number | null;
   estimatedBodyFatRange: string;
@@ -18,19 +28,25 @@ interface IAiAnalysis {
   generatedAt: Date;
 }
 
+export interface IBodyMeasurements {
+  chest: number | null;
+  waist: number | null;
+  hips: number | null;
+  arms: number | null;
+  thighs: number | null;
+}
+
 export interface IBodyComp extends Document {
   userId: mongoose.Types.ObjectId;
   checkInDate: Date;
+  /** "YYYY-MM-DD" in the user's zone. */
   dateString: string;
+  /** Kilograms. */
   weight: number | null;
+  /** Measured by the user (the AI estimate lives in aiAnalysis). */
   bodyFatPercent: number | null;
-  measurements: {
-    chest: number | null;
-    waist: number | null;
-    hips: number | null;
-    arms: number | null;
-    thighs: number | null;
-  } | null;
+  /** Centimetres. */
+  measurements: IBodyMeasurements | null;
   photos: IBodyPhoto[];
   aiAnalysis: IAiAnalysis | null;
   notes: string | null;
@@ -38,20 +54,22 @@ export interface IBodyComp extends Document {
   updatedAt: Date;
 }
 
+const measurement = { type: Number, default: null, min: 10, max: 300 };
+
 const BodyCompSchema = new Schema<IBodyComp>(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     checkInDate: { type: Date, required: true },
     dateString: { type: String, required: true },
-    weight: { type: Number, default: null },
-    bodyFatPercent: { type: Number, default: null },
+    weight: { type: Number, default: null, min: 20, max: 400 },
+    bodyFatPercent: { type: Number, default: null, min: 0, max: 75 },
     measurements: {
       type: {
-        chest: { type: Number, default: null },
-        waist: { type: Number, default: null },
-        hips: { type: Number, default: null },
-        arms: { type: Number, default: null },
-        thighs: { type: Number, default: null },
+        chest: measurement,
+        waist: measurement,
+        hips: measurement,
+        arms: measurement,
+        thighs: measurement,
       },
       default: null,
     },
@@ -59,6 +77,8 @@ const BodyCompSchema = new Schema<IBodyComp>(
       {
         cloudinaryPublicId: String,
         angle: { type: String, enum: ["front", "side", "back"] },
+        deliveryType: { type: String, enum: ["private", "upload", "authenticated"], default: "private" },
+        format: { type: String, default: null },
         signedUrl: String,
         urlExpiresAt: Date,
         _id: false,
@@ -67,7 +87,7 @@ const BodyCompSchema = new Schema<IBodyComp>(
     aiAnalysis: {
       type: {
         qualitativeNotes: String,
-        estimatedBodyFatPercent: { type: Number, default: null },
+        estimatedBodyFatPercent: { type: Number, default: null, min: 0, max: 75 },
         estimatedBodyFatRange: String,
         comparedToPrevious: String,
         muscleGroupHighlights: [String],
@@ -77,7 +97,7 @@ const BodyCompSchema = new Schema<IBodyComp>(
       },
       default: null,
     },
-    notes: { type: String, default: null },
+    notes: { type: String, default: null, maxlength: 1000 },
   },
   { timestamps: true }
 );

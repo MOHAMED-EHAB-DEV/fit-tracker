@@ -1,75 +1,54 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db/mongoose";
 import User from "@/lib/db/models/User";
 import { comparePassword } from "@/lib/auth/password";
-import { signToken } from "@/lib/auth/jwt";
-import { setTokenCookie } from "@/lib/auth/cookies";
+import { issueSession } from "@/lib/auth/issue";
+import { publicRoute, enforceRateLimit, HttpError } from "@/lib/api/route";
+import { RATE_LIMITS } from "@/lib/security/rate-limit";
+import { loginSchema } from "@/lib/validation/auth";
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { email, password } = body;
+// A well-formed bcrypt hash of a random value. It is compared against when
+// the email is unknown, so response time does not reveal whether an account
+// exists.
+const DUMMY_HASH = "$2b$12$C6UzMDM.H6dfI/f/IKcEeO5KhPz1cQ3bS0p6xNq1QJ0mYQ0w8yX2a";
 
-    if (!email || !password) {
-      return NextResponse.json(
-        { success: false, error: "Email and password are required" },
-        { status: 400 }
-      );
-    }
-
+export const POST = publicRoute(
+  { body: loginSchema, rateLimit: RATE_LIMITS.loginPerIp },
+  async ({ body }) => {
+    await enforceRateLimit(RATE_LIMITS.loginPerEmail, body.email);
     await getDb();
 
-    const normalizedEmail = email.toLowerCase().trim();
-    const user = await User.findOne({ email: normalizedEmail }).select("+passwordHash");
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: "Invalid email or password" },
-        { status: 401 }
+    const user = await User.findOne({ email: body.email }).select("+passwordHash");
+    const isMatch = await comparePassword(body.password, user?.passwordHash || DUMMY_HASH).catch(
+      () => false
+    );
+
+    if (!user || !isMatch) {
+      throw new HttpError(401, "Invalid email or password");
+    }
+    if (user.isBanned) {
+      throw new HttpError(
+        403,
+        "This account has been suspended. Contact support if you think this is a mistake."
       );
     }
 
-    const isMatch = await comparePassword(password, user.passwordHash);
-    if (!isMatch) {
-      return NextResponse.json(
-        { success: false, error: "Invalid email or password" },
-        { status: 401 }
-      );
-    }
-
-    // Update lastLoginAt asynchronously
-    User.updateOne({ _id: user._id }, { $set: { lastLoginAt: new Date() } }).exec();
-
-    const token = await signToken({
-      userId: user._id.toString(),
-      email: user.email,
-      name: user.name,
-      tokenVersion: user.tokenVersion || 0,
-    });
+    await User.updateOne({ _id: user._id }, { $set: { lastLoginAt: new Date() } });
 
     const hasBiometrics = Boolean(
-      user.fitnessProfile?.weightKg &&
-      user.fitnessProfile?.heightCm &&
-      user.fitnessProfile?.sex
+      user.fitnessProfile?.weightKg && user.fitnessProfile?.heightCm && user.fitnessProfile?.sex
     );
-    const isProfileComplete = user.isProfileComplete === true || hasBiometrics;
 
     const response = NextResponse.json({
       success: true,
       user: {
-        id: user._id.toString(),
+        id: String(user._id),
         name: user.name,
         email: user.email,
-        isProfileComplete,
+        isProfileComplete: user.isProfileComplete === true || hasBiometrics,
       },
     });
-
-    setTokenCookie(response, token);
+    await issueSession(response, user);
     return response;
-  } catch (err: any) {
-    console.error("Login error:", err);
-    return NextResponse.json(
-      { success: false, error: err.message || "Internal server error" },
-      { status: 500 }
-    );
   }
-}
+);

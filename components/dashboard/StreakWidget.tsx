@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useEffect } from "react";
-import { Flame, Award, Calendar, CheckCircle2, TrendingUp } from "lucide-react";
+import { Flame, Award, CheckCircle2, TrendingUp } from "lucide-react";
 import { IStreakData } from "@/lib/fitness/streak";
 import { syncWidgetData } from "@/services/webview-bridge";
 
-interface StreakWidgetProps {
+export interface StreakWidgetProps {
+  /** computeStreak(...) from "@/lib/fitness/streak". */
   streak: IStreakData;
 }
 
@@ -28,11 +29,8 @@ export function StreakWidget({ streak }: StreakWidgetProps) {
     });
   }, [currentStreak, longestStreak, isLoggedToday]);
 
-  // Progress to next milestone percentage
-  const progressPercent = Math.min(
-    100,
-    Math.round((currentStreak / Math.max(nextMilestone, 1)) * 100)
-  );
+  const progressPercent =
+    nextMilestone === null ? 100 : Math.min(100, Math.round((currentStreak / Math.max(nextMilestone, 1)) * 100));
 
   return (
     <div className="p-4 sm:p-5 rounded-2xl bg-zinc-900/80 border border-zinc-800/80 shadow-lg backdrop-blur-md relative overflow-hidden group">
@@ -50,7 +48,7 @@ export function StreakWidget({ streak }: StreakWidgetProps) {
             className={`w-10 h-10 rounded-xl flex items-center justify-center transition shadow-md ${
               currentStreak > 0
                 ? "bg-linear-to-br from-orange-500 to-amber-500 text-zinc-950 shadow-orange-500/20"
-                : "bg-zinc-800 text-zinc-500 border border-zinc-700/50"
+                : "bg-zinc-800 text-zinc-400 border border-zinc-700/50"
             }`}
           >
             <Flame
@@ -63,19 +61,19 @@ export function StreakWidget({ streak }: StreakWidgetProps) {
               <h3 className="font-extrabold text-white text-base tracking-tight">
                 {currentStreak} Day{currentStreak === 1 ? "" : "s"} Streak
               </h3>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/20">
+              <span className="text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/20">
                 {badgeTitle}
               </span>
             </div>
-            <p className="text-[11px] text-zinc-400 mt-0.5">
+            <p className="text-xs text-zinc-400 mt-0.5">
               {isLoggedToday ? (
                 <span className="inline-flex items-center gap-1 text-emerald-400 font-medium">
-                  <CheckCircle2 className="w-3 h-3" />
+                  <CheckCircle2 className="w-3 h-3" aria-hidden="true" />
                   Logged today — streak secured!
                 </span>
               ) : (
                 <span className="text-amber-400 font-medium">
-                  Log your food, water, or workout to keep streak alive!
+                  Log a meal, water, a workout or a habit today to keep your streak.
                 </span>
               )}
             </p>
@@ -98,16 +96,24 @@ export function StreakWidget({ streak }: StreakWidgetProps) {
 
       {/* Progress towards next milestone */}
       <div className="space-y-1.5 pt-1">
-        <div className="flex justify-between text-[11px] text-zinc-400 font-medium">
-          <span>Next milestone: {nextMilestone} Days</span>
-          <span className="text-zinc-500">{currentStreak}/{nextMilestone}</span>
+        <div className="flex justify-between text-xs text-zinc-400 font-medium">
+          {nextMilestone === null ? (
+            <span>Every milestone reached</span>
+          ) : (
+            <>
+              <span>Next milestone: {nextMilestone} days</span>
+              <span>
+                {currentStreak}/{nextMilestone}
+              </span>
+            </>
+          )}
         </div>
         <div
           role="progressbar"
           aria-valuenow={progressPercent}
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-label={`Streak milestone progress: ${progressPercent}%`}
+          aria-label="Progress to the next streak milestone"
           className="w-full h-2 rounded-full bg-zinc-950 border border-zinc-800 overflow-hidden"
         >
           <div

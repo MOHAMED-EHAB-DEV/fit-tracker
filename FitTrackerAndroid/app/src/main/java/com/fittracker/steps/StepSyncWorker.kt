@@ -2,117 +2,82 @@ package com.fittracker.steps
 
 import android.content.Context
 import android.util.Log
-import android.webkit.CookieManager
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.fittracker.webview.JSBridge
+import com.fittracker.UserData
+import com.fittracker.net.AppHttp
+import com.fittracker.widget.FitTrackerWidgetUpdater
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.OutputStreamWriter
-import java.net.HttpURLConnection
-import java.net.URL
+import org.json.JSONObject
+import java.io.IOException
 
 /**
- * Battery-optimized background worker to sync step counts with Next.js backend.
- * Uses low-overhead HTTP connection with authentication support (Cookies and Bearer Token).
+ * Uploads every day whose step total changed (today, and yesterday when a
+ * reading closed it out after midnight), each under its own date.
+ * Uses the WebView session cookie. A 401/403 means the session is gone: the
+ * app stops syncing and the widgets show "signed out".
  */
 class StepSyncWorker(
-    private val context: Context,
+    context: Context,
     params: WorkerParameters
 ) : CoroutineWorker(context, params) {
 
     companion object {
         private const val TAG = "StepSyncWorker"
-        private const val CONNECT_TIMEOUT_MS = 5000
-        private const val READ_TIMEOUT_MS = 5000
+        private const val MAX_ATTEMPTS = 8
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        try {
-            // 1. One-shot sensor read with strict timeout
-            val currentReading = StepSensorManager.readCurrentCount(context)
+        val context = applicationContext
+        if (StepStore.isSignedOut(context)) {
+            Log.d(TAG, "Signed out: nothing uploaded")
+            return@withContext Result.success()
+        }
 
-            // 2. Process delta & compute today's steps
-            val todayTotalSteps: Long = if (currentReading != null) {
-                StepRepository.processNewSensorReading(context, currentReading)
-            } else {
-                // If stationary/timed out, use last cached value for today
-                StepRepository.getCachedTodaySteps(context)
+        val uploads = StepRepository.pendingUploads(context)
+        if (uploads.isEmpty()) return@withContext Result.success()
+
+        var retry = false
+        for ((date, steps) in uploads) {
+            val payload = JSONObject()
+                .put("steps", steps)
+                .put("source", "step_counter")
+                .put("dateString", date)
+                .toString()
+
+            val response = try {
+                AppHttp.request(context, "POST", "/api/steps/sync", payload)
+            } catch (e: IOException) {
+                Log.w(TAG, "Network error uploading $date: ${e.message}")
+                retry = true
+                break
             }
 
-            // Always update UI if WebView is currently active in foreground
-            JSBridge.instance?.pushStepCount(todayTotalSteps)
-
-            // Update live home screen widgets
-            try {
-                com.fittracker.widget.WidgetDataStore.updateSteps(context, todayTotalSteps)
-                com.fittracker.widget.FitTrackerWidgetUpdater.updateAllWidgets(context)
-            } catch (_: Exception) {}
-
-            // 3. Resolve server URL & auth credentials
-            val baseUrl = StepStore.getServerUrl(context)
-            val syncEndpoint = "$baseUrl/api/steps/sync"
-            val authToken = StepStore.getAuthToken(context)
-            val cookie = try {
-                CookieManager.getInstance()?.getCookie(baseUrl)
-            } catch (_: Exception) {
-                null
-            }
-
-            // If user has not logged in yet, complete locally without network call
-            if (authToken.isNullOrBlank() && cookie.isNullOrBlank()) {
-                Log.d(TAG, "No auth token or session cookie found. Step count recorded locally: $todayTotalSteps")
-                return@withContext Result.success()
-            }
-
-            // 4. Dispatch HTTP POST request to Fit Tracker backend
-            val todayStr = StepStore.getTodayDateString()
-            val jsonPayload = """{"steps": $todayTotalSteps, "source": "step_counter", "dateString": "$todayStr"}"""
-
-            val url = URL(syncEndpoint)
-            val connection = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                setRequestProperty("Content-Type", "application/json")
-                setRequestProperty("Accept", "application/json")
-                if (!authToken.isNullOrBlank()) {
-                    setRequestProperty("Authorization", "Bearer $authToken")
-                }
-                if (!cookie.isNullOrBlank()) {
-                    setRequestProperty("Cookie", cookie)
-                }
-                connectTimeout = CONNECT_TIMEOUT_MS
-                readTimeout = READ_TIMEOUT_MS
-                doOutput = true
-            }
-
-            OutputStreamWriter(connection.outputStream).use { writer ->
-                writer.write(jsonPayload)
-                writer.flush()
-            }
-
-            val responseCode = connection.responseCode
-            connection.disconnect()
-
-            Log.d(TAG, "Step sync HTTP response: $responseCode for steps: $todayTotalSteps")
-
-            return@withContext when (responseCode) {
+            when (response.code) {
                 in 200..299 -> {
+                    StepRepository.markUploaded(context, date, steps)
                     StepStore.recordSuccessfulSync(context)
-                    Result.success()
                 }
                 401, 403 -> {
-                    // Session expired or unauthenticated - don't retry endlessly
-                    Log.w(TAG, "Unauthorized during background step sync (code $responseCode). Will not retry until re-authenticated.")
-                    Result.success()
+                    Log.w(TAG, "Session rejected (${response.code}); stopping step sync")
+                    UserData.onSessionLost(context)
+                    return@withContext Result.success()
+                }
+                400, 422 -> {
+                    // The server refuses this day (e.g. no longer today or yesterday in the user's zone).
+                    Log.w(TAG, "Server rejected steps for $date: ${response.body?.take(200)}")
+                    StepRepository.dropPending(context, date)
                 }
                 else -> {
-                    Log.w(TAG, "Server returned error code $responseCode during step sync.")
-                    Result.retry()
+                    Log.w(TAG, "Server error ${response.code} uploading $date")
+                    retry = true
+                    break
                 }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "StepSyncWorker failed with exception: ${e.localizedMessage}")
-            Result.retry()
         }
+
+        FitTrackerWidgetUpdater.updateAllWidgets(context)
+        if (retry && runAttemptCount < MAX_ATTEMPTS) Result.retry() else Result.success()
     }
 }

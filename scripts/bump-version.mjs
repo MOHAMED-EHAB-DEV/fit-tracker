@@ -50,6 +50,26 @@ if (type === "major") {
 
 const versionName = `${major}.${minor}.${patch}`;
 
+// Releases must move forward: the Android updater and the release workflow
+// compare versionCode, and the workflow refuses to republish an existing tag.
+const compareSemver = (a, b) => {
+  for (let i = 0; i < 3; i++) {
+    if (a[i] !== b[i]) return a[i] - b[i];
+  }
+  return 0;
+};
+const previous = [current.major ?? 0, current.minor ?? 0, current.patch ?? 0];
+if (compareSemver([major, minor, patch], previous) <= 0) {
+  console.error(
+    `❌ New version ${versionName} must be higher than the current ${previous.join(".")}.`
+  );
+  process.exit(1);
+}
+if (!Number.isInteger(versionCode) || versionCode <= (current.versionCode ?? 0)) {
+  console.error("❌ versionCode must increase.");
+  process.exit(1);
+}
+
 const newVersionData = {
   major,
   minor,

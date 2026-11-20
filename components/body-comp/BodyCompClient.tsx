@@ -1,179 +1,172 @@
 "use client";
 
-import React, { useState, useRef, useCallback } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import {
-  Scale,
-  Camera,
-  Plus,
-  Sparkles,
-  Calendar,
-  Loader2,
-  AlertCircle,
-  CheckCircle2,
-  Zap,
-  X,
-  Ruler,
-  TrendingUp,
-  Eye,
-  ChevronDown,
-  ChevronUp,
-  FileText,
-} from "lucide-react";
+import { AlertCircle, Camera, ImagePlus, Loader2, Plus, Scale, Trash2, Zap } from "lucide-react";
 import { useClientResize } from "@/hooks/useClientResize";
 import { Modal } from "@/components/ui/Modal";
-
-export interface CheckInItem {
-  _id: string;
-  checkInDate: string;
-  dateString?: string;
-  weight?: number | null;
-  bodyFatPercent?: number | null;
-  measurements?: {
-    chest?: number | null;
-    waist?: number | null;
-    hips?: number | null;
-    arms?: number | null;
-    thighs?: number | null;
-  } | null;
-  photos?: Array<{
-    cloudinaryPublicId: string;
-    angle?: "front" | "side" | "back";
-    signedUrl: string;
-  }>;
-  aiAnalysis?: {
-    qualitativeNotes: string;
-    estimatedBodyFatPercent?: number | null;
-    estimatedBodyFatRange: string;
-    comparedToPrevious?: string;
-    muscleGroupHighlights?: string[];
-    recommendations?: string[];
-    modelUsed?: string;
-    generatedAt?: string | null;
-  } | null;
-  notes?: string;
-  createdAt?: string;
-}
+import { useToast } from "@/components/ui/Toast";
+import { useUser } from "@/context/UserContext";
+import { errorMessage, requestJson } from "@/components/habits/api";
+import { useLiveToday } from "@/components/habits/useLiveToday";
+import { markDashboardStale } from "@/lib/dashboard/stale";
+import type { AnalysisPreviewDTO, CheckInDTO } from "@/lib/body-comp/dto";
+import {
+  emptyCheckInValues,
+  parseCheckInValues,
+  valuesFromCheckIn,
+  type CheckInFormErrors,
+  type CheckInFormValues,
+} from "@/lib/body-comp/form-values";
+import { formatDateString } from "@/lib/time";
+import { CheckInFields } from "./CheckInFields";
+import { AnalysisView, CheckInCard } from "./CheckInCard";
 
 interface BodyCompClientProps {
-  initialCheckIns: CheckInItem[];
+  initialCheckIns: CheckInDTO[];
+  initialHasMore: boolean;
+  todayStr: string;
+  timeZone: string;
 }
 
-export function BodyCompClient({ initialCheckIns }: BodyCompClientProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
+interface SelectedPhoto {
+  blob: Blob;
+  url: string;
+  /** Changes on every pick, so an estimate can be tied to the exact photo. */
+  key: number;
+}
+
+interface MutationResponse {
+  success: true;
+  checkIn: CheckInDTO;
+  profileWeightKg: number | null;
+}
+
+interface ListResponse {
+  success: true;
+  checkIns: CheckInDTO[];
+  hasMore: boolean;
+}
+
+const byNewest = (a: CheckInDTO, b: CheckInDTO) => b.checkInDate.localeCompare(a.checkInDate);
+
+export function BodyCompClient({ initialCheckIns, initialHasMore, todayStr, timeZone }: BodyCompClientProps) {
+  const { toast } = useToast();
+  const { weightUnit, refreshUser } = useUser();
+  const today = useLiveToday(todayStr, timeZone, {
+    // A form left open overnight should default to the new day, not yesterday.
+    onDayChange: (now, previous) =>
+      setValues((current) => (current.dateString === previous ? { ...current, dateString: now } : current)),
+  });
   const { resizeImage, isResizing } = useClientResize();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [checkIns, setCheckIns] = useState<CheckInItem[]>(initialCheckIns);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [checkIns, setCheckIns] = useState<CheckInDTO[]>(initialCheckIns);
+  const [hasMore, setHasMore] = useState(initialHasMore);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  // ---- new check-in form ----
+  const [values, setValues] = useState<CheckInFormValues>(() => emptyCheckInValues(todayStr));
+  const [errors, setErrors] = useState<CheckInFormErrors>({});
+  const [formError, setFormError] = useState<string | null>(null);
+  const [photo, setPhoto] = useState<SelectedPhoto | null>(null);
+  const photoKeyRef = useRef(0);
+  const [estimate, setEstimate] = useState<{ photoKey: number | null; analysis: AnalysisPreviewDTO } | null>(null);
+  const [includeEstimate, setIncludeEstimate] = useState(true);
   const [isEstimating, setIsEstimating] = useState(false);
-  const [weight, setWeight] = useState("");
-  const [notes, setNotes] = useState("");
-  const [selectedPhoto, setSelectedPhoto] = useState<Blob | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Circumference Measurements state
-  const [showMeasurements, setShowMeasurements] = useState(false);
-  const [chest, setChest] = useState("");
-  const [waist, setWaist] = useState("");
-  const [hips, setHips] = useState("");
-  const [arms, setArms] = useState("");
-  const [thighs, setThighs] = useState("");
+  // Free object URLs for replaced / removed / unmounted previews.
+  useEffect(() => {
+    const url = photo?.url;
+    return () => {
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [photo]);
 
-  // Lightbox modal state
+  // ---- edit / delete / lightbox ----
+  const [editing, setEditing] = useState<CheckInDTO | null>(null);
+  const [editValues, setEditValues] = useState<CheckInFormValues | null>(null);
+  const [editErrors, setEditErrors] = useState<CheckInFormErrors>({});
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [deleting, setDeleting] = useState<CheckInDTO | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
-  const handleCloseLightbox = useCallback(() => {
-    setLightboxUrl(null);
-  }, []);
 
-  const [aiPreview, setAiPreview] = useState<{
-    estimatedBodyFatPercent: number | null;
-    estimatedBodyFatRange: string;
-    qualitativeNotes: string;
-    muscleGroupHighlights: string[];
-    recommendations: string[];
-  } | null>(null);
+  const afterMutation = useCallback(
+    async (profileWeightKg: number | null) => {
+      markDashboardStale();
+      if (profileWeightKg !== null) await refreshUser();
+    },
+    [refreshUser]
+  );
 
-  const fetchCheckIns = async () => {
-    try {
-      const res = await fetch("/api/body-comp");
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && Array.isArray(data.checkIns)) {
-          setCheckIns(data.checkIns);
-        }
-      }
-    } catch (err) {
-      console.error("Failed to load body comp data:", err);
-    }
-  };
-
+  // ---- photo handling ----
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-
-    try {
-      const resized = await resizeImage(file, { maxDimension: 1000, quality: 0.85 });
-      setSelectedPhoto(resized);
-      setPreviewUrl(URL.createObjectURL(resized));
-      setAiPreview(null);
-      setError(null);
-    } catch {
-      setError("Failed to process photo");
-    }
-  };
-
-  const handleRemovePhoto = () => {
-    setSelectedPhoto(null);
-    setPreviewUrl(null);
-    setAiPreview(null);
-  };
-
-  const getMeasurementsPayload = () => {
-    if (!chest && !waist && !hips && !arms && !thighs) return null;
-    return {
-      chest: chest ? parseFloat(chest) : null,
-      waist: waist ? parseFloat(waist) : null,
-      hips: hips ? parseFloat(hips) : null,
-      arms: arms ? parseFloat(arms) : null,
-      thighs: thighs ? parseFloat(thighs) : null,
-    };
-  };
-
-  const handleRunAiEstimation = async () => {
-    if (!selectedPhoto && !weight) {
-      setError("Please add a physique photo or enter weight for AI body fat estimation.");
+    if (!file.type.startsWith("image/")) {
+      setFormError("Please choose an image file.");
       return;
     }
-
-    setIsEstimating(true);
-    setError(null);
-
     try {
-      const formData = new FormData();
-      if (weight) formData.append("weight", weight);
-      if (notes) formData.append("notes", notes);
-      if (selectedPhoto) formData.append("photo", selectedPhoto, "physique.webp");
+      const resized = await resizeImage(file, { maxDimension: 1000, quality: 0.85 });
+      photoKeyRef.current += 1;
+      setPhoto({ blob: resized, url: URL.createObjectURL(resized), key: photoKeyRef.current });
+      setFormError(null);
+    } catch {
+      setFormError("That photo could not be processed. Try a JPEG or PNG.");
+    }
+  };
 
-      const measurements = getMeasurementsPayload();
-      if (measurements) {
-        formData.append("measurements", JSON.stringify(measurements));
-      }
+  const removePhoto = () => {
+    photoKeyRef.current += 1;
+    setPhoto(null);
+  };
 
-      const res = await fetch("/api/body-comp/estimate", {
+  const appendFields = (form: FormData, payload: ReturnType<typeof parseCheckInValues>["payload"]) => {
+    if (payload.weightKg !== null) form.append("weightKg", String(payload.weightKg));
+    if (payload.bodyFatPercent !== null) form.append("bodyFatPercent", String(payload.bodyFatPercent));
+    if (payload.measurements) form.append("measurements", JSON.stringify(payload.measurements));
+    if (payload.notes) form.append("notes", payload.notes);
+    form.append("dateString", payload.dateString);
+  };
+
+  const photoFileName = (blob: Blob) => `physique.${blob.type === "image/png" ? "png" : blob.type === "image/jpeg" ? "jpg" : "webp"}`;
+
+  // An estimate belongs to the photo it was made from (null = measurements only).
+  const currentPhotoKey = photo?.key ?? null;
+  const activeEstimate = estimate && estimate.photoKey === currentPhotoKey ? estimate.analysis : null;
+
+  const handleRunEstimate = async () => {
+    if (isEstimating) return;
+    const parsed = parseCheckInValues(values, weightUnit, today);
+    setErrors(parsed.errors);
+    if (parsed.hasErrors) return;
+    if (!photo && !parsed.payload.measurements) {
+      setFormError("Add a photo or at least one measurement for an AI estimate.");
+      return;
+    }
+    const requestedFor = currentPhotoKey;
+    const requestKey = photoKeyRef.current;
+    setIsEstimating(true);
+    setFormError(null);
+    try {
+      const form = new FormData();
+      appendFields(form, parsed.payload);
+      if (photo) form.append("photo", photo.blob, photoFileName(photo.blob));
+      const data = await requestJson<{ success: true; analysis: AnalysisPreviewDTO }>("/api/body-comp/estimate", {
         method: "POST",
-        body: formData,
+        body: form,
       });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to estimate body fat with AI");
+      // Ignore the answer if the photo was changed or removed while the request ran.
+      if (photoKeyRef.current === requestKey) {
+        setEstimate({ photoKey: requestedFor, analysis: data.analysis });
+        setIncludeEstimate(true);
       }
-
-      setAiPreview(data.analysis);
-    } catch (err: any) {
-      setError(err.message || "Failed to run AI estimation");
+    } catch (err) {
+      setFormError(errorMessage(err, "The AI estimate failed. Please try again."));
     } finally {
       setIsEstimating(false);
     }
@@ -181,633 +174,401 @@ export function BodyCompClient({ initialCheckIns }: BodyCompClientProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!weight && !selectedPhoto) {
-      setError("Please enter your weight or upload a physique photo.");
+    if (isSubmitting || isResizing) return;
+    const parsed = parseCheckInValues(values, weightUnit, today);
+    setErrors(parsed.errors);
+    if (parsed.hasErrors) {
+      setFormError("Please fix the highlighted fields.");
+      return;
+    }
+    const { payload } = parsed;
+    if (payload.weightKg === null && payload.bodyFatPercent === null && !payload.measurements && !photo) {
+      setFormError("Add at least one of: weight, body fat, a measurement or a photo.");
       return;
     }
 
     setIsSubmitting(true);
-    setError(null);
-
+    setFormError(null);
     try {
-      const formData = new FormData();
-      if (weight) formData.append("weight", weight);
-      if (notes) formData.append("notes", notes);
-      if (selectedPhoto) formData.append("photo", selectedPhoto, "physique.webp");
+      const form = new FormData();
+      appendFields(form, payload);
+      if (photo) form.append("photo", photo.blob, photoFileName(photo.blob));
+      if (activeEstimate && includeEstimate) form.append("aiAnalysis", JSON.stringify(activeEstimate));
+      const data = await requestJson<MutationResponse>("/api/body-comp", { method: "POST", body: form });
 
-      const measurements = getMeasurementsPayload();
-      if (measurements) {
-        formData.append("measurements", JSON.stringify(measurements));
-      }
-
-      const res = await fetch("/api/body-comp", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to record check-in");
-      }
-
-      // Reset form
-      setWeight("");
-      setNotes("");
-      setChest("");
-      setWaist("");
-      setHips("");
-      setArms("");
-      setThighs("");
-      setSelectedPhoto(null);
-      setPreviewUrl(null);
-      setAiPreview(null);
-      fetchCheckIns();
-    } catch (err: any) {
-      setError(err.message || "Failed to record check-in");
+      setCheckIns((prev) => [data.checkIn, ...prev.filter((c) => c._id !== data.checkIn._id)].sort(byNewest));
+      setValues(emptyCheckInValues(today));
+      setErrors({});
+      removePhoto();
+      setEstimate(null);
+      toast(
+        data.profileWeightKg !== null ? "Check-in saved. Your profile weight and targets were updated." : "Check-in saved.",
+        "success"
+      );
+      await afterMutation(data.profileWeightKg);
+    } catch (err) {
+      setFormError(errorMessage(err, "Could not save the check-in. Please try again."));
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // ---- list paging and photo URL refresh ----
+  const loadMore = async () => {
+    if (loadingMore || checkIns.length === 0) return;
+    setLoadingMore(true);
+    try {
+      const last = checkIns[checkIns.length - 1];
+      const data = await requestJson<ListResponse>(
+        `/api/body-comp?limit=30&before=${encodeURIComponent(last.checkInDate)}&beforeId=${encodeURIComponent(last._id)}`
+      );
+      setCheckIns((prev) => {
+        const seen = new Set(prev.map((c) => c._id));
+        return [...prev, ...data.checkIns.filter((c) => !seen.has(c._id))];
+      });
+      setHasMore(data.hasMore);
+    } catch (err) {
+      toast(errorMessage(err, "Could not load older check-ins."), "error");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  // Signed photo URLs expire after 15 minutes; re-sign the loaded page once when one fails.
+  const lastResignRef = useRef(0);
+  const handlePhotoError = async () => {
+    const now = Date.now();
+    if (now - lastResignRef.current < 60_000) return;
+    lastResignRef.current = now;
+    try {
+      const limit = Math.min(100, Math.max(1, checkIns.length));
+      const data = await requestJson<ListResponse>(`/api/body-comp?limit=${limit}`);
+      setCheckIns((prev) => {
+        const fresh = new Map(data.checkIns.map((c) => [c._id, c]));
+        return prev.map((c) => fresh.get(c._id) ?? c);
+      });
+    } catch {
+      // The card shows the broken image; nothing else to do.
+    }
+  };
+
+  // ---- edit ----
+  const openEdit = (item: CheckInDTO) => {
+    setEditing(item);
+    setEditValues(valuesFromCheckIn(item, weightUnit));
+    setEditErrors({});
+  };
+
+  const closeEdit = () => {
+    if (isSavingEdit) return;
+    setEditing(null);
+    setEditValues(null);
+  };
+
+  const saveEdit = async () => {
+    if (!editing || !editValues || isSavingEdit) return;
+    const parsed = parseCheckInValues(editValues, weightUnit, today);
+    setEditErrors(parsed.errors);
+    if (parsed.hasErrors) return;
+    const { payload } = parsed;
+    if (payload.weightKg === null && payload.bodyFatPercent === null && !payload.measurements && editing.photos.length === 0) {
+      setEditErrors({ weight: "Keep at least a weight, body fat or a measurement (or delete the check-in)." });
+      return;
+    }
+    setIsSavingEdit(true);
+    try {
+      const data = await requestJson<MutationResponse>(`/api/body-comp/${editing._id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          weightKg: payload.weightKg,
+          bodyFatPercent: payload.bodyFatPercent,
+          measurements: payload.measurements,
+          notes: payload.notes,
+          dateString: payload.dateString,
+        }),
+      });
+      setCheckIns((prev) => prev.map((c) => (c._id === data.checkIn._id ? data.checkIn : c)).sort(byNewest));
+      setEditing(null);
+      setEditValues(null);
+      toast("Check-in updated.", "success");
+      await afterMutation(data.profileWeightKg);
+    } catch (err) {
+      toast(errorMessage(err, "Could not update the check-in."), "error");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  // ---- delete ----
+  const confirmDelete = async () => {
+    if (!deleting || isDeleting) return;
+    setIsDeleting(true);
+    try {
+      const data = await requestJson<{ success: true; profileWeightKg: number | null }>(`/api/body-comp/${deleting._id}`, {
+        method: "DELETE",
+      });
+      setCheckIns((prev) => prev.filter((c) => c._id !== deleting._id));
+      setDeleting(null);
+      toast("Check-in deleted.", "success");
+      await afterMutation(data.profileWeightKg);
+    } catch (err) {
+      toast(errorMessage(err, "Could not delete the check-in."), "error");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const busy = isSubmitting || isResizing;
+  const submitLabel = isResizing ? "Preparing photo…" : isSubmitting ? (photo ? "Uploading & saving…" : "Saving…") : "Save check-in";
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-16">
-      {/* Page Header */}
       <div>
-        <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-          Body Composition & Physique
-        </h1>
-        <p className="text-sm text-zinc-400 mt-0.5">
-          Record weigh-ins, circumference measurements, and estimate body fat % with AI vision
-        </p>
+        <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white">Body Composition & Physique</h1>
+        <p className="text-sm text-zinc-400 mt-0.5">Record weigh-ins and measurements, with an optional private photo and AI body-fat estimate.</p>
       </div>
 
-      {/* Check-in Form */}
-      <form
-        onSubmit={handleSubmit}
-        className="p-5 sm:p-6 rounded-[28px] bg-zinc-900/85 backdrop-blur-2xl border border-white/10 space-y-5 shadow-2xl"
-      >
-        <div className="flex items-center justify-between">
-          <h3 className="font-extrabold text-base sm:text-lg text-white flex items-center gap-2">
-            <div className="p-1.5 rounded-xl bg-emerald-500/10 text-emerald-400">
-              <Scale className="w-5 h-5" aria-hidden="true" />
-            </div>
-            <span>New Progress Check-In</span>
-          </h3>
-        </div>
+      <form onSubmit={handleSubmit} noValidate className="p-4 sm:p-6 rounded-[28px] bg-zinc-900/85 border border-white/10 space-y-5">
+        <h2 className="font-extrabold text-base sm:text-lg text-white flex items-center gap-2">
+          <span className="p-1.5 rounded-xl bg-emerald-500/10 text-emerald-400" aria-hidden="true">
+            <Scale className="w-5 h-5" />
+          </span>
+          New check-in
+        </h2>
 
-        {error && (
-          <div role="alert" className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center gap-2.5 text-red-400 text-xs font-semibold">
+        {formError && (
+          <div role="alert" className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center gap-2.5 text-red-400 text-sm font-semibold">
             <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
-            <span>{error}</span>
+            <span>{formError}</span>
           </div>
         )}
 
-        {/* Weight & AI Info Header */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label htmlFor="bodycomp-weight" className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5 select-none">
-              Current Weight (kg) *
-            </label>
-            <input
-              id="bodycomp-weight"
-              type="number"
-              step="0.1"
-              value={weight}
-              onChange={(e) => setWeight(e.target.value)}
-              placeholder="e.g. 78.5"
-              className="w-full px-4 py-3 min-h-11 bg-zinc-950/80 border border-white/10 rounded-2xl text-white placeholder-zinc-500 tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 font-bold"
-            />
-          </div>
+        <CheckInFields
+          values={values}
+          onChange={setValues}
+          errors={errors}
+          weightUnit={weightUnit}
+          todayDateString={today}
+          disabled={isSubmitting}
+        />
 
-          <div className="p-4 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 flex flex-col justify-between">
-            <div className="flex items-center gap-2 text-emerald-400 font-extrabold text-xs">
-              <Sparkles className="w-4 h-4 shrink-0" aria-hidden="true" />
-              <span>AI Vision Analysis</span>
-            </div>
-            <p className="text-[11px] text-zinc-400 leading-relaxed mt-1 font-medium">
-              Body fat percentage is objectively estimated from anatomical landmarks, subcutaneous definition, and measurements.
-            </p>
-          </div>
-        </div>
-
-        {/* Optional Circumference Measurements Section */}
-        <div className="p-4 rounded-2xl bg-zinc-950/60 border border-white/8 space-y-3">
-          <button
-            type="button"
-            onClick={() => setShowMeasurements(!showMeasurements)}
-            className="w-full flex items-center justify-between text-xs font-bold text-zinc-300 hover:text-white transition cursor-pointer"
-          >
-            <span className="flex items-center gap-2">
-              <Ruler className="w-4 h-4 text-teal-400" />
-              <span>Circumference Measurements (Optional cm)</span>
-            </span>
-            <div className="flex items-center gap-1.5 text-zinc-500 text-[11px]">
-              <span>{showMeasurements ? "Hide Measurements" : "Add Measurements"}</span>
-              {showMeasurements ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </div>
-          </button>
-
-          {showMeasurements && (
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 pt-2 border-t border-white/6 animate-in fade-in duration-200">
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                  Chest (cm)
-                </label>
-                <input
-                  type="number"
-                  step="0.5"
-                  value={chest}
-                  onChange={(e) => setChest(e.target.value)}
-                  placeholder="e.g. 104"
-                  className="w-full px-3 py-2 bg-zinc-900 border border-white/10 rounded-xl text-white text-xs font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-teal-400"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                  Waist (cm)
-                </label>
-                <input
-                  type="number"
-                  step="0.5"
-                  value={waist}
-                  onChange={(e) => setWaist(e.target.value)}
-                  placeholder="e.g. 82"
-                  className="w-full px-3 py-2 bg-zinc-900 border border-white/10 rounded-xl text-white text-xs font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-teal-400"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                  Hips (cm)
-                </label>
-                <input
-                  type="number"
-                  step="0.5"
-                  value={hips}
-                  onChange={(e) => setHips(e.target.value)}
-                  placeholder="e.g. 98"
-                  className="w-full px-3 py-2 bg-zinc-900 border border-white/10 rounded-xl text-white text-xs font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-teal-400"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                  Arms (cm)
-                </label>
-                <input
-                  type="number"
-                  step="0.5"
-                  value={arms}
-                  onChange={(e) => setArms(e.target.value)}
-                  placeholder="e.g. 39"
-                  className="w-full px-3 py-2 bg-zinc-900 border border-white/10 rounded-xl text-white text-xs font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-teal-400"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                  Thighs (cm)
-                </label>
-                <input
-                  type="number"
-                  step="0.5"
-                  value={thighs}
-                  onChange={(e) => setThighs(e.target.value)}
-                  placeholder="e.g. 60"
-                  className="w-full px-3 py-2 bg-zinc-900 border border-white/10 rounded-xl text-white text-xs font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-teal-400"
-                />
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Photo Upload & AI Vision Section */}
         <div className="space-y-3">
-          <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 select-none">
-            Physique Photo (AI Body Fat Analysis)
-          </label>
+          <span className="block text-xs font-bold uppercase tracking-wider text-zinc-400">Physique photo (private, optional)</span>
           <input
             type="file"
             ref={fileInputRef}
             onChange={handlePhotoChange}
-            accept="image/*"
-            aria-label="Upload physique progress photo"
+            accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+            aria-label="Choose a physique photo"
             className="hidden"
           />
 
-          {previewUrl ? (
+          {photo ? (
             <div className="flex flex-col sm:flex-row items-start gap-4">
-              <div className="relative w-36 h-48 rounded-2xl overflow-hidden border border-white/15 bg-zinc-950 group shrink-0 shadow-lg">
-                <Image
-                  src={previewUrl}
-                  alt="Physique preview"
-                  fill
-                  onError={handleRemovePhoto}
-                  className="object-cover"
-                />
-                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-2 text-xs font-bold text-white transition">
+              <div className="space-y-2 shrink-0">
+                <div className="relative w-36 h-48 rounded-2xl overflow-hidden border border-white/15 bg-zinc-950">
+                  <Image src={photo.url} alt="Selected physique photo" fill unoptimized className="object-cover" />
+                </div>
+                <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-3 py-1.5 rounded-xl bg-zinc-800/90 hover:bg-zinc-700 cursor-pointer"
+                    disabled={busy}
+                    className="min-h-11 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm font-bold text-white flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                   >
-                    Change
+                    <ImagePlus className="w-4 h-4" aria-hidden="true" /> Change
                   </button>
                   <button
                     type="button"
-                    onClick={handleRemovePhoto}
-                    className="px-3 py-1.5 rounded-xl bg-red-600/80 hover:bg-red-600 cursor-pointer flex items-center gap-1"
+                    onClick={removePhoto}
+                    disabled={busy}
+                    aria-label="Remove photo"
+                    className="min-h-11 px-3 rounded-xl bg-zinc-800 hover:bg-red-500/20 text-sm font-bold text-red-400 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                   >
-                    <X className="w-3.5 h-3.5" /> Remove
+                    <Trash2 className="w-4 h-4" aria-hidden="true" /> Remove
                   </button>
                 </div>
               </div>
-
-              <div className="flex-1 space-y-3 w-full">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={handleRunAiEstimation}
-                    disabled={isEstimating || isResizing}
-                    className="px-4 py-2.5 min-h-11 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold flex items-center gap-2 transition cursor-pointer disabled:opacity-50 active:scale-95"
-                  >
-                    {isEstimating ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Estimating body fat...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Zap className="w-4 h-4 text-emerald-400" />
-                        <span>⚡ Run Live AI Body Fat Estimate</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                {aiPreview && (
-                  <div className="p-4 rounded-2xl bg-zinc-950 border border-emerald-500/30 space-y-2.5 animate-in fade-in duration-200">
-                    <div className="flex items-center justify-between flex-wrap gap-2">
-                      <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                        AI Estimate
-                      </span>
-                      {aiPreview.estimatedBodyFatPercent && (
-                        <span className="text-sm font-black px-2.5 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 tabular-nums">
-                          {aiPreview.estimatedBodyFatPercent}% BF
-                        </span>
-                      )}
-                    </div>
-                    {aiPreview.estimatedBodyFatRange && (
-                      <p className="text-xs text-zinc-400">
-                        Estimated Range: <strong className="text-zinc-100">{aiPreview.estimatedBodyFatRange}</strong>
-                      </p>
-                    )}
-                    {aiPreview.qualitativeNotes && (
-                      <p className="text-xs text-zinc-300 leading-relaxed">
-                        {aiPreview.qualitativeNotes}
-                      </p>
-                    )}
-                    {aiPreview.muscleGroupHighlights.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {aiPreview.muscleGroupHighlights.map((hl, i) => (
-                          <span key={i} className="text-[10px] font-semibold px-2.5 py-0.5 rounded-md bg-zinc-800 text-zinc-200 border border-zinc-700">
-                            {hl}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
+              <div className="flex-1 w-full space-y-3">
+                <p className="text-sm text-zinc-400">
+                  Photos are stored privately and shown only to you through links that expire after a few minutes.
+                </p>
               </div>
             </div>
           ) : (
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="w-full px-5 py-4 min-h-11 rounded-2xl bg-zinc-950/80 border border-dashed border-zinc-700 hover:border-emerald-500/50 text-zinc-300 text-xs font-bold flex items-center justify-center gap-2.5 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+              disabled={busy}
+              className="w-full min-h-12 px-5 rounded-2xl bg-zinc-950/80 border border-dashed border-zinc-700 hover:border-emerald-500/50 text-zinc-200 text-sm font-bold flex items-center justify-center gap-2.5 transition cursor-pointer disabled:opacity-50"
             >
-              <Camera className="w-4 h-4 text-emerald-400" aria-hidden="true" />
-              <span>Add Physique Photo for AI Body Fat Estimation</span>
+              {isResizing ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Camera className="w-4 h-4 text-emerald-400" aria-hidden="true" />}
+              <span>{isResizing ? "Preparing photo…" : "Add a physique photo"}</span>
             </button>
           )}
+
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={handleRunEstimate}
+              disabled={isEstimating || busy}
+              aria-busy={isEstimating}
+              className="min-h-11 px-4 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-sm font-bold flex items-center gap-2 transition cursor-pointer disabled:opacity-50"
+            >
+              {isEstimating ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Zap className="w-4 h-4" aria-hidden="true" />}
+              <span>{isEstimating ? "Estimating body fat…" : activeEstimate ? "Run the AI estimate again" : "Get an AI body-fat estimate"}</span>
+            </button>
+            {activeEstimate && (
+              <>
+                <AnalysisView analysis={activeEstimate} title="AI estimate (preview)" />
+                <label className="flex items-center gap-2.5 min-h-11 text-sm text-zinc-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={includeEstimate}
+                    onChange={(e) => setIncludeEstimate(e.target.checked)}
+                    className="w-5 h-5 accent-emerald-500"
+                  />
+                  Save this estimate with the check-in
+                </label>
+              </>
+            )}
+          </div>
         </div>
 
-        {/* Observations / Notes */}
-        <div>
-          <label htmlFor="bodycomp-notes" className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5 select-none">
-            Notes / Observations
-          </label>
-          <textarea
-            id="bodycomp-notes"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="e.g. Morning fasted weigh-in, feeling leaner after 2 weeks in deficit..."
-            rows={2}
-            className="w-full px-4 py-2.5 bg-zinc-950/80 border border-white/10 rounded-2xl text-white placeholder-zinc-500 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 font-medium"
-          />
-        </div>
-
-        {/* Submit Button */}
         <button
           type="submit"
-          disabled={isSubmitting || isResizing || isEstimating}
-          aria-busy={isSubmitting || isResizing || isEstimating}
-          className="w-full py-3.5 px-4 min-h-11 bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-extrabold rounded-2xl shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-98"
+          disabled={busy || isEstimating}
+          aria-busy={isSubmitting}
+          className="w-full min-h-12 px-4 bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-extrabold rounded-2xl transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
         >
-          {isSubmitting || isResizing ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-              <span>Saving Check-in & Analyzing with AI...</span>
-            </>
-          ) : (
-            <>
-              <Plus className="w-4 h-4" aria-hidden="true" />
-              <span>Save Progress Check-In</span>
-            </>
-          )}
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Plus className="w-4 h-4" aria-hidden="true" />}
+          <span>{submitLabel}</span>
         </button>
       </form>
 
-      {/* Past Check-Ins History Feed */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-extrabold text-base sm:text-lg text-white flex items-center gap-2">
-            <span>Check-In History</span>
-            <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
-              {checkIns.length} Entries
-            </span>
-          </h3>
-        </div>
-
+      <section className="space-y-4" aria-labelledby="checkin-history-title">
+        <h2 id="checkin-history-title" className="font-extrabold text-base sm:text-lg text-white flex items-center gap-2">
+          Check-in history
+        </h2>
         {checkIns.length === 0 ? (
-          <div className="p-8 rounded-3xl bg-zinc-900/60 border border-dashed border-zinc-800 text-center text-zinc-500 text-sm">
-            No check-ins logged yet. Record your current weight above to begin tracking.
+          <div className="p-8 rounded-3xl bg-zinc-900/60 border border-dashed border-zinc-800 text-center text-zinc-400 text-sm">
+            No check-ins yet. Record your weight above to start tracking.
           </div>
         ) : (
           <div className="space-y-4">
-            {checkIns.map((item) => {
-              const dateObj = new Date(item.checkInDate || item.createdAt || Date.now());
-              const date = dateObj.toLocaleDateString([], {
-                weekday: "short",
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              });
-              const time = dateObj.toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              });
-
-              const bf = item.bodyFatPercent ?? item.aiAnalysis?.estimatedBodyFatPercent ?? null;
-              const hasMeasurements = item.measurements && Object.values(item.measurements).some((v) => v !== null && v !== undefined);
-              const hasPhotos = Array.isArray(item.photos) && item.photos.length > 0;
-
-              return (
-                <div
-                  key={item._id}
-                  className="p-5 sm:p-6 rounded-[28px] bg-zinc-900/85 backdrop-blur-2xl border border-white/10 hover:border-white/20 transition-all shadow-xl space-y-4"
-                >
-                  {/* Card Header: Date, Weight, Body Fat % */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/6">
-                    <div className="flex items-center gap-2.5">
-                      <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shrink-0">
-                        <Calendar className="w-4 h-4" aria-hidden="true" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-extrabold text-sm sm:text-base text-white">
-                            {date}
-                          </span>
-                          <span className="text-xs text-zinc-500 font-medium">
-                            {time}
-                          </span>
-                        </div>
-                        {item.dateString && (
-                          <span className="text-[11px] text-zinc-400">
-                            Log Date: {item.dateString}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3 self-end sm:self-auto">
-                      {item.weight && (
-                        <div className="px-3.5 py-1.5 rounded-xl bg-zinc-950/80 border border-white/8 text-end">
-                          <span className="text-[10px] uppercase font-bold text-zinc-500 block">Weight</span>
-                          <span className="font-black text-base text-white tabular-nums">
-                            {item.weight} <span className="text-xs font-normal text-zinc-400">kg</span>
-                          </span>
-                        </div>
-                      )}
-                      {bf !== null && (
-                        <div className="px-3.5 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-end">
-                          <span className="text-[10px] uppercase font-bold text-emerald-400 block">Body Fat</span>
-                          <span className="font-black text-base text-emerald-300 tabular-nums flex items-center gap-1">
-                            <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0" aria-hidden="true" />
-                            <span>{bf}%</span>
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Physique Photos Gallery Strip */}
-                  {hasPhotos && (
-                    <div className="space-y-2">
-                      <span className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider flex items-center gap-1.5">
-                        <Camera className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>Physique Photos ({item.photos!.length})</span>
-                      </span>
-                      <div className="flex items-center gap-3 overflow-x-auto pb-1">
-                        {item.photos!.map((photo, pIdx) => (
-                          <button
-                            type="button"
-                            key={pIdx}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (photo.signedUrl) {
-                                setLightboxUrl(photo.signedUrl);
-                              }
-                            }}
-                            className="relative w-28 h-36 sm:w-32 sm:h-40 rounded-2xl overflow-hidden border border-white/10 bg-zinc-950 shrink-0 cursor-pointer group shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-                            aria-label={`View physique photo ${photo.angle || pIdx + 1} full size`}
-                          >
-                            <Image
-                              src={photo.signedUrl}
-                              alt={`Physique ${photo.angle || "check-in"}`}
-                              fill
-                              sizes="128px"
-                              className="object-cover group-hover:scale-105 transition-transform duration-300"
-                            />
-                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white">
-                              <Eye className="w-5 h-5" />
-                            </div>
-                            {photo.angle && (
-                              <span className="absolute bottom-1.5 inset-s-1.5 text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-zinc-950/80 text-emerald-300 border border-white/10">
-                                {photo.angle}
-                              </span>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Circumference Measurements Grid */}
-                  {hasMeasurements && item.measurements && (
-                    <div className="p-3.5 rounded-2xl bg-zinc-950/60 border border-white/8 space-y-2">
-                      <span className="text-[10px] uppercase font-bold text-teal-400 tracking-wider flex items-center gap-1.5">
-                        <Ruler className="w-3.5 h-3.5" />
-                        <span>Circumference Measurements</span>
-                      </span>
-                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-xs">
-                        {item.measurements.chest !== null && item.measurements.chest !== undefined && (
-                          <div className="p-2 rounded-xl bg-zinc-900 border border-white/5">
-                            <span className="text-[10px] text-zinc-500 uppercase block font-semibold">Chest</span>
-                            <span className="font-extrabold text-white tabular-nums">{item.measurements.chest} cm</span>
-                          </div>
-                        )}
-                        {item.measurements.waist !== null && item.measurements.waist !== undefined && (
-                          <div className="p-2 rounded-xl bg-zinc-900 border border-white/5">
-                            <span className="text-[10px] text-zinc-500 uppercase block font-semibold">Waist</span>
-                            <span className="font-extrabold text-white tabular-nums">{item.measurements.waist} cm</span>
-                          </div>
-                        )}
-                        {item.measurements.hips !== null && item.measurements.hips !== undefined && (
-                          <div className="p-2 rounded-xl bg-zinc-900 border border-white/5">
-                            <span className="text-[10px] text-zinc-500 uppercase block font-semibold">Hips</span>
-                            <span className="font-extrabold text-white tabular-nums">{item.measurements.hips} cm</span>
-                          </div>
-                        )}
-                        {item.measurements.arms !== null && item.measurements.arms !== undefined && (
-                          <div className="p-2 rounded-xl bg-zinc-900 border border-white/5">
-                            <span className="text-[10px] text-zinc-500 uppercase block font-semibold">Arms</span>
-                            <span className="font-extrabold text-white tabular-nums">{item.measurements.arms} cm</span>
-                          </div>
-                        )}
-                        {item.measurements.thighs !== null && item.measurements.thighs !== undefined && (
-                          <div className="p-2 rounded-xl bg-zinc-900 border border-white/5">
-                            <span className="text-[10px] text-zinc-500 uppercase block font-semibold">Thighs</span>
-                            <span className="font-extrabold text-white tabular-nums">{item.measurements.thighs} cm</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Notes / Observations */}
-                  {item.notes && (
-                    <div className="p-3.5 rounded-2xl bg-zinc-950/40 border border-white/6 flex items-start gap-2.5">
-                      <FileText className="w-4 h-4 text-zinc-500 shrink-0 mt-0.5" />
-                      <p className="text-xs text-zinc-300 leading-relaxed">
-                        <strong className="text-zinc-400 font-semibold">Note: </strong>
-                        {item.notes}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Complete AI Vision Analysis Breakdown */}
-                  {item.aiAnalysis && (
-                    <div className="p-4 sm:p-5 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 space-y-3">
-                      {/* AI Header & Engine Info */}
-                      <div className="flex items-center justify-between flex-wrap gap-2">
-                        <div className="flex items-center gap-2">
-                          <div className="p-1 rounded-lg bg-emerald-500/20 text-emerald-400">
-                            <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
-                          </div>
-                          <span className="text-xs font-extrabold text-emerald-400">
-                            AI Physique Analysis
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-2 text-[10px] text-zinc-400">
-                          {item.aiAnalysis.estimatedBodyFatRange && (
-                            <span className="font-semibold text-zinc-300 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
-                              Range: <strong className="text-white">{item.aiAnalysis.estimatedBodyFatRange}</strong>
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Qualitative Notes */}
-                      {item.aiAnalysis.qualitativeNotes && (
-                        <p className="text-xs text-zinc-200 leading-relaxed font-medium">
-                          {item.aiAnalysis.qualitativeNotes}
-                        </p>
-                      )}
-
-                      {/* Compared to Previous Check-in */}
-                      {item.aiAnalysis.comparedToPrevious && (
-                        <div className="p-2.5 rounded-xl bg-zinc-950/60 border border-white/6 flex items-start gap-2 text-xs text-zinc-300">
-                          <TrendingUp className="w-3.5 h-3.5 text-teal-400 shrink-0 mt-0.5" />
-                          <div>
-                            <span className="font-bold text-teal-300 me-1">Comparison:</span>
-                            <span>{item.aiAnalysis.comparedToPrevious}</span>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Standout Muscle Group Highlights */}
-                      {Array.isArray(item.aiAnalysis.muscleGroupHighlights) && item.aiAnalysis.muscleGroupHighlights.length > 0 && (
-                        <div className="space-y-1.5 pt-1">
-                          <span className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider">
-                            Standout Muscle Highlights:
-                          </span>
-                          <div className="flex flex-wrap gap-1.5">
-                            {item.aiAnalysis.muscleGroupHighlights.map((hl, idx) => (
-                              <span
-                                key={idx}
-                                className="text-[10px] font-bold px-2.5 py-0.5 rounded-lg bg-zinc-900 text-zinc-200 border border-white/10 shadow-xs"
-                              >
-                                {hl}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Actionable Recommendations Checklist */}
-                      {Array.isArray(item.aiAnalysis.recommendations) && item.aiAnalysis.recommendations.length > 0 && (
-                        <div className="space-y-1.5 pt-2 border-t border-white/6">
-                          <span className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider">
-                            Actionable Coach Recommendations:
-                          </span>
-                          <ul className="text-xs text-zinc-300 space-y-1.5">
-                            {item.aiAnalysis.recommendations.map((rec, idx) => (
-                              <li key={idx} className="flex items-start gap-2">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                                <span className="leading-snug">{rec}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {checkIns.map((item) => (
+              <CheckInCard
+                key={item._id}
+                item={item}
+                weightUnit={weightUnit}
+                timeZone={timeZone}
+                onEdit={openEdit}
+                onDelete={setDeleting}
+                onOpenPhoto={setLightboxUrl}
+                onPhotoError={handlePhotoError}
+              />
+            ))}
+            {hasMore && (
+              <button
+                type="button"
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="w-full min-h-11 rounded-2xl bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-sm font-bold text-zinc-200 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {loadingMore && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
+                Load older check-ins
+              </button>
+            )}
           </div>
         )}
-      </div>
+      </section>
 
-      {/* Lightbox Preview Modal */}
       <Modal
-        isOpen={Boolean(lightboxUrl)}
-        onClose={handleCloseLightbox}
-        size="lg"
-        title="Physique Photo Full View"
+        isOpen={Boolean(editing && editValues)}
+        onClose={closeEdit}
+        title="Edit check-in"
+        size="xl"
+        closeOnBackdropClick={!isSavingEdit}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={closeEdit}
+              disabled={isSavingEdit}
+              className="min-h-11 px-4 rounded-xl text-sm font-semibold text-zinc-300 hover:text-white hover:bg-zinc-800 cursor-pointer disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={saveEdit}
+              disabled={isSavingEdit}
+              aria-busy={isSavingEdit}
+              className="min-h-11 px-5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 text-sm font-black flex items-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              {isSavingEdit && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
+              Save changes
+            </button>
+          </>
+        }
       >
+        {editValues && (
+          <CheckInFields
+            values={editValues}
+            onChange={setEditValues}
+            errors={editErrors}
+            weightUnit={weightUnit}
+            todayDateString={today}
+            disabled={isSavingEdit}
+          />
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(deleting)}
+        onClose={() => !isDeleting && setDeleting(null)}
+        title="Delete check-in?"
+        size="sm"
+        closeOnBackdropClick={!isDeleting}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setDeleting(null)}
+              disabled={isDeleting}
+              className="min-h-11 px-4 rounded-xl text-sm font-semibold text-zinc-300 hover:text-white hover:bg-zinc-800 cursor-pointer disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmDelete}
+              disabled={isDeleting}
+              aria-busy={isDeleting}
+              className="min-h-11 px-4 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60"
+            >
+              {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Trash2 className="w-4 h-4" aria-hidden="true" />}
+              Delete permanently
+            </button>
+          </>
+        }
+      >
+        {deleting && (
+          <p className="text-sm text-zinc-300 leading-relaxed">
+            The check-in from{" "}
+            <strong className="text-white">
+              {formatDateString(deleting.dateString, { month: "short", day: "numeric", year: "numeric" })}
+            </strong>{" "}
+            {deleting.photos.length > 0 ? "and its photo will be deleted permanently" : "will be deleted permanently"}. This
+            can&apos;t be undone.
+          </p>
+        )}
+      </Modal>
+
+      <Modal isOpen={Boolean(lightboxUrl)} onClose={() => setLightboxUrl(null)} size="lg" title="Physique photo">
         {lightboxUrl && (
-          <div className="relative w-full h-[70vh] rounded-2xl overflow-hidden bg-zinc-950 flex items-center justify-center">
-            <Image
-              src={lightboxUrl}
-              alt="Physique enlarged preview"
-              fill
-              className="object-contain"
-            />
+          <div className="relative w-full h-[70vh] rounded-2xl overflow-hidden bg-zinc-950">
+            <Image src={lightboxUrl} alt="Physique photo, full size" fill unoptimized referrerPolicy="no-referrer" className="object-contain" />
           </div>
         )}
       </Modal>

@@ -1,13 +1,21 @@
-import { useEffect, useState, useRef } from "react";
-import { isAndroidNativeApp } from "@/services/webview-bridge";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import {
+  focusableElements,
+  lockBodyScroll,
+  makeBackgroundInert,
+  registerOverlay,
+  trackVisibleArea,
+} from "@/lib/ui/overlay-stack";
 
 interface UseDialogOverlayOptions {
   isOpen: boolean;
   onClose: () => void;
   durationMs?: number;
   lockScroll?: boolean;
+  /** Escape (and the Android Back button, where the platform reports it) closes the dialog. */
   closeOnEscape?: boolean;
-  interceptBackButton?: boolean;
+  /** The dialog element: focus moves into it on open and returns on close. */
+  dialogRef?: RefObject<HTMLElement | null>;
 }
 
 interface UseDialogOverlayReturn {
@@ -17,8 +25,9 @@ interface UseDialogOverlayReturn {
 }
 
 /**
- * Unified composite hook for Modals, Drawers, and Dialog Overlays.
- * Combines SSR-safe mounting, presence animations, body scroll locking, and Escape key dismissal.
+ * Behaviour shared by Modal and Drawer: mount/exit animation timing, scroll
+ * lock, Escape and Back handling (top layer only), an inert background, and
+ * focus that moves into the dialog and back to where it came from.
  */
 export function useDialogOverlay({
   isOpen,
@@ -26,28 +35,27 @@ export function useDialogOverlay({
   durationMs = 200,
   lockScroll = true,
   closeOnEscape = true,
-  interceptBackButton = true,
+  dialogRef,
 }: UseDialogOverlayOptions): UseDialogOverlayReturn {
   const onCloseRef = useRef(onClose);
   useEffect(() => {
     onCloseRef.current = onClose;
   });
 
-  // 1. SSR-Safe Client Mount State
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- portals need a client-only mount flag
     setIsMounted(true);
-    return () => setIsMounted(false);
   }, []);
 
-  // 2. Presence & Exit Animation Timing
+  // Presence: keep rendering while the exit animation plays.
   const [shouldRender, setShouldRender] = useState(isOpen);
   const [isAnimatingOut, setIsAnimatingOut] = useState(false);
 
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     if (isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- presence state follows the isOpen prop
       setShouldRender(true);
       setIsAnimatingOut(false);
     } else if (shouldRender) {
@@ -57,67 +65,46 @@ export function useDialogOverlay({
         setIsAnimatingOut(false);
       }, durationMs);
     }
-
     return () => clearTimeout(timeoutId);
   }, [isOpen, durationMs, shouldRender]);
 
-  // 3. Body Scroll Locking with Layout-Shift Prevention
+  // Top-layer bookkeeping: Escape, Back, scroll lock, inert background.
   useEffect(() => {
-    if (!lockScroll || !isOpen) return;
+    if (!isOpen) return;
 
-    const originalOverflow = window.getComputedStyle(document.body).overflow;
-    const originalPaddingRight = document.body.style.paddingRight;
-    const scrollBarWidth = window.innerWidth - document.documentElement.clientWidth;
-
-    if (scrollBarWidth > 0) {
-      document.body.style.paddingRight = `${scrollBarWidth}px`;
-    }
-    document.body.style.overflow = "hidden";
+    const releaseOverlay = closeOnEscape ? registerOverlay(() => onCloseRef.current()) : () => undefined;
+    const releaseScroll = lockScroll ? lockBodyScroll() : () => undefined;
+    const releaseInert = makeBackgroundInert();
+    const releaseArea = trackVisibleArea();
 
     return () => {
-      document.body.style.overflow = originalOverflow;
-      document.body.style.paddingRight = originalPaddingRight;
+      releaseArea();
+      releaseInert();
+      releaseScroll();
+      releaseOverlay();
     };
-  }, [isOpen, lockScroll]);
+  }, [isOpen, lockScroll, closeOnEscape]);
 
-  // 4. Escape Key Dismissal
+  // Focus: into the dialog on open, back to the trigger on close.
   useEffect(() => {
-    if (!isOpen || !closeOnEscape || typeof window === "undefined") return;
+    if (!isOpen || !isMounted) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" || e.key === "Esc") {
-        onCloseRef.current();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, closeOnEscape]);
-
-  // 5. Android Hardware Back Button Popstate Interception (only active in native Android WebView wrapper)
-  useEffect(() => {
-    if (!isOpen || !interceptBackButton || typeof window === "undefined" || !isAndroidNativeApp()) return;
-
-    const modalHistoryKey = `modal_state_${Date.now()}`;
-    window.history.pushState({ [modalHistoryKey]: true }, "");
-
-    let isClosedByPopState = false;
-
-    const handlePopState = () => {
-      isClosedByPopState = true;
-      onCloseRef.current();
-    };
-
-    window.addEventListener("popstate", handlePopState);
+    const frame = requestAnimationFrame(() => {
+      const dialog = dialogRef?.current;
+      if (!dialog || dialog.contains(document.activeElement)) return;
+      const preferred = dialog.querySelector<HTMLElement>("[data-autofocus], [autofocus]");
+      const target = preferred || focusableElements(dialog)[0] || dialog;
+      target.focus({ preventScroll: true });
+    });
 
     return () => {
-      window.removeEventListener("popstate", handlePopState);
-
-      if (!isClosedByPopState && window.history.state?.[modalHistoryKey]) {
-        window.history.back();
+      cancelAnimationFrame(frame);
+      if (previouslyFocused && document.contains(previouslyFocused)) {
+        previouslyFocused.focus({ preventScroll: true });
       }
     };
-  }, [isOpen, interceptBackButton]);
+  }, [isOpen, isMounted, dialogRef]);
 
   return { isMounted, shouldRender, isAnimatingOut };
 }

@@ -1,232 +1,122 @@
-"use client";
-
 import React from "react";
-import {
-  Flame,
-  Target,
-  Wheat,
-  Droplet,
-  Leaf,
-  CheckCircle2,
-  AlertCircle,
-  TrendingUp,
-} from "lucide-react";
+import { AlertCircle, CheckCircle2, Droplet, Flame, Leaf, Target, Wheat } from "lucide-react";
+import { formatAmount, macroGoalStatus, type MacroGoalKind } from "@/lib/nutrition/totals";
 
 export interface MacroStatsData {
-  calories: {
-    consumed: number;
-    target: number;
-  };
-  protein: {
-    consumed: number;
-    target: number;
-  };
-  carbs: {
-    consumed: number;
-    target: number;
-  };
-  fat: {
-    consumed: number;
-    target: number;
-  };
-  fiber: {
-    consumed: number;
-    target: number;
-  };
+  calories: { consumed: number; target: number };
+  protein: { consumed: number; target: number };
+  carbs: { consumed: number; target: number };
+  fat: { consumed: number; target: number };
+  fiber: { consumed: number; target: number };
 }
 
-interface MacroRemainingCardsProps {
-  stats: MacroStatsData;
-}
-
-interface SingleMacroConfig {
-  key: string;
+interface MacroCardConfig {
+  key: keyof MacroStatsData;
   name: string;
   unit: string;
-  consumed: number;
-  target: number;
-  multiplier?: number; // calories per unit
+  kind: MacroGoalKind;
+  kcalPerUnit?: number;
   icon: React.ReactNode;
-  accentColor: string;
-  barGradient: string;
-  badgeBg: string;
-  badgeText: string;
-  borderColor: string;
+  accent: string;
+  bar: string;
+  badge: string;
 }
 
-export function MacroRemainingCards({ stats }: MacroRemainingCardsProps) {
-  const macrosList: SingleMacroConfig[] = [
-    {
-      key: "calories",
-      name: "Total Energy",
-      unit: "kcal",
-      consumed: stats.calories.consumed,
-      target: stats.calories.target,
-      icon: <Flame className="w-4 h-4" />,
-      accentColor: "text-orange-400",
-      barGradient: "from-orange-500 to-amber-400",
-      badgeBg: "bg-orange-500/10",
-      badgeText: "text-orange-400",
-      borderColor: "group-hover:border-orange-500/30",
-    },
-    {
-      key: "protein",
-      name: "Protein",
-      unit: "g",
-      consumed: stats.protein.consumed,
-      target: stats.protein.target,
-      multiplier: 4,
-      icon: <Target className="w-4 h-4" />,
-      accentColor: "text-emerald-400",
-      barGradient: "from-emerald-500 to-teal-400",
-      badgeBg: "bg-emerald-500/10",
-      badgeText: "text-emerald-400",
-      borderColor: "group-hover:border-emerald-500/30",
-    },
-    {
-      key: "carbs",
-      name: "Carbohydrates",
-      unit: "g",
-      consumed: stats.carbs.consumed,
-      target: stats.carbs.target,
-      multiplier: 4,
-      icon: <Wheat className="w-4 h-4" />,
-      accentColor: "text-amber-400",
-      barGradient: "from-amber-500 to-yellow-400",
-      badgeBg: "bg-amber-500/10",
-      badgeText: "text-amber-400",
-      borderColor: "group-hover:border-amber-500/30",
-    },
-    {
-      key: "fat",
-      name: "Fats",
-      unit: "g",
-      consumed: stats.fat.consumed,
-      target: stats.fat.target,
-      multiplier: 9,
-      icon: <Droplet className="w-4 h-4" />,
-      accentColor: "text-rose-400",
-      barGradient: "from-rose-500 to-orange-400",
-      badgeBg: "bg-rose-500/10",
-      badgeText: "text-rose-400",
-      borderColor: "group-hover:border-rose-500/30",
-    },
-    {
-      key: "fiber",
-      name: "Dietary Fiber",
-      unit: "g",
-      consumed: stats.fiber.consumed,
-      target: stats.fiber.target,
-      icon: <Leaf className="w-4 h-4" />,
-      accentColor: "text-cyan-400",
-      barGradient: "from-cyan-500 to-teal-400",
-      badgeBg: "bg-cyan-500/10",
-      badgeText: "text-cyan-400",
-      borderColor: "group-hover:border-cyan-500/30",
-    },
-  ];
+const CARDS: MacroCardConfig[] = [
+  { key: "calories", name: "Calories", unit: "kcal", kind: "limit", icon: <Flame className="w-4 h-4" />, accent: "text-orange-300", bar: "from-orange-500 to-amber-400", badge: "bg-orange-500/10" },
+  { key: "protein", name: "Protein", unit: "g", kind: "minimum", kcalPerUnit: 4, icon: <Target className="w-4 h-4" />, accent: "text-emerald-300", bar: "from-emerald-500 to-teal-400", badge: "bg-emerald-500/10" },
+  { key: "carbs", name: "Carbs", unit: "g", kind: "limit", kcalPerUnit: 4, icon: <Wheat className="w-4 h-4" />, accent: "text-amber-300", bar: "from-amber-500 to-yellow-400", badge: "bg-amber-500/10" },
+  { key: "fat", name: "Fat", unit: "g", kind: "limit", kcalPerUnit: 9, icon: <Droplet className="w-4 h-4" />, accent: "text-rose-300", bar: "from-rose-500 to-orange-400", badge: "bg-rose-500/10" },
+  { key: "fiber", name: "Fiber", unit: "g", kind: "minimum", icon: <Leaf className="w-4 h-4" />, accent: "text-cyan-300", bar: "from-cyan-500 to-teal-400", badge: "bg-cyan-500/10" },
+];
 
+/** Day totals against the user's targets (server component; no client formatting). */
+export function MacroRemainingCards({ stats }: { stats: MacroStatsData }) {
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <TrendingUp className="w-4 h-4 text-emerald-400" />
-          <h2 className="text-sm font-extrabold uppercase tracking-wider text-zinc-300">
-            Daily Macro & Nutrient Targets
-          </h2>
-        </div>
-        <span className="text-xs text-zinc-500 font-medium">
-          Customized from your user profile settings
-        </span>
+    <section aria-labelledby="macro-cards-title" className="space-y-3">
+      <div className="flex items-baseline justify-between gap-2 flex-wrap">
+        <h2 id="macro-cards-title" className="text-sm font-bold text-zinc-200">
+          Day totals and targets
+        </h2>
+        <span className="text-xs text-zinc-400">Targets come from your profile settings</span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 sm:gap-4">
-        {macrosList.map((m) => {
-          const targetVal = Math.max(1, m.target);
-          const consumedVal = Math.max(0, m.consumed);
-          const percentage = Math.round((consumedVal / targetVal) * 100);
-          const barWidthPct = Math.min(100, percentage);
-          const remaining = targetVal - consumedVal;
-          const isOver = remaining < 0;
-          const isMet = percentage >= 100 && percentage <= 110;
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        {CARDS.map((card) => {
+          const { consumed, target } = stats[card.key];
+          const status = macroGoalStatus(consumed, target, card.kind);
+          const remaining = Math.abs(status.remaining);
+          const barWidth = Math.min(100, status.percent ?? 0);
 
-          const isGrams = m.unit === "g";
-          const formattedLeft = isGrams ? remaining.toFixed(1) : Math.round(remaining).toLocaleString();
-          const formattedOver = isGrams ? Math.abs(remaining).toFixed(1) : Math.abs(Math.round(remaining)).toLocaleString();
-
-          const energyKcal = m.multiplier ? Math.round(consumedVal * m.multiplier) : null;
+          let badge: React.ReactNode;
+          if (status.state === "no_target") {
+            badge = <span className="text-xs text-zinc-400">No target set</span>;
+          } else if (status.state === "over") {
+            badge = (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/25 text-xs font-semibold text-amber-300">
+                <AlertCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                {formatAmount(remaining)} {card.unit} over
+              </span>
+            );
+          } else if (status.state === "met") {
+            badge = (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/25 text-xs font-semibold text-emerald-300">
+                <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
+                Goal met
+              </span>
+            );
+          } else {
+            badge = (
+              <span className="text-xs font-semibold text-zinc-300">
+                {formatAmount(remaining)} {card.unit} left
+              </span>
+            );
+          }
 
           return (
             <div
-              key={m.key}
-              className={`p-4 sm:p-5 rounded-2xl bg-zinc-900/80 backdrop-blur-xl border border-white/8 ${m.borderColor} transition-all duration-300 flex flex-col justify-between group shadow-sm hover:shadow-lg`}
+              key={card.key}
+              className={`p-4 rounded-2xl bg-zinc-900/80 border border-white/8 flex flex-col justify-between gap-3 ${card.key === "calories" ? "col-span-2 lg:col-span-1" : ""}`}
             >
-              {/* Card Header */}
-              <div>
-                <div className="flex items-center justify-between gap-2 mb-3">
-                  <div className="flex items-center gap-1.5">
-                    <div className={`p-1.5 rounded-lg ${m.badgeBg} ${m.badgeText}`}>
-                      {m.icon}
-                    </div>
-                    <span className="text-xs font-bold text-zinc-300">
-                      {m.name}
-                    </span>
-                  </div>
-
-                  {isOver ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/20 text-[10px] font-extrabold text-amber-400">
-                      <AlertCircle className="w-2.5 h-2.5" />
-                      +{formattedOver} {m.unit} over
-                    </span>
-                  ) : isMet ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/20 text-[10px] font-extrabold text-emerald-400">
-                      <CheckCircle2 className="w-2.5 h-2.5" />
-                      Goal Met
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-zinc-800 border border-white/10 text-[10px] font-bold text-zinc-400">
-                      {formattedLeft} {m.unit} left
-                    </span>
-                  )}
-                </div>
-
-                {/* Main Values */}
-                <div className="flex items-baseline gap-1.5 mb-3">
-                  <span className={`text-2xl sm:text-3xl font-black text-white tracking-tight`}>
-                    {isGrams ? (Number.isInteger(consumedVal) ? consumedVal.toString() : consumedVal.toFixed(1)) : consumedVal.toLocaleString()}
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <span className={`p-1.5 rounded-lg ${card.badge} ${card.accent}`} aria-hidden="true">
+                    {card.icon}
                   </span>
-                  <span className="text-xs font-semibold text-zinc-500">
-                    / {isGrams ? (Number.isInteger(targetVal) ? targetVal.toString() : targetVal.toFixed(1)) : targetVal.toLocaleString()} {m.unit}
-                  </span>
+                  <span className="text-sm font-semibold text-zinc-200">{card.name}</span>
                 </div>
+                {badge}
               </div>
 
-              {/* Progress Bar & Footer */}
-              <div className="space-y-2 mt-auto">
-                <div className="w-full h-2 bg-zinc-950/80 rounded-full overflow-hidden border border-white/5">
-                  <div
-                    className={`h-full bg-linear-to-r ${m.barGradient} rounded-full transition-all duration-500`}
-                    style={{ width: `${barWidthPct}%` }}
-                  />
-                </div>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-2xl font-black text-white tabular-nums">{formatAmount(consumed)}</span>
+                <span className="text-sm text-zinc-400 tabular-nums">
+                  {status.state === "no_target" ? card.unit : `/ ${formatAmount(target)} ${card.unit}`}
+                </span>
+              </div>
 
-                <div className="flex items-center justify-between text-[11px] text-zinc-400 pt-0.5">
-                  <span className="font-bold text-zinc-300">{percentage}%</span>
-                  {energyKcal !== null ? (
-                    <span className="text-[10px] text-zinc-500">
-                      {energyKcal} kcal ({isGrams ? (Number.isInteger(consumedVal) ? consumedVal : consumedVal.toFixed(1)) : Math.round(consumedVal)}g)
-                    </span>
-                  ) : (
-                    <span className="text-[10px] text-zinc-500">
-                      {remaining > 0 ? `${formattedLeft} ${m.unit} to go` : "Budget reached"}
-                    </span>
-                  )}
+              <div className="space-y-1.5">
+                <div
+                  className="w-full h-2 bg-zinc-950/80 rounded-full overflow-hidden border border-white/5"
+                  role="progressbar"
+                  aria-label={`${card.name} progress`}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={barWidth}
+                >
+                  <div className={`h-full bg-linear-to-r ${card.bar} rounded-full`} style={{ width: `${barWidth}%` }} />
+                </div>
+                <div className="flex items-center justify-between text-xs text-zinc-400 tabular-nums">
+                  <span className="font-semibold text-zinc-300">{status.percent === null ? "-" : `${status.percent}%`}</span>
+                  {card.kcalPerUnit ? <span>{formatAmount(Math.round(consumed * card.kcalPerUnit))} kcal</span> : null}
                 </div>
               </div>
             </div>
           );
         })}
       </div>
-    </div>
+    </section>
   );
 }
+
+export default MacroRemainingCards;

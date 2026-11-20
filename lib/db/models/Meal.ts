@@ -39,6 +39,8 @@ export interface IMeal extends Document {
   dateString: string;
   mealType: "breakfast" | "lunch" | "dinner" | "snack" | "pre_workout" | "post_workout";
   description: string;
+  /** The user's own notes (never shown as AI output). */
+  notes: string;
   imageSource: "photo" | "text_only";
   images: ICloudinaryMeta[];
   aiMacros: IAiMacros | null;
@@ -66,6 +68,7 @@ const MealSchema = new Schema<IMeal>(
       required: true,
     },
     description: { type: String, default: "" },
+    notes: { type: String, default: "" },
     imageSource: { type: String, enum: ["photo", "text_only"], default: "text_only" },
     images: {
       type: [

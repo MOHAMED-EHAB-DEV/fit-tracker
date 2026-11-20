@@ -1,146 +1,136 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  getImageCacheKey,
-  getCachedImage,
-  setCachedImage,
-} from "@/lib/image-proxy/cache";
-import {
-  getSupabaseCachedImage,
-  setSupabaseCachedImage,
-} from "@/lib/image-proxy/supabase";
+import { etagForKey, getCachedImage, getImageCacheKey, setCachedImage } from "@/lib/image-proxy/cache";
+import { getSupabaseCachedImage, setSupabaseCachedImage } from "@/lib/image-proxy/supabase";
+import { sniffImageType } from "@/lib/image-proxy/sniff";
+import { isAllowedImageSource } from "@/lib/image-proxy/allowed";
+import { clientIp, enforceRateLimit, RATE_LIMITS } from "@/lib/security/rate-limit";
+import { HttpError } from "@/lib/api/errors";
 
-export async function GET(
-  request: NextRequest,
-  context: { params: Promise<{ src: string[] }> }
-) {
+/**
+ * Caching proxy for PUBLIC catalog images (exercise photos).
+ *
+ * It is reachable without a session, so it is deliberately strict:
+ *  - https only, exact host allow-list, no redirects followed;
+ *  - Cloudinary URLs must belong to this app's cloud and be public uploads
+ *    (private body photos are never proxied or cached here);
+ *  - the body is size-capped and must be a raster image by its first bytes
+ *    (SVG and anything else is refused), and the response is locked down
+ *    with nosniff + a sandboxing CSP.
+ */
+
+const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
+const ORIGIN_TIMEOUT_MS = 12_000;
+
+function parseSource(segments: string[]): URL | null {
   try {
-    const { src: srcParam } = await context.params;
-    const rawSrc = srcParam.join("/");
-    let decodedSrc = decodeURIComponent(rawSrc);
+    let decoded = decodeURIComponent(segments.join("/"));
+    // Path normalisation can collapse "https://" to "https:/".
+    decoded = decoded.replace(/^(https?):\/+/i, "$1://");
+    return new URL(decoded);
+  } catch {
+    return null;
+  }
+}
 
-    // Normalize protocol slashes (e.g., https:/ or https:/// -> https://)
-    if (/^https?:\/{1,}/i.test(decodedSrc)) {
-      decodedSrc = decodedSrc.replace(/^(https?):\/+/i, "$1://");
-    } else if (decodedSrc.startsWith("//")) {
-      decodedSrc = `https:${decodedSrc}`;
+function imageResponse(buffer: Buffer, key: string, cacheState: string): NextResponse {
+  const sniffed = sniffImageType(buffer);
+  if (!sniffed) {
+    return new NextResponse("Unsupported image", { status: 415 });
+  }
+  return new NextResponse(new Uint8Array(buffer), {
+    headers: {
+      "Content-Type": sniffed.mime,
+      "Content-Length": String(buffer.length),
+      "Content-Disposition": `inline; filename="image.${sniffed.ext}"`,
+      "Cache-Control": "public, max-age=604800, s-maxage=2592000, immutable",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": "default-src 'none'; sandbox",
+      "Cross-Origin-Resource-Policy": "same-origin",
+      ETag: etagForKey(key),
+      "X-Cache": cacheState,
+    },
+  });
+}
+
+async function readCapped(response: Response): Promise<Buffer | null> {
+  const declared = Number(response.headers.get("content-length") || 0);
+  if (declared > MAX_IMAGE_BYTES) return null;
+  if (!response.body) return null;
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_IMAGE_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}
+
+export async function GET(request: NextRequest, context: { params: Promise<{ src: string[] }> }) {
+  try {
+    const { src } = await context.params;
+    const source = parseSource(src);
+    if (!source) return new NextResponse("Invalid image URL", { status: 400 });
+    if (!isAllowedImageSource(source)) return new NextResponse("Image source not allowed", { status: 403 });
+
+    const key = getImageCacheKey(source.href);
+
+    if (request.headers.get("if-none-match") === etagForKey(key)) {
+      return new NextResponse(null, { status: 304 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const widthParam = searchParams.get("w");
-    const qualityParam = searchParams.get("q");
+    const local = getCachedImage(key);
+    if (local) return imageResponse(local, key, "HIT-local");
 
-    const width = widthParam ? parseInt(widthParam, 10) : undefined;
-    const quality = qualityParam ? parseInt(qualityParam, 10) : 80;
+    const stored = await getSupabaseCachedImage(key);
+    if (stored && sniffImageType(stored)) {
+      setCachedImage(key, stored);
+      return imageResponse(stored, key, "HIT-storage");
+    }
 
-    // Security check: only allow approved hosts
-    const envHosts = (process.env.IMAGE_PROXY_ALLOWED_HOSTS || "")
-      .split(",")
-      .map((h) => h.trim().toLowerCase())
-      .filter(Boolean);
-    const defaultHosts = [
-      "res.cloudinary.com",
-      "cloudinary.com",
-      "raw.githubusercontent.com",
-      "github.com",
-      "images.unsplash.com",
-      "googleusercontent.com",
-    ];
-    const allowedHosts = Array.from(new Set([...defaultHosts, ...envHosts]));
-
-    let parsedUrl: URL;
+    // Only a cache miss costs anything (an outside fetch and a storage write),
+    // so only misses count against the per-address limit.
     try {
-      parsedUrl = new URL(decodedSrc);
-      const hostname = parsedUrl.hostname.toLowerCase();
-      const isAllowed = allowedHosts.some((h) => hostname.includes(h) || h === "*");
-      if (!isAllowed) {
-        return new NextResponse("Forbidden image source host", { status: 403 });
+      await enforceRateLimit(RATE_LIMITS.imageProxyPerMinute, clientIp(request));
+    } catch (err) {
+      if (err instanceof HttpError && err.status === 429) {
+        return new NextResponse("Too many image requests", { status: 429, headers: { "Retry-After": "60" } });
       }
+      // The limiter's store is unreachable: serve the image rather than break every page.
+    }
+
+    let origin: Response;
+    try {
+      origin = await fetch(source.href, {
+        redirect: "manual",
+        signal: AbortSignal.timeout(ORIGIN_TIMEOUT_MS),
+        headers: { Accept: "image/avif,image/webp,image/png,image/jpeg,image/gif" },
+      });
     } catch {
-      return new NextResponse("Invalid image source URL", { status: 400 });
+      return new NextResponse("Image could not be loaded", { status: 502 });
     }
 
-    const cacheKey = getImageCacheKey(parsedUrl.href, width, quality);
-
-    // Layer 1 & 2: Local disk cache + ETag check
-    const localHit = getCachedImage(cacheKey);
-    if (localHit) {
-      const clientEtag = request.headers.get("if-none-match");
-      if (clientEtag === localHit.etag) {
-        return new NextResponse(null, { status: 304 });
-      }
-
-      return new NextResponse(new Uint8Array(localHit.buffer), {
-        headers: {
-          "Content-Type": "image/webp",
-          "Cache-Control": "public, max-age=604800, s-maxage=31536000, immutable",
-          ETag: localHit.etag,
-          "X-Cache": "HIT",
-          "X-Storage-Backend": "local-disk",
-        },
-      });
+    if (origin.status !== 200) {
+      return new NextResponse("Image could not be loaded", { status: origin.status === 404 ? 404 : 502 });
     }
 
-    // Layer 3: Supabase Storage persistent cache
-    const supabaseHit = await getSupabaseCachedImage(cacheKey);
-    if (supabaseHit) {
-      setCachedImage(cacheKey, supabaseHit); // populate local disk
-      const etag = `"${cacheKey.slice(0, 32)}"`;
+    const buffer = await readCapped(origin).catch(() => null);
+    if (!buffer) return new NextResponse("Image is too large or unreadable", { status: 413 });
+    if (!sniffImageType(buffer)) return new NextResponse("Unsupported image", { status: 415 });
 
-      return new NextResponse(new Uint8Array(supabaseHit), {
-        headers: {
-          "Content-Type": "image/webp",
-          "Cache-Control": "public, max-age=604800, s-maxage=31536000, immutable",
-          ETag: etag,
-          "X-Cache": "HIT",
-          "X-Storage-Backend": "supabase",
-        },
-      });
-    }
+    setCachedImage(key, buffer);
+    await setSupabaseCachedImage(key, buffer).catch(() => undefined);
 
-    // Layer 4: Fetch origin
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-    const originRes = await fetch(parsedUrl.href, { signal: controller.signal });
-    clearTimeout(timeoutId);
-
-    if (!originRes.ok) {
-      return new NextResponse("Failed to fetch image from origin", {
-        status: originRes.status,
-      });
-    }
-
-    const contentType = originRes.headers.get("content-type") || "";
-    if (!contentType.startsWith("image/")) {
-      return new NextResponse("Origin did not return an image", { status: 400 });
-    }
-
-    const arrayBuffer = await originRes.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    // Save to caches in the background safely
-    try {
-      setCachedImage(cacheKey, buffer);
-      setSupabaseCachedImage(cacheKey, buffer).catch((e) =>
-        console.error("Supabase async save error:", e)
-      );
-    } catch (cacheErr) {
-      console.error("Image cache write error:", cacheErr);
-    }
-
-    const etag = `"${cacheKey.slice(0, 32)}"`;
-
-    return new NextResponse(new Uint8Array(buffer), {
-      headers: {
-        "Content-Type": contentType || "image/webp",
-        "Cache-Control": "public, max-age=604800, s-maxage=31536000, immutable",
-        ETag: etag,
-        "X-Cache": "MISS",
-        "X-Storage-Backend": "origin",
-      },
-    });
-  } catch (err: any) {
+    return imageResponse(buffer, key, "MISS");
+  } catch (err) {
     console.error("Image proxy error:", err);
-    return new NextResponse(`Image proxy error: ${err.message}`, { status: 500 });
+    return new NextResponse("Image proxy error", { status: 500 });
   }
 }

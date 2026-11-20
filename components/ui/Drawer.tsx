@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useRef } from "react";
+import React, { useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { useDialogOverlay } from "@/hooks/useDialogOverlay";
+import { OVERLAY_ROOT_ATTRIBUTE, trapTabKey } from "@/lib/ui/overlay-stack";
 import { cn } from "@/lib/utils";
 
 export interface DrawerProps {
@@ -20,6 +21,38 @@ export interface DrawerProps {
   ariaLabel?: string;
 }
 
+const CONTAINER: Record<NonNullable<DrawerProps["position"]>, string> = {
+  bottom: "items-end justify-center",
+  top: "items-start justify-center",
+  right: "items-stretch justify-end",
+  left: "items-stretch justify-start",
+};
+
+const PANEL: Record<NonNullable<DrawerProps["position"]>, string> = {
+  bottom: "w-full sm:max-w-2xl max-h-[92%] rounded-t-3xl border-t",
+  top: "w-full sm:max-w-2xl max-h-[92%] rounded-b-3xl border-b",
+  right: "h-full w-full max-w-md border-s",
+  left: "h-full w-full max-w-md border-e",
+};
+
+const HIDDEN: Record<NonNullable<DrawerProps["position"]>, string> = {
+  bottom: "translate-y-full",
+  top: "-translate-y-full",
+  right: "translate-x-full rtl:-translate-x-full",
+  left: "-translate-x-full rtl:translate-x-full",
+};
+
+const ENTER: Record<NonNullable<DrawerProps["position"]>, string> = {
+  bottom: "drawer-in-bottom",
+  top: "drawer-in-top",
+  right: "drawer-in-right",
+  left: "drawer-in-left",
+};
+
+/**
+ * A panel that slides in from an edge. Same focus, Escape and Back-button
+ * behaviour as Modal.
+ */
 export function Drawer({
   isOpen,
   onClose,
@@ -34,58 +67,32 @@ export function Drawer({
   ariaLabel,
 }: DrawerProps) {
   const drawerRef = useRef<HTMLElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
   const { isMounted, shouldRender, isAnimatingOut } = useDialogOverlay({
     isOpen,
     onClose,
-    durationMs: 280,
+    durationMs: 240,
     lockScroll: true,
     closeOnEscape: true,
+    dialogRef: drawerRef,
   });
 
   if (!isMounted || !shouldRender || typeof document === "undefined") return null;
 
-  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (closeOnBackdropClick && e.target === e.currentTarget) {
-      onClose();
-    }
-  };
-
-  const getPositionClasses = () => {
-    switch (position) {
-      case "bottom":
-        return cn(
-          "w-full max-h-[92vh] rounded-t-[36px] border-t border-white/12 shadow-[0_-25px_70px_rgba(0,0,0,0.9),0_0_0_1px_rgba(255,255,255,0.06)]",
-          isAnimatingOut ? "translate-y-full" : "translate-y-0"
-        );
-      case "right":
-        return cn(
-          "h-full w-full max-w-md rounded-l-[36px] border-l border-white/12 shadow-[-25px_0_70px_rgba(0,0,0,0.9),0_0_0_1px_rgba(255,255,255,0.06)]",
-          isAnimatingOut ? "translate-x-full" : "translate-x-0"
-        );
-      case "left":
-        return cn(
-          "h-full w-full max-w-md rounded-r-[36px] border-r border-white/12 shadow-[25px_0_70px_rgba(0,0,0,0.9),0_0_0_1px_rgba(255,255,255,0.06)]",
-          isAnimatingOut ? "-translate-x-full" : "translate-x-0"
-        );
-      case "top":
-        return cn(
-          "w-full max-h-[85vh] rounded-b-[36px] border-b border-white/12 shadow-[0_25px_70px_rgba(0,0,0,0.9),0_0_0_1px_rgba(255,255,255,0.06)]",
-          isAnimatingOut ? "-translate-y-full" : "translate-y-0"
-        );
-    }
+  const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (closeOnBackdropClick && event.target === event.currentTarget) onClose();
   };
 
   return createPortal(
     <div
       role="presentation"
+      {...{ [OVERLAY_ROOT_ATTRIBUTE]: "" }}
       onClick={handleBackdropClick}
       className={cn(
-        "fixed inset-0 z-9999 isolate bg-black/75 backdrop-blur-md transition-opacity duration-280 ease-out flex pointer-events-auto",
-        position === "bottom" && "items-end",
-        position === "right" && "justify-end",
-        position === "left" && "justify-start",
-        position === "top" && "items-start",
-        isAnimatingOut ? "opacity-0" : "opacity-100"
+        "fixed inset-x-0 overlay-area z-[60] isolate flex bg-black/70 transition-opacity duration-200 ease-out",
+        CONTAINER[position],
+        isAnimatingOut ? "opacity-0" : "opacity-100 overlay-fade-in"
       )}
     >
       <aside
@@ -93,58 +100,52 @@ export function Drawer({
         role="dialog"
         aria-modal="true"
         aria-label={ariaLabel || (typeof title === "string" ? title : undefined)}
-        aria-labelledby={title && !ariaLabel ? "drawer-title" : undefined}
-        aria-describedby={description ? "drawer-description" : undefined}
+        aria-labelledby={title && !ariaLabel && typeof title !== "string" ? titleId : undefined}
+        aria-describedby={description ? descriptionId : undefined}
+        tabIndex={-1}
+        onKeyDown={(event) => drawerRef.current && trapTabKey(event, drawerRef.current)}
         className={cn(
-          "bg-zinc-950/95 backdrop-blur-3xl overflow-hidden flex flex-col text-zinc-100 transition-transform duration-280 ease-[cubic-bezier(0.16,1,0.3,1)]",
-          getPositionClasses(),
+          "bg-zinc-900 border-white/10 shadow-2xl shadow-black/70 text-zinc-100 flex flex-col overflow-hidden outline-none transition-transform duration-200 ease-out",
+          PANEL[position],
+          isAnimatingOut ? HIDDEN[position] : cn("translate-x-0 translate-y-0", ENTER[position]),
           className
         )}
       >
-        {/* Tactile Pull Grabber */}
-        {position === "bottom" && (
-          <div role="presentation" aria-hidden="true" className="w-full flex items-center justify-center pt-3.5 pb-1">
-            <div className="w-14 h-1.5 rounded-full bg-white/20 hover:bg-white/35 active:bg-emerald-400/80 transition-all duration-200 cursor-grab" />
-          </div>
-        )}
-
-        {/* Drawer Header */}
         {(title || showCloseButton) && (
-          <header className="flex items-center justify-between px-6 py-4 border-b border-white/6 shrink-0">
-            <div className="space-y-0.5">
+          <header className="flex items-start justify-between gap-3 px-5 sm:px-6 pt-5 pb-4 border-b border-white/10 shrink-0">
+            <div className="space-y-1 min-w-0">
               {title && (
-                <h2 id="drawer-title" className="text-lg sm:text-xl font-extrabold text-white tracking-tight">
+                <h2 id={titleId} className="text-lg font-bold text-white tracking-tight">
                   {title}
                 </h2>
               )}
               {description && (
-                <p id="drawer-description" className="text-xs text-zinc-400">
+                <p id={descriptionId} className="text-sm text-zinc-400">
                   {description}
                 </p>
               )}
             </div>
-
             {showCloseButton && (
               <button
                 type="button"
                 onClick={onClose}
-                aria-label="Close drawer"
-                className="w-8 h-8 rounded-full flex items-center justify-center text-zinc-400 hover:text-white bg-white/4 hover:bg-white/10 active:scale-90 transition-all duration-150 ms-auto shrink-0 cursor-pointer"
+                aria-label="Close"
+                className="-me-2 -mt-1 grid place-items-center w-11 h-11 rounded-full text-zinc-400 hover:text-white hover:bg-white/10 active:scale-95 transition shrink-0 cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" aria-hidden="true" />
               </button>
             )}
           </header>
         )}
 
-        {/* Content Body */}
-        <section className="p-6 overflow-y-auto flex-1">{children}</section>
+        <section className="p-5 sm:p-6 overflow-y-auto overscroll-contain flex-1">{children}</section>
 
-        {/* Footer */}
-        {footer && (
-          <footer className="px-6 py-4 border-t border-white/6 bg-white/2 shrink-0 flex items-center justify-end gap-3">
+        {footer ? (
+          <footer className="px-5 sm:px-6 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] border-t border-white/10 shrink-0 flex items-center justify-end gap-3">
             {footer}
           </footer>
+        ) : (
+          <div className="pb-[env(safe-area-inset-bottom)] shrink-0" aria-hidden="true" />
         )}
       </aside>
     </div>,

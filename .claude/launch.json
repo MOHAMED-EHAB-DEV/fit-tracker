@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "fit-tracker-local",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/dev-local.mjs"],
+      "port": 3100
+    },
+    {
+      "name": "fit-tracker-local-prod",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/dev-local.mjs", "--prod", "--port=3101"],
+      "port": 3101
+    }
+  ]
+}

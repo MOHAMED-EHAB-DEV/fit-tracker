@@ -1,463 +1,198 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import {
+  HttpError,
+  badRequest,
+  enforceRateLimit,
+  errorResponse,
+  fail,
+  notFound,
+  ok,
+  parseWith,
+  readJson,
+  unauthorized,
+} from "@/lib/api/route";
 import { getServerSession } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/mongoose";
 import Meal from "@/lib/db/models/Meal";
-import DailyLog from "@/lib/db/models/DailyLog";
-import User from "@/lib/db/models/User";
-import cloudinary from "@/lib/cloudinary";
-import genAI, {
-  flashModel,
-  fallbackFlashModel,
+import { RATE_LIMITS } from "@/lib/security/rate-limit";
+import {
   createGeminiConfig,
-  generateContentWithFallback,
   formatAiErrorMessage,
+  generateContentWithFallback,
 } from "@/lib/gemini/client";
 import { mealAnalysisSchema } from "@/lib/gemini/schemas";
 import { MEAL_ANALYZER_SYSTEM_PROMPT } from "@/lib/gemini/prompts";
-import { getTodayDateString } from "@/lib/fitness/timezone";
-import { UploadApiResponse } from "cloudinary";
-import { MealType } from "@/types/fitness";
+import {
+  MEAL_LIMITS,
+  mealAnalyzeFieldsSchema,
+  mealRegenerateSchema,
+  type MealItemInput,
+} from "@/lib/validation/nutrition";
+import { AnalysisParseError, buildMealAnalysisPrompt, parseMealAnalysis } from "@/lib/nutrition/analysis";
+import { proposalSecret, signProposalToken } from "@/lib/nutrition/proposal-token";
+import { loadMealImageForAnalysis } from "@/lib/nutrition/images";
+import { readMealPhotos } from "@/lib/nutrition/upload";
 
+// AI calls can be slow; give the function room before the platform cuts it off.
+export const maxDuration = 60;
+
+interface InlineImage {
+  data: string;
+  mimeType: string;
+}
+
+/** HTTP status for an AI failure that is not one of our own HttpErrors. */
+function aiFailureStatus(message: string): number {
+  const lower = message.toLowerCase();
+  if (lower.includes("limit")) return 429;
+  if (lower.includes("not configured") || lower.includes("api key")) return 503;
+  if (lower.includes("timed out")) return 504;
+  return 502;
+}
+
+/**
+ * Estimates a meal with AI and returns a PROPOSAL. Nothing is stored here:
+ * photos go to the model only, and the user saves the reviewed meal through
+ * POST /api/meals (new meal) or PATCH /api/meals/[id] (regenerate).
+ *
+ *  - multipart/form-data: "photos" (up to 4), "description", "mealType", "dateString".
+ *  - JSON { mealId, description, currentItems }: re-analyze a saved meal; its stored
+ *    photos are loaded by the server (the user's own meal only).
+ */
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession();
-    if (!session) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    }
+    if (!session) throw unauthorized();
 
     const contentType = request.headers.get("content-type") || "";
+    const images: InlineImage[] = [];
+    const warnings: string[] = [];
+    let description = "";
+    let mealType: string | undefined;
+    let dateString: string | undefined;
+    let currentItems: MealItemInput[] = [];
 
-    // 1. Handle JSON payload (Saving confirmed details from the confirmation modal)
-    if (contentType.includes("application/json")) {
-      const body = await request.json();
-      const {
-        description,
-        mealType = "lunch",
-        dateString,
-        macros,
-        aiMacros,
-        items,
-        images: imagesData,
-        cloudinary: fallbackCloudinary,
-      } = body;
-
-      if (!macros || typeof macros.calories === "undefined") {
-        return NextResponse.json(
-          { success: false, error: "Missing required macro fields" },
-          { status: 400 }
-        );
+    if (contentType.includes("multipart/form-data")) {
+      const declared = Number(request.headers.get("content-length") || 0);
+      if (declared > MEAL_LIMITS.requestBytesMax) {
+        throw new HttpError(413, "The photos are too large. Use fewer or smaller photos.");
       }
+      const form = await request.formData();
+      const fields = parseWith(mealAnalyzeFieldsSchema, {
+        description: typeof form.get("description") === "string" ? form.get("description") : undefined,
+        mealType: typeof form.get("mealType") === "string" && form.get("mealType") ? form.get("mealType") : undefined,
+        dateString: typeof form.get("dateString") === "string" && form.get("dateString") ? form.get("dateString") : undefined,
+      });
+      description = fields.description;
+      mealType = fields.mealType;
+      dateString = fields.dateString;
 
+      const photos = await readMealPhotos(form, "photos");
+      if (photos.length > 0) await enforceRateLimit(RATE_LIMITS.uploadPerHour, session.userId);
+      for (const photo of photos) images.push({ data: photo.buffer.toString("base64"), mimeType: photo.mimeType });
+    } else if (contentType.includes("application/json")) {
+      const body = parseWith(mealRegenerateSchema, await readJson(request, 64 * 1024));
       await getDb();
-      const targetDateStr = dateString || getTodayDateString();
+      const meal = await Meal.findOne({ _id: body.mealId, userId: session.userId })
+        .select("images mealType dateString")
+        .lean();
+      if (!meal) throw notFound("Meal not found");
 
-      const finalImages = Array.isArray(imagesData) && imagesData.length > 0
-        ? imagesData
-        : fallbackCloudinary
-        ? [fallbackCloudinary]
-        : [];
+      description = body.description;
+      mealType = body.mealType || meal.mealType;
+      dateString = meal.dateString;
+      currentItems = body.currentItems;
 
-      const meal = await Meal.create({
-        userId: session.userId,
-        loggedAt: new Date(),
-        dateString: targetDateStr,
-        mealType,
-        description: description || "Logged Meal",
-        imageSource: finalImages.length > 0 ? "photo" : "text_only",
-        images: finalImages,
-        items: Array.isArray(items)
-          ? items.map((it: any) => ({
-              name: String(it.name || "Item"),
-              quantity: String(it.quantity || ""),
-              calories: Math.round(Number(it.calories) || 0),
-              protein: Number((Number(it.protein) || 0).toFixed(1)),
-              carbs: Number((Number(it.carbs) || 0).toFixed(1)),
-              fat: Number((Number(it.fat) || 0).toFixed(1)),
-              fiber: Number((Number(it.fiber) || 0).toFixed(1)),
-            }))
-          : [],
-        aiMacros: aiMacros
-          ? {
-              calories: Number(aiMacros.calories) || Number(macros.calories) || 0,
-              protein: Number(aiMacros.protein) || Number(macros.protein) || 0,
-              carbs: Number(aiMacros.carbs) || Number(macros.carbs) || 0,
-              fat: Number(aiMacros.fat) || Number(macros.fat) || 0,
-              fiber: Number(aiMacros.fiber) || Number(macros.fiber) || 0,
-              confidence: aiMacros.confidence || "medium",
-              confidenceReason: aiMacros.confidenceReason || "",
-              geminiNotes: aiMacros.geminiNotes || "",
-              modelUsed: flashModel,
-            }
-          : null,
-        macros: {
-          calories: Math.round(Number(macros.calories) || 0),
-          protein: Number((Number(macros.protein) || 0).toFixed(1)),
-          carbs: Number((Number(macros.carbs) || 0).toFixed(1)),
-          fat: Number((Number(macros.fat) || 0).toFixed(1)),
-          fiber: Number((Number(macros.fiber) || 0).toFixed(1)),
-        },
-        isManualOverride: false,
-      });
-
-      // Update DailyLog totals atomically via $inc
-      await DailyLog.findOneAndUpdate(
-        { userId: session.userId, dateString: targetDateStr },
-        {
-          $inc: {
-            caloriesIn: Math.round(Number(macros.calories) || 0),
-            "macros.protein": Number((Number(macros.protein) || 0).toFixed(1)),
-            "macros.carbs": Number((Number(macros.carbs) || 0).toFixed(1)),
-            "macros.fat": Number((Number(macros.fat) || 0).toFixed(1)),
-            "macros.fiber": Number((Number(macros.fiber) || 0).toFixed(1)),
-          },
-          $setOnInsert: {
-            date: new Date(),
-            waterMl: 0,
-            steps: 0,
-          },
-        },
-        { upsert: true }
-      );
-
-      return NextResponse.json({
-        success: true,
-        mealId: meal._id.toString(),
-        meal,
-      });
-    }
-
-    const formData = await request.formData();
-    const allFiles = formData.getAll("files") as File[];
-    const singleFile = formData.get("file") as File | null;
-    const rawFiles = allFiles.length > 0 ? allFiles : singleFile ? [singleFile] : [];
-    const files = rawFiles.filter((f) => f && f.size > 0);
-
-    const imageUrl = (formData.get("imageUrl") as string) || "";
-    const description = (formData.get("description") as string) || "";
-    const mealType = ((formData.get("mealType") as string) || "lunch") as MealType;
-    const dateStringParam = (formData.get("dateString") as string) || null;
-    const shouldSaveImmediately = formData.get("save") === "true";
-    const previousItemsRaw = (formData.get("previousItems") as string) || "";
-    const previousMacrosRaw = (formData.get("previousMacros") as string) || "";
-
-    let previousItems: any[] = [];
-    if (previousItemsRaw) {
-      try {
-        const parsed = JSON.parse(previousItemsRaw);
-        if (Array.isArray(parsed)) previousItems = parsed;
-      } catch {
-        // ignore parse error
-      }
-    }
-
-    let previousMacros: any = null;
-    if (previousMacrosRaw) {
-      try {
-        previousMacros = JSON.parse(previousMacrosRaw);
-      } catch {
-        // ignore parse error
-      }
-    }
-
-    const base64Images: string[] = [];
-    const cloudinaryResults: UploadApiResponse[] = [];
-
-    if (files.length > 0) {
-      const uploadPromises = files.map(async (fileItem) => {
-        const arrayBuffer = await fileItem.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-        const base64 = buffer.toString("base64");
-
-        const cResult = await new Promise<UploadApiResponse>((resolve, reject) => {
-          const uploadStream = cloudinary.uploader.upload_stream(
-            {
-              folder: "fit-tracker/meals",
-              resource_type: "image",
-              format: "webp",
-            },
-            (error, result) => {
-              if (error || !result) reject(error || new Error("Cloudinary upload failed"));
-              else resolve(result);
-            }
-          );
-          uploadStream.end(buffer);
-        });
-
-        return { base64, cloudinary: cResult };
-      });
-
-      const settled = await Promise.allSettled(uploadPromises);
-      for (const res of settled) {
-        if (res.status === "fulfilled") {
-          base64Images.push(res.value.base64);
-          cloudinaryResults.push(res.value.cloudinary);
-        } else {
-          console.warn("One meal image upload failed:", res.reason);
+      const stored = (meal.images || []).slice(0, MEAL_LIMITS.photosMax);
+      if (stored.length > 0) await enforceRateLimit(RATE_LIMITS.uploadPerHour, session.userId);
+      const loaded = await Promise.allSettled(stored.map((image) => loadMealImageForAnalysis(session.userId, image)));
+      let missing = 0;
+      for (const result of loaded) {
+        if (result.status === "fulfilled") images.push(result.value);
+        else {
+          missing++;
+          console.warn("[meals/analyze] stored photo could not be loaded:", result.reason);
         }
       }
-    } else if (imageUrl && typeof imageUrl === "string" && imageUrl.startsWith("http")) {
-      try {
-        const imgRes = await fetch(imageUrl);
-        if (imgRes.ok) {
-          const arrayBuffer = await imgRes.arrayBuffer();
-          base64Images.push(Buffer.from(arrayBuffer).toString("base64"));
+      if (missing > 0) {
+        if (images.length === 0 && !description && currentItems.length === 0) {
+          throw new HttpError(502, "The meal's photo could not be loaded. Add a description and try again.");
         }
-      } catch (e) {
-        console.warn("Could not fetch existing imageUrl for re-analysis:", e);
+        warnings.push(
+          missing === stored.length
+            ? "The saved photo could not be loaded, so the AI used only the text and ingredients."
+            : `${missing} of the saved photos could not be loaded and were not analyzed.`
+        );
       }
+    } else {
+      throw new HttpError(415, "Unsupported request format");
     }
 
-    await getDb();
-    const userDoc = await User.findById(session.userId).select("preferences.customGeminiApiKey").lean();
-    const userApiKey = userDoc?.preferences?.customGeminiApiKey?.trim() || undefined;
-
-    if (!userApiKey && !process.env.GEMINI_API_KEY) {
-      return NextResponse.json(
-        { success: false, error: "No Gemini API Key configured. Add your free key in Settings." },
-        { status: 500 }
-      );
+    if (images.length === 0 && !description && currentItems.length === 0) {
+      throw badRequest("Add a photo or describe the meal first.");
     }
 
-    const targetDateStr = dateStringParam || getTodayDateString();
+    const prompt = buildMealAnalysisPrompt({
+      description,
+      mealType,
+      dateString,
+      photoCount: images.length,
+      currentItems,
+    });
 
-    // Call Gemini for structured nutritional estimation
-    let analysis: {
-      mealDescription: string;
-      items: any[];
-      totals: { calories: number; protein: number; carbs: number; fat: number; fiber: number };
-      confidence: "high" | "medium" | "low";
-      confidenceReason: string;
-      geminiNotes: string;
-      modelUsed: string;
-    };
-
+    let text: string | undefined;
+    let modelUsed: string;
     try {
-      const contents: any[] = [];
-
-      for (const base64 of base64Images) {
-        contents.push({
-          inlineData: {
-            data: base64,
-            mimeType: "image/webp",
-          },
-        });
-      }
-
-      const previousContextParts: string[] = [];
-      if (previousItems.length > 0) {
-        previousContextParts.push(
-          "Previous / Existing Logged Ingredients & Individual Macros:",
-          ...previousItems.map(
-            (it, i) =>
-              `  ${i + 1}. ${it.name || "Item"}${it.quantity ? ` (${it.quantity})` : ""}: ${it.calories ?? 0} kcal | ${it.protein ?? 0}g protein | ${it.carbs ?? 0}g carbs | ${it.fat ?? 0}g fat | ${it.fiber ?? 0}g fiber`
-          )
-        );
-      }
-      if (previousMacros) {
-        previousContextParts.push(
-          `Previous Total Macro Targets: ${previousMacros.calories || 0} kcal, ${previousMacros.protein || 0}g protein, ${previousMacros.carbs || 0}g carbs, ${previousMacros.fat || 0}g fat, ${previousMacros.fiber || 0}g fiber`
-        );
-      }
-      if (previousContextParts.length > 0) {
-        previousContextParts.push(
-          "",
-          "CRITICAL REGENERATION DIRECTIVE — PRESERVE AND COMBINE INGREDIENTS:",
-          "1. The final 'items' array MUST contain ALL previous ingredients alongside any newly described or identified food items.",
-          "2. Do NOT drop, replace, or wipe out previous ingredients unless the user explicitly requested to remove an item.",
-          "3. For previous items: keep their name and portions/macros (or refine them if more detail is given in the prompt).",
-          "4. For new items: append them as new entries with their respective portion and USDA macros in the 'items' array.",
-          "5. 'totals' MUST be the exact mathematical sum of ALL items combined (retained previous items + new items)."
-        );
-      }
-
-      const multiPhotoDirective =
-        base64Images.length > 1
-          ? `NOTE: The user has attached ${base64Images.length} photos of this meal (different angles, sides, courses, or labels). Cross-reference and analyze all provided images together to identify all food items.`
-          : "";
-
-      const promptText = [
-        `User Meal Context / Description: "${description || "(No description provided, analyze from image)"}"`,
-        `Logged Date: ${targetDateStr}`,
-        multiPhotoDirective,
-        "",
-        ...previousContextParts,
-        "",
-        "Instructions:",
-        "1. Deconstruct every visible or described food item into specific ingredients (proteins, carbs, fats, vegetables, dairy, sauces, cooking oils).",
-        "2. Estimate realistic portion sizes using metric units (grams 'g' or milliliters 'ml') and specify cooked vs raw state.",
-        "3. Account for cooking fats (e.g., 5g–10g oil/butter for pan-searing or roasting) unless explicitly oil-free.",
-        "4. Calculate scientific macronutrients (Calories, Protein, Carbs, Fat, Fiber) per ingredient using USDA nutritional standards.",
-        "5. If the user provided explicit weights or ingredients in their description or previous ingredients list, prioritize and refine them over visual guesses.",
-        "6. Ensure strict mathematical sum consistency: totals MUST equal the sum of all individual items.",
-        "7. Specify accurate confidence rating ('high', 'medium', or 'low') and provide a clear 'confidenceReason' explaining visibility, lighting, ingredients, and portion certainty.",
-        "8. Provide a concise, professional dietitian note in 'geminiNotes' summarizing key assumptions (cooking oils, sauces) and nutritional balance.",
-      ].filter(Boolean).join("\n");
-      contents.push(promptText);
-
-      const { text, modelUsed } = await generateContentWithFallback({
-        primaryModel: flashModel,
-        fallbackModel: fallbackFlashModel,
-        contents,
-        apiKey: userApiKey,
+      const result = await generateContentWithFallback({
+        userId: session.userId,
+        task: "fast",
+        contents: [...images.map((image) => ({ inlineData: image })), prompt],
         config: createGeminiConfig({
           systemInstruction: MEAL_ANALYZER_SYSTEM_PROMPT,
           responseMimeType: "application/json",
-          responseSchema: mealAnalysisSchema as any,
-          maxOutputTokens: 2048,
+          responseSchema: mealAnalysisSchema,
+          maxOutputTokens: 4096,
+          temperature: 0.2,
         }),
       });
-
-      if (!text) {
-        throw new Error("No response received from Gemini AI.");
-      }
-
-      const cleanedText = text.replace(/```json\s*|```/g, "").trim();
-      const parsed = JSON.parse(cleanedText);
-      if (!parsed || typeof parsed !== "object") {
-        throw new Error("Invalid JSON received from Gemini AI.");
-      }
-
-      const rawReturnedItems = Array.isArray(parsed.items) ? parsed.items : [];
-      let finalItems = [...rawReturnedItems];
-
-      // If previous items were supplied, verify none were dropped accidentally
-      if (previousItems.length > 0) {
-        const returnedNamesLower = rawReturnedItems.map((it: any) =>
-          String(it.name || "").toLowerCase().trim()
-        );
-
-        const missingPreviousItems = previousItems.filter((prev: any) => {
-          const prevNameLower = String(prev.name || "").toLowerCase().trim();
-          if (!prevNameLower) return false;
-          return !returnedNamesLower.some(
-            (retName: string) => retName.includes(prevNameLower) || prevNameLower.includes(retName)
-          );
-        });
-
-        if (missingPreviousItems.length > 0) {
-          finalItems = [...missingPreviousItems, ...finalItems];
-        }
-      }
-
-      let { calories = 0, protein = 0, carbs = 0, fat = 0, fiber = 0 } = parsed.totals || {};
-
-      // If items exist, recalculate totals to reflect the complete set of items
-      if (finalItems.length > 0) {
-        calories = finalItems.reduce((sum: number, it: any) => sum + (Number(it.calories) || 0), 0);
-        protein = finalItems.reduce((sum: number, it: any) => sum + (Number(it.protein) || 0), 0);
-        carbs = finalItems.reduce((sum: number, it: any) => sum + (Number(it.carbs) || 0), 0);
-        fat = finalItems.reduce((sum: number, it: any) => sum + (Number(it.fat) || 0), 0);
-        fiber = finalItems.reduce((sum: number, it: any) => sum + (Number(it.fiber) || 0), 0);
-      }
-
-      analysis = {
-        mealDescription: parsed.mealDescription || description || "Logged Meal",
-        items: finalItems,
-        totals: {
-          calories: Math.round(Number(calories) || 0),
-          protein: Number((Number(protein) || 0).toFixed(1)),
-          carbs: Number((Number(carbs) || 0).toFixed(1)),
-          fat: Number((Number(fat) || 0).toFixed(1)),
-          fiber: Number((Number(fiber) || 0).toFixed(1)),
-        },
-        confidence: parsed.confidence || "medium",
-        confidenceReason:
-          parsed.confidenceReason ||
-          (parsed.confidence === "high"
-            ? "Clear visibility with distinct ingredients and standard scale."
-            : parsed.confidence === "low"
-            ? "Complex mixed dish or obscured ingredients requiring portion estimation."
-            : "Standard dish with estimated cooking fats or sauces."),
-        geminiNotes: parsed.geminiNotes || "",
-        modelUsed,
-      };
-    } catch (geminiErr: any) {
-      console.error("Gemini meal analysis error:", geminiErr);
-      return NextResponse.json(
-        { success: false, error: geminiErr.message || "Failed to analyze meal with AI." },
-        { status: 500 }
-      );
+      text = result.text;
+      modelUsed = result.modelUsed;
+    } catch (err) {
+      if (err instanceof HttpError) throw err;
+      console.error("[meals/analyze] AI call failed:", err);
+      const message = formatAiErrorMessage(err);
+      return fail(aiFailureStatus(message), message);
     }
 
-    const imagesPayload = cloudinaryResults.map((r) => ({
-      publicId: r.public_id,
-      secureUrl: r.secure_url,
-      deliveryType: "upload" as const,
-      width: r.width,
-      height: r.height,
-      bytes: r.bytes,
-    }));
-
-    // If immediate save is not requested (default flow for opening the confirmation modal)
-    if (!shouldSaveImmediately) {
-      return NextResponse.json({
-        success: true,
-        analysis,
-        images: imagesPayload,
-      });
+    let parsed;
+    try {
+      parsed = parseMealAnalysis(text, { currentItemCount: currentItems.length, fallbackDescription: description });
+    } catch (err) {
+      if (err instanceof AnalysisParseError) return fail(502, `${err.message} Please try again.`);
+      throw err;
     }
 
-    // Direct immediate save flow (if requested)
-    await getDb();
-
-    const meal = await Meal.create({
-      userId: session.userId,
-      loggedAt: new Date(),
-      dateString: targetDateStr,
-      mealType,
-      description: analysis.mealDescription || description || "Logged Meal",
-      imageSource: imagesPayload.length > 0 ? "photo" : "text_only",
-      images: imagesPayload,
-      items: analysis.items || [],
-      aiMacros: {
-        calories: analysis.totals.calories,
-        protein: analysis.totals.protein,
-        carbs: analysis.totals.carbs,
-        fat: analysis.totals.fat,
-        fiber: analysis.totals.fiber || 0,
-        confidence: analysis.confidence,
-        confidenceReason: analysis.confidenceReason,
-        geminiNotes: analysis.geminiNotes || "",
-        modelUsed: analysis.modelUsed || flashModel,
-      },
-      macros: {
-        calories: analysis.totals.calories,
-        protein: analysis.totals.protein,
-        carbs: analysis.totals.carbs,
-        fat: analysis.totals.fat,
-        fiber: analysis.totals.fiber || 0,
-      },
-      isManualOverride: false,
-    });
-
-    await DailyLog.findOneAndUpdate(
-      { userId: session.userId, dateString: targetDateStr },
+    const { proposal } = parsed;
+    const proposalToken = signProposalToken(
+      session.userId,
       {
-        $inc: {
-          caloriesIn: analysis.totals.calories,
-          "macros.protein": analysis.totals.protein,
-          "macros.carbs": analysis.totals.carbs,
-          "macros.fat": analysis.totals.fat,
-          "macros.fiber": analysis.totals.fiber || 0,
-        },
-        $setOnInsert: {
-          date: new Date(),
-          waterMl: 0,
-          steps: 0,
-        },
+        ...proposal.totals,
+        confidence: proposal.confidence,
+        confidenceReason: proposal.confidenceReason,
+        geminiNotes: proposal.geminiNotes,
+        modelUsed,
       },
-      { upsert: true }
+      proposalSecret()
     );
 
-    return NextResponse.json({
-      success: true,
-      mealId: meal._id.toString(),
-      analysis,
-      meal,
-      images: imagesPayload,
+    return ok({
+      proposal,
+      proposalToken,
+      warnings: [...warnings, ...parsed.warnings],
+      photosAnalyzed: images.length,
+      modelUsed,
     });
-  } catch (err: any) {
-    console.error("Meal analyze route error:", err);
-    return NextResponse.json({ success: false, error: formatAiErrorMessage(err) }, { status: 500 });
+  } catch (err) {
+    return errorResponse(err, "POST /api/meals/analyze");
   }
 }

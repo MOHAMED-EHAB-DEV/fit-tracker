@@ -3,7 +3,6 @@
 import mongoose from "mongoose";
 
 declare global {
-  // eslint-disable-next-line no-var
   var _mongooseConn: mongoose.Connection | null;
   var _mongoosePromise: Promise<mongoose.Connection> | null;
 }
@@ -17,13 +16,23 @@ export async function getDb(): Promise<mongoose.Connection> {
   }
 
   if (!global._mongoosePromise) {
+    const uri = process.env.MONGODB_URI;
+    if (!uri) {
+      throw new Error("MONGODB_URI is not configured");
+    }
     const opts: mongoose.ConnectOptions = {
-      maxPoolSize: 5,
+      maxPoolSize: 10,
       serverSelectionTimeoutMS: 5000,
     };
     global._mongoosePromise = mongoose
-      .connect(process.env.MONGODB_URI!, opts)
-      .then((m) => m.connection);
+      .connect(uri, opts)
+      .then((m) => m.connection)
+      .catch((err) => {
+        // Never cache a failed attempt: the next request must retry.
+        global._mongoosePromise = null;
+        global._mongooseConn = null;
+        throw err;
+      });
   }
 
   global._mongooseConn = await global._mongoosePromise;

@@ -1,262 +1,360 @@
 package com.fittracker.webview
 
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
 import android.content.Context
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.webkit.JavascriptInterface
-import android.webkit.WebView
+import com.fittracker.AppConfig
+import com.fittracker.BuildConfig
+import com.fittracker.UserData
+import com.fittracker.notification.PlannerNotificationManager
+import com.fittracker.reminders.ReminderScheduler
+import com.fittracker.steps.DayMath
 import com.fittracker.steps.StepRepository
 import com.fittracker.steps.StepSensorManager
 import com.fittracker.steps.StepStore
-import com.fittracker.steps.StepSyncScheduler
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import com.fittracker.update.AppUpdateManager
+import com.fittracker.widget.FitTrackerFitnessWidget
+import com.fittracker.widget.FitTrackerQuickWidget
+import com.fittracker.widget.FitTrackerStepWidget
+import com.fittracker.widget.FitTrackerWidgetUpdater
+import com.fittracker.widget.WidgetDataStore
+import org.json.JSONObject
+import java.util.concurrent.Callable
+import java.util.concurrent.FutureTask
+import java.util.concurrent.TimeUnit
 
 /**
- * JavaScript Bridge exposed to the Next.js WebView as `window.AndroidBridge`.
- * Enables high-performance, asynchronous bidirectional communication for step counting,
- * session authentication, and live dashboard telemetry.
+ * What the bridge needs from the Activity that hosts the WebView.
+ * All methods are called on the main thread.
+ */
+interface BridgeHost {
+    /** URL of the WebView's main frame. */
+    fun currentMainFrameUrl(): String?
+    /** Reads the step sensor now, asking for permission in context if needed. */
+    fun requestStepSync()
+    /** Asks for POST_NOTIFICATIONS (with a rationale) when it is missing and may still be asked. */
+    fun requestNotificationPermissionIfNeeded()
+    fun openExternal(url: String): Boolean
+    fun saveFile(base64: String, filename: String, mimeType: String): Boolean
+    fun reportSaveFailure(tooLarge: Boolean)
+    fun checkForUpdate()
+    fun openNotificationSettings()
+    fun openExactAlarmSettings()
+    fun openAppSettings()
+}
+
+/**
+ * `window.AndroidBridge`. Keep in sync with services/webview-bridge.ts.
+ *
+ * Every method first checks, on the UI thread, that the WebView's main frame
+ * is on one of the app's own origins; otherwise it does nothing and returns a
+ * neutral value. All inputs are validated and bounded.
  */
 class JSBridge(
-    private val context: Context,
-    private val webView: WebView
+    context: Context,
+    private val host: BridgeHost
 ) {
 
     companion object {
         private const val TAG = "JSBridge"
-        var instance: JSBridge? = null
-            private set
+        private const val MAX_JSON_CHARS = 64 * 1024
+        private const val MAX_REMINDER_JSON_CHARS = 256 * 1024
+        /** Base64 of a 20 MB file. */
+        private const val MAX_FILE_BASE64_CHARS = 28 * 1024 * 1024
+        private const val NOTIFICATION_MIN_INTERVAL_MS = 1500L
+        private val EVENT_ID_RE = Regex("^[A-Za-z0-9_\\-]{1,64}$")
+        private val CATEGORIES = setOf("workout", "nutrition", "habit", "recovery", "focus", "other")
     }
 
+    private val appContext: Context = context.applicationContext
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val bridgeScope = CoroutineScope(Dispatchers.Main)
+    @Volatile private var lastNotificationAt = 0L
+    @Volatile private var lastStepSyncAt = 0L
 
-    init {
-        instance = this
-    }
+    // ---- caller check -------------------------------------------------------
 
-    /**
-     * Lets Next.js frontend know it is running inside the native Android wrapper.
-     */
-    @JavascriptInterface
-    fun isNativeApp(): Boolean {
-        return true
-    }
-
-    /**
-     * Synchronously returns today's cached step count without blocking on hardware sensors.
-     */
-    @JavascriptInterface
-    fun getTodaySteps(): Long {
-        return StepRepository.getCachedTodaySteps(context)
-    }
-
-    /**
-     * Returns JSON metadata describing the active hardware sensor.
-     */
-    @JavascriptInterface
-    fun getSensorInfo(): String {
-        val meta = StepSensorManager.getActiveSensorMetadata(context)
-        return if (meta != null) {
-            """{"name":"${meta.name}","vendor":"${meta.vendor}","version":${meta.version},"powerMa":${meta.powerMa},"type":"${meta.type}","isWakeUp":${meta.isWakeUp}}"""
-        } else {
-            """{"name":"Unavailable","vendor":"None","version":0,"powerMa":0,"type":"NONE","isWakeUp":false}"""
+    private fun <T> onMainThread(block: () -> T): T? {
+        if (Looper.myLooper() == Looper.getMainLooper()) return block()
+        val task = FutureTask<T>(Callable { block() })
+        mainHandler.post(task)
+        return try {
+            task.get(2, TimeUnit.SECONDS)
+        } catch (e: Exception) {
+            Log.w(TAG, "UI thread did not answer: ${e.message}")
+            null
         }
     }
 
-    /**
-     * Request an immediate hardware pedometer refresh and push the result to the UI.
-     */
-    @JavascriptInterface
-    fun requestStepSync() {
-        bridgeScope.launch(Dispatchers.IO) {
-            try {
-                val currentReading = StepSensorManager.readCurrentCount(context)
-                val todaySteps = if (currentReading != null) {
-                    StepRepository.processNewSensorReading(context, currentReading)
-                } else {
-                    StepRepository.getCachedTodaySteps(context)
-                }
-
-                pushStepCount(todaySteps)
-                StepSyncScheduler.syncNow(context)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error during requested step sync: ${e.localizedMessage}")
-            }
-        }
+    /** Origin of the page calling the bridge, if it is one of the app's own origins. */
+    private fun trustedOrigin(): String? {
+        val url = onMainThread { host.currentMainFrameUrl() }
+        val origin = AppConfig.normalizeOrigin(url)
+        return if (AppConfig.isAllowedOrigin(origin)) origin else null
     }
 
-    /**
-     * Stores the authenticated JWT session token for background WorkManager tasks.
-     */
-    @JavascriptInterface
-    fun setAuthToken(token: String?) {
-        if (!token.isNullOrBlank()) {
-            StepStore.setAuthToken(context, token)
-            Log.d(TAG, "Auth token synchronized with Android native store.")
-        }
+    private fun isTrustedCaller(): Boolean {
+        val trusted = trustedOrigin() != null
+        if (!trusted) Log.w(TAG, "Bridge call refused: page is not on the app origin")
+        return trusted
     }
 
-    /**
-     * Returns JSON metadata about the installed native app version from PackageManager.
-     */
+    private fun clampInt(obj: JSONObject, key: String, min: Int, max: Int): Int? {
+        if (!obj.has(key) || obj.isNull(key)) return null
+        val value = obj.optDouble(key, Double.NaN)
+        if (value.isNaN() || value.isInfinite()) return null
+        return value.toLong().coerceIn(min.toLong(), max.toLong()).toInt()
+    }
+
+    // ---- app ----------------------------------------------------------------
+
+    @JavascriptInterface
+    fun isNativeApp(): Boolean = isTrustedCaller()
+
     @JavascriptInterface
     fun getAppVersion(): String {
-        val updateMgr = com.fittracker.update.AppUpdateManager(context)
-        val vName = updateMgr.getInstalledVersionName()
-        val vCode = updateMgr.getInstalledVersionCode()
-        return """{"versionName":"$vName","versionCode":$vCode}"""
+        if (!isTrustedCaller()) return "{}"
+        val manager = AppUpdateManager(appContext)
+        return JSONObject()
+            .put("versionName", manager.getInstalledVersionName())
+            .put("versionCode", manager.getInstalledVersionCode())
+            .put("buildType", BuildConfig.BUILD_TYPE)
+            .toString()
     }
 
-    /**
-     * Manually triggers an OTA update check from JavaScript (e.g. Settings page).
-     */
     @JavascriptInterface
     fun checkForUpdate() {
-        mainHandler.post {
-            (context as? android.app.Activity)?.let { activity ->
-                com.fittracker.update.AppUpdateManager(context).checkForUpdates(activity, silent = false)
-            }
-        }
+        if (!isTrustedCaller()) return
+        mainHandler.post { host.checkForUpdate() }
     }
 
-    /**
-     * Updates the server base URL (useful when switching environments).
-     */
+    @JavascriptInterface
+    fun openExternalUrl(url: String?): Boolean {
+        if (!isTrustedCaller() || url.isNullOrBlank() || url.length > 2048) return false
+        return onMainThread { host.openExternal(url) } ?: false
+    }
+
+    @JavascriptInterface
+    fun saveFile(base64: String?, filename: String?, mimeType: String?): Boolean {
+        if (!isTrustedCaller()) return false
+        if (base64.isNullOrEmpty() || base64.length > MAX_FILE_BASE64_CHARS) {
+            val tooLarge = base64 != null && base64.length > MAX_FILE_BASE64_CHARS
+            mainHandler.post { host.reportSaveFailure(tooLarge) }
+            return false
+        }
+        val safeName = (filename ?: "").replace(Regex("[^A-Za-z0-9._\\- ]"), "_").trim().take(100)
+            .ifBlank { "fittracker-export" }
+        val safeMime = (mimeType ?: "").takeIf { Regex("^[a-z]+/[A-Za-z0-9.+\\-]{1,80}$").matches(it) }
+            ?: "application/octet-stream"
+        return onMainThread { host.saveFile(base64, safeName, safeMime) } ?: false
+    }
+
+    // ---- session ------------------------------------------------------------
+
+    /** {"timeZone":"Africa/Cairo"}: the signed-in user's zone. Also marks the session as active. */
+    @JavascriptInterface
+    fun setUserContext(json: String?) {
+        val origin = trustedOrigin() ?: return
+        if (json.isNullOrBlank() || json.length > MAX_JSON_CHARS) return
+        val zone = try {
+            JSONObject(json).optString("timeZone", "")
+        } catch (_: Exception) {
+            return
+        }
+        val previousZone = StepStore.getTimeZoneId(appContext)
+        if (!StepStore.setTimeZoneId(appContext, zone)) {
+            Log.w(TAG, "Ignoring unknown time zone")
+        }
+        StepStore.setServerUrl(appContext, origin)
+        UserData.onSignedIn(appContext)
+        if (previousZone != StepStore.getTimeZoneId(appContext)) StepRepository.refresh(appContext)
+    }
+
+    /** Validated origin only (kept for older web builds). */
     @JavascriptInterface
     fun setServerUrl(url: String?) {
-        if (!url.isNullOrBlank()) {
-            StepStore.setServerUrl(context, url)
-            Log.d(TAG, "Server base URL set to: $url")
-        }
+        val origin = trustedOrigin() ?: return
+        if (AppConfig.normalizeOrigin(url) == origin) StepStore.setServerUrl(appContext, origin)
     }
 
-    /**
-     * Updates widget telemetry from Next.js (steps, stepGoal, calories, water).
-     */
+    /** Logout: wipes steps, widget numbers, scheduled reminders and notifications. */
+    @JavascriptInterface
+    fun clearUserData() {
+        if (!isTrustedCaller()) return
+        UserData.clearAll(appContext)
+    }
+
+    // ---- steps --------------------------------------------------------------
+
+    @JavascriptInterface
+    fun getTodaySteps(): Long {
+        if (!isTrustedCaller()) return 0L
+        return StepRepository.getCachedTodaySteps(appContext)
+    }
+
+    @JavascriptInterface
+    fun getStepSnapshot(): String {
+        if (!isTrustedCaller()) return "{}"
+        val snapshot = StepRepository.snapshot(appContext)
+        return JSONObject()
+            .put("steps", snapshot.steps)
+            .put("date", snapshot.date)
+            .put("timeZone", snapshot.timeZoneId)
+            .put("lastReadingAt", snapshot.lastReadingAtMs)
+            .put("status", snapshot.status)
+            .toString()
+    }
+
+    @JavascriptInterface
+    fun getSensorInfo(): String {
+        if (!isTrustedCaller()) return "{}"
+        val meta = StepSensorManager.getMetadata(appContext)
+        val permission = when {
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q -> "not_required"
+            StepSensorManager.hasActivityPermission(appContext) -> "granted"
+            else -> "denied"
+        }
+        return JSONObject()
+            .put("name", meta?.name ?: "Unavailable")
+            .put("vendor", meta?.vendor ?: "")
+            .put("version", meta?.version ?: 0)
+            .put("powerMa", (meta?.powerMa ?: 0f).toDouble())
+            .put("type", if (meta != null) "STEP_COUNTER" else "NONE")
+            .put("isWakeUp", meta?.isWakeUp ?: false)
+            .put("supported", meta != null)
+            .put("permission", permission)
+            .toString()
+    }
+
+    @JavascriptInterface
+    fun requestStepSync() {
+        if (!isTrustedCaller()) return
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastStepSyncAt < 1000L) return
+        lastStepSyncAt = now
+        mainHandler.post { host.requestStepSync() }
+    }
+
+    // ---- widgets ------------------------------------------------------------
+
+    /** The dashboard's numbers for a day (server values). Unknown or out-of-range fields are ignored. */
     @JavascriptInterface
     fun updateWidgetData(json: String?) {
-        if (json.isNullOrBlank()) return
+        if (!isTrustedCaller()) return
+        if (json.isNullOrBlank() || json.length > MAX_JSON_CHARS) return
         try {
-            val obj = org.json.JSONObject(json)
-            val steps = if (obj.has("steps")) obj.getLong("steps") else null
-            val stepGoal = if (obj.has("stepGoal")) obj.getInt("stepGoal") else null
-            val caloriesIn = if (obj.has("caloriesIn")) obj.getInt("caloriesIn") else null
-            val targetCalories = if (obj.has("targetCalories")) obj.getInt("targetCalories") else null
-            val waterMl = if (obj.has("waterMl")) obj.getInt("waterMl") else null
-            val waterGoalMl = if (obj.has("waterGoalMl")) obj.getInt("waterGoalMl") else null
-            val streakDays = if (obj.has("streakDays")) obj.getInt("streakDays") else null
-            val longestStreak = if (obj.has("longestStreak")) obj.getInt("longestStreak") else null
-            val isLoggedToday = if (obj.has("isLoggedToday")) obj.getBoolean("isLoggedToday") else null
-
-            com.fittracker.widget.WidgetDataStore.updateAllMetrics(
-                context = context,
-                steps = steps,
-                stepGoal = stepGoal,
-                caloriesIn = caloriesIn,
-                targetCalories = targetCalories,
-                waterMl = waterMl,
-                waterGoalMl = waterGoalMl,
-                streakDays = streakDays,
-                longestStreak = longestStreak,
-                isLoggedToday = isLoggedToday
+            val obj = JSONObject(json)
+            val date = obj.optString("date", "").takeIf { DayMath.isValidDateString(it) }
+            WidgetDataStore.applyWebUpdate(
+                appContext,
+                WidgetDataStore.WebUpdate(
+                    date = date,
+                    serverSteps = clampInt(obj, "steps", 0, 200_000)?.toLong(),
+                    stepGoal = clampInt(obj, "stepGoal", 100, 200_000),
+                    caloriesIn = clampInt(obj, "caloriesIn", 0, 50_000),
+                    targetCalories = clampInt(obj, "targetCalories", 500, 20_000),
+                    waterMl = clampInt(obj, "waterMl", 0, 30_000),
+                    waterGoalMl = clampInt(obj, "waterGoalMl", 250, 30_000),
+                    streakDays = clampInt(obj, "streakDays", 0, 100_000)
+                )
             )
-            com.fittracker.widget.FitTrackerWidgetUpdater.updateAllWidgets(context)
-            Log.d(TAG, "Widget telemetry synced from web application (including streak).")
+            FitTrackerWidgetUpdater.updateAllWidgets(appContext)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse widget data JSON: ${e.localizedMessage}")
+            Log.w(TAG, "Ignoring invalid widget data: ${e.message}")
         }
     }
 
-    /**
-     * Checks whether the Android launcher supports one-click widget pinning (Android 8.0+ / API 26+).
-     */
     @JavascriptInterface
     fun isPinWidgetSupported(): Boolean {
-        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return false
-        val appWidgetManager = context.getSystemService(android.appwidget.AppWidgetManager::class.java) ?: return false
-        return appWidgetManager.isRequestPinAppWidgetSupported
+        if (!isTrustedCaller()) return false
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        val manager = appContext.getSystemService(AppWidgetManager::class.java) ?: return false
+        return manager.isRequestPinAppWidgetSupported
     }
 
-    /**
-     * Prompts the Android launcher to pin a selected widget to the home screen.
-     */
     @JavascriptInterface
     fun pinWidget(type: String?): Boolean {
-        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return false
-        val appWidgetManager = context.getSystemService(android.appwidget.AppWidgetManager::class.java) ?: return false
-        if (!appWidgetManager.isRequestPinAppWidgetSupported) return false
-
-        val providerClass = when (type?.lowercase()?.trim()) {
-            "small", "quick", "step_small" -> com.fittracker.widget.FitTrackerQuickWidget::class.java
-            "medium", "step", "activity" -> com.fittracker.widget.FitTrackerStepWidget::class.java
-            "large", "fitness", "overview" -> com.fittracker.widget.FitTrackerFitnessWidget::class.java
-            else -> com.fittracker.widget.FitTrackerFitnessWidget::class.java
+        if (!isTrustedCaller()) return false
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        val provider = when (type) {
+            "small" -> FitTrackerQuickWidget::class.java
+            "medium" -> FitTrackerStepWidget::class.java
+            "large" -> FitTrackerFitnessWidget::class.java
+            else -> return false
         }
-
-        val provider = android.content.ComponentName(context, providerClass)
+        val manager = appContext.getSystemService(AppWidgetManager::class.java) ?: return false
+        if (!manager.isRequestPinAppWidgetSupported) return false
         return try {
-            appWidgetManager.requestPinAppWidget(provider, null, null)
+            manager.requestPinAppWidget(ComponentName(appContext, provider), null, null)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to requestPinAppWidget for $type: ${e.localizedMessage}")
+            Log.e(TAG, "requestPinAppWidget failed: ${e.message}")
             false
         }
     }
 
+    // ---- notifications & reminders -----------------------------------------
 
-
-    /**
-     * Shows a heads-up system notification for a planner event.
-     */
     @JavascriptInterface
-    fun showNotification(
-        eventId: String,
-        title: String,
-        description: String,
-        category: String?
-    ) {
-        com.fittracker.notification.PlannerNotificationManager.showNotification(
-            context,
-            eventId,
-            title,
-            description,
-            category
-        )
+    fun showNotification(eventId: String?, title: String?, description: String?, category: String?) {
+        if (!isTrustedCaller()) return
+        val id = eventId?.takeIf { EVENT_ID_RE.matches(it) } ?: return
+        val cleanTitle = title?.trim()?.take(120)?.takeIf { it.isNotEmpty() } ?: return
+        val cleanDescription = (description ?: "").trim().take(300)
+        val cleanCategory = category?.takeIf { it in CATEGORIES } ?: "other"
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastNotificationAt < NOTIFICATION_MIN_INTERVAL_MS) return
+        lastNotificationAt = now
+        mainHandler.post {
+            host.requestNotificationPermissionIfNeeded()
+            PlannerNotificationManager.showNotification(appContext, id, cleanTitle, cleanDescription, cleanCategory)
+        }
     }
 
-    /**
-     * Pushes the latest step count to Next.js by dispatching DOM events and bridge callbacks.
-     */
-    fun pushStepCount(steps: Long) {
-        // Keep live widgets in sync
-        try {
-            com.fittracker.widget.WidgetDataStore.updateSteps(context, steps)
-            com.fittracker.widget.FitTrackerWidgetUpdater.updateAllWidgets(context)
-        } catch (_: Exception) {}
-
-        mainHandler.post {
-            try {
-                val js = """
-                    (function() {
-                        try {
-                            const stepCount = $steps;
-                            window.dispatchEvent(new CustomEvent('fit-tracker-steps-update', { 
-                                detail: { steps: stepCount, timestamp: Date.now() } 
-                            }));
-                            if (window.__fitBridge && typeof window.__fitBridge.onStepUpdate === 'function') {
-                                window.__fitBridge.onStepUpdate(stepCount);
-                            }
-                        } catch(e) {
-                            console.error('Failed to dispatch native step event:', e);
-                        }
-                    })();
-                """.trimIndent()
-                webView.evaluateJavascript(js, null)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to evaluate JS on WebView: ${e.localizedMessage}")
-            }
+    /** {"reminders":[...]} from GET /api/planner/upcoming. Replaces the schedule. */
+    @JavascriptInterface
+    fun setPlannerReminders(json: String?): String {
+        if (!isTrustedCaller()) return ReminderScheduler.status(appContext, 0, "Not allowed").toJson()
+        if (json.isNullOrBlank() || json.length > MAX_REMINDER_JSON_CHARS) {
+            return ReminderScheduler.status(appContext, 0, "Invalid reminder list").toJson()
         }
+        val reminders = try {
+            ReminderScheduler.parse(JSONObject(json).optJSONArray("reminders"))
+        } catch (_: Exception) {
+            return ReminderScheduler.status(appContext, 0, "Invalid reminder list").toJson()
+        }
+        val status = ReminderScheduler.replaceAll(appContext, reminders)
+        if (reminders.isNotEmpty() && !status.notificationsAllowed) {
+            mainHandler.post { host.requestNotificationPermissionIfNeeded() }
+        }
+        return status.toJson()
+    }
+
+    @JavascriptInterface
+    fun getReminderStatus(): String {
+        if (!isTrustedCaller()) return "{}"
+        return ReminderScheduler.status(appContext).toJson()
+    }
+
+    @JavascriptInterface
+    fun openNotificationSettings() {
+        if (!isTrustedCaller()) return
+        mainHandler.post { host.openNotificationSettings() }
+    }
+
+    @JavascriptInterface
+    fun openExactAlarmSettings() {
+        if (!isTrustedCaller()) return
+        mainHandler.post { host.openExactAlarmSettings() }
+    }
+
+    @JavascriptInterface
+    fun openAppSettings() {
+        if (!isTrustedCaller()) return
+        mainHandler.post { host.openAppSettings() }
     }
 }

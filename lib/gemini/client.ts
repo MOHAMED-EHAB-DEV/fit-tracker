@@ -1,23 +1,24 @@
-import { GoogleGenAI } from "@google/genai";
+import "server-only";
+import {
+  GoogleGenAI,
+  type ContentListUnion,
+  type GenerateContentConfig,
+  type GenerateContentResponse,
+} from "@google/genai";
+import { RATE_LIMITS, enforceRateLimit } from "@/lib/security/rate-limit";
+import { getUserGeminiKey } from "@/lib/users/profile";
+import {
+  MODEL_CHAINS,
+  modelCooldownMs,
+  modelsToTry,
+  shouldTryNextModel,
+  type AiTask,
+  type GeminiModelId,
+} from "@/lib/gemini/models";
 
 const apiKey = process.env.GEMINI_API_KEY;
 
 const genAI = new GoogleGenAI({ apiKey });
-
-/**
- * Primary Flash model for high-intelligence multi-domain coaching, meal analysis, and data analysis.
- */
-export const flashModel = "gemini-3.7-flash";
-
-/**
- * Fallback Flash model if 3.7 experiences high demand (503), quota limits, or execution failure.
- */
-export const fallbackFlashModel = "gemini-3.6-flash";
-
-/**
- * Ultra-fast lightweight model for rapid daily briefs and fast multi-log parsing.
- */
-export const flashLiteModel = "gemini-2.5-flash-lite";
 
 /**
  * AI Power Modes:
@@ -53,7 +54,9 @@ export function resolveMaxOutputTokens(
 ): number | undefined {
   const mode = overrideMode || AI_POWER_MODE;
   if (mode === "full") {
-    return undefined; // No limit
+    // "Full" is generous, never unlimited: an uncapped response is an
+    // uncapped bill.
+    return Math.min(16_384, Math.max(8_192, (defaultLimit || 2048) * 4));
   }
   if (mode === "low") {
     return defaultLimit
@@ -67,7 +70,8 @@ export function resolveMaxOutputTokens(
 export interface GeminiConfigOptions {
   systemInstruction?: string;
   responseMimeType?: string;
-  responseSchema?: any;
+  /** A JSON schema object as the Gemini API expects it. */
+  responseSchema?: unknown;
   maxOutputTokens?: number;
   powerMode?: AIPowerMode;
   temperature?: number;
@@ -88,7 +92,7 @@ export function createGeminiConfig(options: GeminiConfigOptions) {
 
   const resolvedTokens = resolveMaxOutputTokens(customLimit, powerMode);
 
-  const config: Record<string, any> = {};
+  const config: Record<string, unknown> = {};
 
   if (systemInstruction) config.systemInstruction = systemInstruction;
   if (responseMimeType) config.responseMimeType = responseMimeType;
@@ -100,84 +104,146 @@ export function createGeminiConfig(options: GeminiConfigOptions) {
 }
 
 /**
- * Resolves user/command model choice to supported Gemini model ID.
+ * Each AI route allows 60 seconds; the whole chain must finish inside that,
+ * with room left for the work before it (reading photos, loading context).
  */
-export function resolveGeminiModel(choice?: string): string {
-  if (!choice) return AI_POWER_MODE === "full" ? flashModel : flashLiteModel;
-  const lower = choice.toLowerCase().trim();
-  if (
-    lower.includes("3.7") ||
-    lower.includes("3.6") ||
-    lower === "flash-3.6" ||
-    (lower.includes("flash") && !lower.includes("lite"))
-  ) {
-    return flashModel;
+const TOTAL_BUDGET_MS = 45_000;
+const FIRST_ATTEMPT_TIMEOUT_MS = 30_000;
+const LATER_ATTEMPT_TIMEOUT_MS = 20_000;
+/** Not worth starting an attempt with less time than this left. */
+const MIN_ATTEMPT_MS = 5_000;
+
+/** An AI failure whose message was written for the user and may be shown as it is. */
+export class AiUserError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AiUserError";
   }
-  return flashLiteModel;
+}
+
+/** The provider refused the API key itself (invalid, expired, not allowed). */
+function isApiKeyError(error: unknown): boolean {
+  const err = error as { status?: number | string; message?: string } | null;
+  const message = String(err?.message || "").toLowerCase();
+  return (
+    message.includes("api key not valid") ||
+    message.includes("api_key_invalid") ||
+    message.includes("api key expired") ||
+    message.includes("api_key_expired") ||
+    message.includes("invalid api key") ||
+    (String(err?.status) === "403" && message.includes("permission"))
+  );
+}
+
+/** Models to skip for a while, per key: "server:gemini-4-argon" -> time the skip ends. */
+const modelCooldowns = new Map<string, number>();
+
+function isCoolingDown(keyId: string, model: GeminiModelId): boolean {
+  const cooldownKey = `${keyId}:${model}`;
+  const until = modelCooldowns.get(cooldownKey);
+  if (!until) return false;
+  if (until <= Date.now()) {
+    modelCooldowns.delete(cooldownKey);
+    return false;
+  }
+  return true;
 }
 
 /**
- * Executes generateContent with automatic failover/switch between models.
- * If the primary model fails (e.g. 503 high demand, rate limits, or error),
- * it seamlessly switches to the fallback model (gemini-3.6-flash).
+ * Runs generateContent for a user, with:
+ *  - per-user rate limits (per minute always; per day when the shared server
+ *    key is used), counted once per request, not once per model tried,
+ *  - the user's personal Gemini key when they saved one,
+ *  - a capped output size and a timeout on every call,
+ *  - the model chain for the task (see lib/gemini/models.ts): each model is
+ *    tried in order until one answers. Models the key cannot use are
+ *    remembered and skipped on later requests.
  */
 export async function generateContentWithFallback(options: {
-  contents: any[];
-  config?: any;
-  primaryModel?: string;
-  fallbackModel?: string;
+  /** The signed-in user the call is made for. */
+  userId: string;
+  /** What the request is for; decides which models are tried, in which order. */
+  task: AiTask;
+  /** Message parts in the Gemini SDK's format. */
+  contents: unknown;
+  config?: GenerateContentConfig | Record<string, unknown>;
+  /** Optional explicit key; by default the user's saved key (or the server key) is used. */
   apiKey?: string;
-}): Promise<{ text: string | undefined; modelUsed: string; response: any }> {
-  const primary = options.primaryModel || flashModel;
-  const fallback = options.fallbackModel || fallbackFlashModel;
-  const client = options.apiKey?.trim() ? new GoogleGenAI({ apiKey: options.apiKey.trim() }) : genAI;
+}): Promise<{ text: string | undefined; modelUsed: string; response: GenerateContentResponse }> {
+  const personalKey = options.apiKey?.trim() || (await getUserGeminiKey(options.userId)) || undefined;
 
-  try {
-    const response = await client.models.generateContent({
-      model: primary,
-      contents: options.contents,
-      config: options.config,
-    });
-    return {
-      text: response.text,
-      modelUsed: primary,
-      response,
-    };
-  } catch (primaryErr: any) {
-    console.warn(
-      `[Gemini Auto-Switch] Primary model (${primary}) failed (status: ${primaryErr?.status || primaryErr?.statusCode || "error"}). Switching to fallback model (${fallback})...`,
-      primaryErr?.message || primaryErr
-    );
-
-    try {
-      const fallbackResponse = await client.models.generateContent({
-        model: fallback,
-        contents: options.contents,
-        config: options.config,
-      });
-
-      return {
-        text: fallbackResponse.text,
-        modelUsed: fallback,
-        response: fallbackResponse,
-      };
-    } catch (fallbackErr: any) {
-      console.error(`[Gemini Auto-Switch] Fallback model (${fallback}) also failed:`, fallbackErr);
-      throw fallbackErr;
+  await enforceRateLimit(RATE_LIMITS.aiPerMinute, options.userId);
+  if (!personalKey) {
+    await enforceRateLimit(RATE_LIMITS.aiPerDay, options.userId);
+    if (!apiKey) {
+      throw new AiUserError("AI is not configured on this server. Add your own Gemini API key in Settings.");
     }
   }
+  const keyRejected = () =>
+    new AiUserError(
+      personalKey
+        ? "Your Gemini API key was rejected (invalid or expired). Check it in Settings, or remove it to use the shared key."
+        : "The AI service is not available right now. Please try again later, or add your own Gemini API key in Settings."
+    );
+
+  const client = personalKey ? new GoogleGenAI({ apiKey: personalKey }) : genAI;
+  const keyId = personalKey ? `user:${options.userId}` : "server";
+  const baseConfig: GenerateContentConfig = { ...((options.config as GenerateContentConfig) || {}) };
+  if (typeof baseConfig.maxOutputTokens !== "number") {
+    baseConfig.maxOutputTokens = resolveMaxOutputTokens(2048);
+  }
+
+  const models = modelsToTry(MODEL_CHAINS[options.task], (model) => isCoolingDown(keyId, model));
+  const deadline = Date.now() + TOTAL_BUDGET_MS;
+  let lastError: unknown = new Error("AI request timed out. Please try again.");
+
+  for (let index = 0; index < models.length; index += 1) {
+    const model = models[index];
+    const remaining = deadline - Date.now();
+    if (remaining < MIN_ATTEMPT_MS) break;
+    const timeoutMs = Math.min(index === 0 ? FIRST_ATTEMPT_TIMEOUT_MS : LATER_ATTEMPT_TIMEOUT_MS, remaining);
+    try {
+      const response = await client.models.generateContent({
+        model,
+        contents: options.contents as ContentListUnion,
+        config: { ...baseConfig, abortSignal: AbortSignal.timeout(timeoutMs) },
+      });
+      return { text: response.text, modelUsed: model, response };
+    } catch (err) {
+      if (isApiKeyError(err)) throw keyRejected();
+      lastError = err;
+      if (!shouldTryNextModel(err)) throw err;
+      const cooldown = modelCooldownMs(err);
+      if (cooldown > 0) modelCooldowns.set(`${keyId}:${model}`, Date.now() + cooldown);
+      const failure = err as { status?: number; name?: string };
+      const next = models[index + 1];
+      console.warn(
+        `[Gemini] ${model} failed for ${options.task} (status: ${failure?.status || failure?.name || "error"})` +
+          (next ? `; trying ${next}.` : "; no models left.")
+      );
+    }
+  }
+  throw lastError;
 }
 
 /**
  * Translates raw AI/Gemini errors and error codes into clean, user-friendly messages.
  * Prevents raw JSON objects (e.g. {"error": {"code": 429...}}) from leaking to the UI.
  */
-export function formatAiErrorMessage(err: any): string {
-  if (!err) return "Failed to communicate with AI service";
+export function formatAiErrorMessage(error: unknown): string {
+  if (!error) return "Failed to communicate with AI service";
+  if (error instanceof AiUserError) return error.message;
 
+  const err = error as {
+    status?: number | string;
+    code?: number | string;
+    statusCode?: number | string;
+    message?: string;
+    error?: { code?: number | string; status?: number | string };
+  };
   let code: number | string | undefined =
     err?.status || err?.code || err?.statusCode || err?.error?.code || err?.error?.status;
-  let rawMessage = err?.message || String(err);
+  let rawMessage: string = err?.message || String(error);
 
   // Check if rawMessage contains a JSON string
   try {
@@ -245,6 +311,7 @@ export function formatAiErrorMessage(err: any): string {
     strCode === "408" ||
     strCode.includes("DEADLINE_EXCEEDED") ||
     lowerMsg.includes("timeout") ||
+    lowerMsg.includes("timed out") ||
     lowerMsg.includes("deadline_exceeded")
   ) {
     return "AI request timed out. Please try again.";
@@ -259,12 +326,9 @@ export function formatAiErrorMessage(err: any): string {
     return "Network error communicating with AI service. Please check your internet connection.";
   }
 
-  // Ensure raw JSON is never returned
-  if (rawMessage.startsWith("{") || rawMessage.includes('{"error"')) {
-    return "AI service encountered an unexpected error. Please try again.";
-  }
-
-  return rawMessage;
+  // Anything else (a database error, a bug, provider internals) is never shown
+  // as it is: it can contain internal addresses or other details.
+  return "AI service encountered an unexpected error. Please try again.";
 }
 
 export default genAI;

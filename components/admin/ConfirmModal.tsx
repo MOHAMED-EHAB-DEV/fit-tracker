@@ -11,10 +11,14 @@ interface ConfirmModalProps {
   onClose: () => void;
   onConfirm: () => void;
   title: string;
-  message: string;
+  message: React.ReactNode;
   confirmLabel?: string;
   confirmVariant?: "danger" | "warning" | "primary";
   isLoading?: boolean;
+  /** Shown inside the dialog when the action failed, so the admin can retry or cancel. */
+  error?: string | null;
+  confirmDisabled?: boolean;
+  children?: React.ReactNode;
 }
 
 export function ConfirmModal({
@@ -26,6 +30,9 @@ export function ConfirmModal({
   confirmLabel = "Confirm",
   confirmVariant = "danger",
   isLoading = false,
+  error = null,
+  confirmDisabled = false,
+  children,
 }: ConfirmModalProps) {
   const variantConfig = {
     danger: {
@@ -71,6 +78,7 @@ export function ConfirmModal({
             size="md"
             onClick={onConfirm}
             isLoading={isLoading}
+            disabled={isLoading || confirmDisabled}
             className={current.btnClass}
           >
             {confirmLabel}
@@ -87,7 +95,15 @@ export function ConfirmModal({
         >
           <AlertTriangle className={cn("w-5 h-5", current.text)} />
         </div>
-        <p className="text-sm text-zinc-300 leading-relaxed pt-1.5">{message}</p>
+        <div className="text-sm text-zinc-300 leading-relaxed pt-1.5 space-y-3 min-w-0">
+          <div>{message}</div>
+          {children}
+          {error && (
+            <p role="alert" className="text-sm font-medium text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl p-3">
+              {error}
+            </p>
+          )}
+        </div>
       </div>
     </Modal>
   );

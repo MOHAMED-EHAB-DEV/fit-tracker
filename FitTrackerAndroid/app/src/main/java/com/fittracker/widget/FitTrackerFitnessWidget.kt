@@ -3,9 +3,8 @@ package com.fittracker.widget
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
-import android.content.Intent
-import com.fittracker.steps.StepRepository
 
+/** Daily fitness overview (4x3). Renders stored data only; it never claims a sync that did not happen. */
 class FitTrackerFitnessWidget : AppWidgetProvider() {
 
     override fun onUpdate(
@@ -14,22 +13,6 @@ class FitTrackerFitnessWidget : AppWidgetProvider() {
         appWidgetIds: IntArray
     ) {
         super.onUpdate(context, appWidgetManager, appWidgetIds)
-        val cachedSteps = StepRepository.getCachedTodaySteps(context)
-        WidgetDataStore.updateSteps(context, cachedSteps)
         FitTrackerWidgetUpdater.updateLargeWidgets(context, appWidgetManager, appWidgetIds)
-    }
-
-    override fun onReceive(context: Context, intent: Intent) {
-        super.onReceive(context, intent)
-
-        when (intent.action) {
-            Intent.ACTION_DATE_CHANGED,
-            Intent.ACTION_TIMEZONE_CHANGED,
-            Intent.ACTION_BOOT_COMPLETED -> {
-                val cachedSteps = StepRepository.getCachedTodaySteps(context)
-                WidgetDataStore.updateSteps(context, cachedSteps)
-                FitTrackerWidgetUpdater.updateAllWidgets(context)
-            }
-        }
     }
 }

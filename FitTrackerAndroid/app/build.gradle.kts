@@ -1,4 +1,6 @@
 import java.io.File
+import java.security.KeyStore
+import java.security.MessageDigest
 
 plugins {
     id("com.android.application")
@@ -61,6 +63,48 @@ fun getAppVersion(): Pair<Int, String> {
 
 val (appVersionCode, appVersionName) = getAppVersion()
 
+// ---------------------------------------------------------------------------
+// Release signing: the private release key is NEVER committed. It is read from
+// environment variables or Gradle properties (~/.gradle/gradle.properties or -P):
+//   ANDROID_KEYSTORE_PATH, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+// Building a release without them fails. See FitTrackerAndroid/RELEASE_SIGNING.md.
+// The committed keystore/debug.keystore is used by the debug build type only.
+// ---------------------------------------------------------------------------
+fun signingSecret(name: String): String? {
+    val fromProperty = (findProperty(name) as String?)?.trim()
+    if (!fromProperty.isNullOrEmpty()) return fromProperty
+    val fromEnv = System.getenv(name)?.trim()
+    return if (fromEnv.isNullOrEmpty()) null else fromEnv
+}
+
+val releaseKeystorePath = signingSecret("ANDROID_KEYSTORE_PATH")
+val releaseKeystorePassword = signingSecret("ANDROID_KEYSTORE_PASSWORD")
+val releaseKeyAlias = signingSecret("ANDROID_KEY_ALIAS")
+val releaseKeyPassword = signingSecret("ANDROID_KEY_PASSWORD")
+val releaseKeystoreFile = releaseKeystorePath?.let { file(it) }
+val isReleaseSigningConfigured = releaseKeystoreFile != null && releaseKeystoreFile.isFile &&
+    releaseKeystorePassword != null && releaseKeyAlias != null && releaseKeyPassword != null
+
+/** SHA-256 (lowercase hex) of the release certificate; pinned in BuildConfig for the updater. */
+fun releaseCertificateSha256(): String {
+    if (!isReleaseSigningConfigured) return ""
+    return try {
+        val keyStore = KeyStore.getInstance(releaseKeystoreFile!!, releaseKeystorePassword!!.toCharArray())
+        val certificate = keyStore.getCertificate(releaseKeyAlias) ?: return ""
+        MessageDigest.getInstance("SHA-256").digest(certificate.encoded)
+            .joinToString("") { "%02x".format(it) }
+    } catch (e: Exception) {
+        throw GradleException("FitTracker: could not read the release keystore: ${e.message}")
+    }
+}
+
+// Origin the WebView loads. Debug builds may point at a dev server with
+// -PfittrackerDevOrigin=http://10.0.2.2:3000 (http allowed for localhost-style hosts only).
+val productionOrigin = "https://fit-tracker-ai-prod.vercel.app"
+val debugOrigin = (findProperty("fittrackerDevOrigin") as String?)?.trim()?.removeSuffix("/")
+    ?.takeIf { Regex("^https?://[A-Za-z0-9.\\-]+(:\\d{1,5})?$").matches(it) }
+    ?: productionOrigin
+
 android {
     namespace = "com.fittracker"
     compileSdk = 34
@@ -85,20 +129,38 @@ android {
                 keyPassword = "android"
             }
         }
+        create("release") {
+            if (isReleaseSigningConfigured) {
+                storeFile = releaseKeystoreFile
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        }
     }
 
     buildTypes {
         release {
+            isDebuggable = false
             isMinifyEnabled = true
-            signingConfig = signingConfigs.getByName("debug")
+            isShrinkResources = true
+            signingConfig = if (isReleaseSigningConfigured) signingConfigs.getByName("release") else null
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            buildConfigField("String", "APP_ORIGIN", "\"$productionOrigin\"")
+            buildConfigField("String", "RELEASE_CERT_SHA256", "\"${releaseCertificateSha256()}\"")
         }
         debug {
+            isDebuggable = true
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("debug")
+            buildConfigField("String", "APP_ORIGIN", "\"$debugOrigin\"")
+            buildConfigField("String", "RELEASE_CERT_SHA256", "\"\"")
         }
     }
     buildFeatures {
@@ -110,6 +172,19 @@ android {
     }
     kotlinOptions {
         jvmTarget = "17"
+    }
+}
+
+// Fail loudly instead of producing an unsigned or debug-signed release.
+gradle.taskGraph.whenReady {
+    val releaseTaskNames = setOf("assembleRelease", "bundleRelease", "packageRelease", "packageReleaseBundle")
+    val buildsRelease = allTasks.any { it.project == project && it.name in releaseTaskNames }
+    if (buildsRelease && !isReleaseSigningConfigured) {
+        throw GradleException(
+            "FitTracker: release signing is not configured. Set ANDROID_KEYSTORE_PATH, " +
+                "ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD " +
+                "(see FitTrackerAndroid/RELEASE_SIGNING.md)."
+        )
     }
 }
 

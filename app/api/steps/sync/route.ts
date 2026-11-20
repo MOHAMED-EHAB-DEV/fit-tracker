@@ -1,114 +1,114 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "@/lib/auth/session";
+import { ok, route, badRequest } from "@/lib/api/route";
+import { RATE_LIMITS } from "@/lib/security/rate-limit";
 import { getDb } from "@/lib/db/mongoose";
 import DailyLog from "@/lib/db/models/DailyLog";
 import User from "@/lib/db/models/User";
+import { recomputeDay, stepsToCalories } from "@/lib/fitness/daily-log";
 import { getTodayDateString } from "@/lib/fitness/timezone";
+import { stepsDateError, stepsQuery, stepsSyncBody } from "@/lib/validation/steps";
 
-export async function GET(request: NextRequest) {
-  try {
-    const session = await getServerSession(request);
-    if (!session) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    }
+const DEFAULT_STEP_GOAL = 10_000;
 
-    const { searchParams } = new URL(request.url);
-    const dateStr = searchParams.get("date") || getTodayDateString();
-
-    await getDb();
-
-    const [user, log] = await Promise.all([
-      User.findById(session.userId).select("preferences fitnessProfile computed").lean(),
-      DailyLog.findOne({ userId: session.userId, dateString: dateStr }).lean(),
-    ]);
-
-    const stepGoal = (user as any)?.preferences?.stepGoal || 10000;
-    const steps = log?.steps || 0;
-    const stepCalories = log?.caloriesOut?.steps || Math.round(steps * 0.04);
-
-    return NextResponse.json({
-      success: true,
-      date: dateStr,
-      steps,
-      stepGoal,
-      stepCalories,
-      stepsSyncedAt: log?.stepsSyncedAt || null,
-      stepsSource: log?.stepsSource || "manual",
-    });
-  } catch (err: any) {
-    console.error("GET /api/steps/sync error:", err);
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
-  }
+interface StepsLogView {
+  steps?: number | null;
+  stepsSource?: string | null;
+  stepsSyncedAt?: Date | null;
+  caloriesOut?: { steps?: number | null; total?: number | null } | null;
 }
 
-export async function POST(request: NextRequest) {
-  try {
-    const session = await getServerSession(request);
-    if (!session) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    }
+/** Today's (or `?date=`) stored steps for the signed-in user. */
+export const GET = route({ query: stepsQuery }, async ({ session, query }) => {
+  const date = query.date ?? getTodayDateString(new Date(), session.timezone);
+  await getDb();
 
-    const body = await request.json();
-    const steps = Number(body.steps);
-    const source = body.source === "step_counter" ? "step_counter" : "manual";
-    const dateStr = body.dateString || getTodayDateString();
+  const [user, log] = await Promise.all([
+    User.findById(session.userId).select("preferences.stepGoal").lean(),
+    DailyLog.findOne({ userId: session.userId, dateString: date })
+      .select("steps stepsSource stepsSyncedAt caloriesOut")
+      .lean<StepsLogView | null>(),
+  ]);
 
-    if (isNaN(steps) || steps < 0) {
-      return NextResponse.json({ success: false, error: "Invalid steps value" }, { status: 400 });
-    }
+  const steps = log?.steps || 0;
+  return ok({
+    date,
+    steps,
+    stepGoal: user?.preferences?.stepGoal || DEFAULT_STEP_GOAL,
+    stepCalories: log?.caloriesOut?.steps ?? stepsToCalories(steps),
+    stepsSyncedAt: log?.stepsSyncedAt || null,
+    stepsSource: log?.stepsSource || null,
+  });
+});
+
+/**
+ * Stores a day's step total, then rebuilds that day's calorie totals from the
+ * stored value (so calories always match the steps actually kept).
+ * Sensor posts only raise the total; manual posts set it exactly.
+ */
+export const POST = route(
+  { body: stepsSyncBody, rateLimit: RATE_LIMITS.writePerMinute },
+  async ({ session, body }) => {
+    const today = getTodayDateString(new Date(), session.timezone);
+    const date = body.dateString ?? today;
+    const dateError = stepsDateError(date, today);
+    if (dateError) throw badRequest(dateError);
 
     await getDb();
-
-    const [user, existingLog] = await Promise.all([
-      User.findById(session.userId).lean(),
-      DailyLog.findOne({ userId: session.userId, dateString: dateStr }).lean(),
-    ]);
-
-    const bmr = (user as any)?.computed?.bmr || 1800;
-    const stepCalories = Math.round(steps * 0.04);
-    const workoutCalories = existingLog?.caloriesOut?.workouts || 0;
-    const totalCaloriesOut = bmr + workoutCalories + stepCalories;
-
-    const updateDoc: any = {
-      $set: {
-        stepsSyncedAt: new Date(),
-        stepsSource: source,
-        "caloriesOut.bmr": bmr,
-        "caloriesOut.steps": stepCalories,
-        "caloriesOut.workouts": workoutCalories,
-        "caloriesOut.total": totalCaloriesOut,
-      },
-      $setOnInsert: {
-        date: new Date(),
-        caloriesIn: 0,
-        macros: { protein: 0, carbs: 0, fat: 0, fiber: 0 },
-        waterMl: 0,
-        waterEntries: [],
-      },
+    const filter = { userId: session.userId, dateString: date };
+    const now = new Date();
+    const insertDefaults = {
+      date: new Date(`${date}T00:00:00.000Z`),
+      waterMl: 0,
+      waterEntries: [],
+      completedHabitIds: [],
     };
 
-    if (source === "manual") {
-      updateDoc.$set.steps = steps;
+    const upsert = async (update: Record<string, unknown>) => {
+      try {
+        await DailyLog.updateOne(filter, update, { upsert: true });
+      } catch (err) {
+        // Two first writes for the same day can race on the unique index: retry once.
+        if ((err as { code?: number })?.code !== 11000) throw err;
+        await DailyLog.updateOne(filter, update, { upsert: true });
+      }
+    };
+
+    if (body.source === "manual") {
+      await upsert({
+        $set: { steps: body.steps, stepsSource: "manual", stepsSyncedAt: now },
+        $setOnInsert: insertDefaults,
+      });
     } else {
-      updateDoc.$max = { steps: steps };
+      // Raise the stored value only when the reading is higher (atomic).
+      const raised = await DailyLog.updateOne(
+        { ...filter, $or: [{ steps: { $lt: body.steps } }, { steps: null }] },
+        { $set: { steps: body.steps, stepsSource: "step_counter", stepsSyncedAt: now } }
+      );
+      if (raised.matchedCount === 0) {
+        // No day yet, or it already has more. $max also covers two first posts
+        // for the same day racing: the higher reading always wins.
+        await upsert({
+          $max: { steps: body.steps },
+          $set: { stepsSyncedAt: now },
+          $setOnInsert: { ...insertDefaults, stepsSource: "step_counter" },
+        });
+      }
     }
 
-    const log = await DailyLog.findOneAndUpdate(
-      { userId: session.userId, dateString: dateStr },
-      updateDoc,
-      { upsert: true, new: true }
-    );
+    await recomputeDay(session.userId, date);
 
-    return NextResponse.json({
-      success: true,
-      updatedSteps: log.steps,
-      stepCalories,
-      totalCaloriesOut: log.caloriesOut?.total || totalCaloriesOut,
-      date: dateStr,
-      source,
+    const log = await DailyLog.findOne(filter)
+      .select("steps stepsSource caloriesOut")
+      .lean<StepsLogView | null>();
+    const steps = log?.steps || 0;
+
+    return ok({
+      date,
+      steps,
+      // Kept for older app builds that read this name.
+      updatedSteps: steps,
+      source: log?.stepsSource || body.source,
+      stepCalories: log?.caloriesOut?.steps ?? stepsToCalories(steps),
+      totalCaloriesOut: log?.caloriesOut?.total ?? 0,
     });
-  } catch (err: any) {
-    console.error("POST /api/steps/sync error:", err);
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
-}
+);

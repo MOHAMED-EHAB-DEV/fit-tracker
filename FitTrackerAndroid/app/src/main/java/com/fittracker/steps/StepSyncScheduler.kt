@@ -11,49 +11,55 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
 
+/**
+ * Uploads stored step totals. The workers never read the sensor (Android does
+ * not deliver step events to background apps); they upload what was read while
+ * the app was open or after a widget Sync.
+ */
 object StepSyncScheduler {
 
     private const val UNIQUE_PERIODIC_WORK_NAME = "fit_tracker_step_sync"
     private const val UNIQUE_ONE_TIME_WORK_NAME = "fit_tracker_step_sync_immediate"
 
-    /**
-     * Schedules low-power background step synchronization every 30 minutes.
-     * Respects Android battery saver and Doze constraints.
-     */
-    fun schedulePeriodicSync(context: Context) {
-        val constraints = Constraints.Builder()
+    private val networkConstraints: Constraints
+        get() = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
-            .setRequiresBatteryNotLow(true)
             .build()
 
-        val syncWorkRequest = PeriodicWorkRequestBuilder<StepSyncWorker>(
-            repeatInterval = 30, TimeUnit.MINUTES,
-            flexTimeInterval = 10, TimeUnit.MINUTES
+    fun schedulePeriodicSync(context: Context) {
+        val request = PeriodicWorkRequestBuilder<StepSyncWorker>(
+            1, TimeUnit.HOURS,
+            15, TimeUnit.MINUTES
         )
-            .setConstraints(constraints)
+            .setConstraints(networkConstraints)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 5, TimeUnit.MINUTES)
-            .addTag(UNIQUE_PERIODIC_WORK_NAME)
             .build()
 
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             UNIQUE_PERIODIC_WORK_NAME,
-            ExistingPeriodicWorkPolicy.KEEP,
-            syncWorkRequest
+            ExistingPeriodicWorkPolicy.UPDATE,
+            request
         )
     }
 
-    /**
-     * Triggers an immediate one-time sync (e.g., when the user opens the dashboard).
-     */
+    /** Uploads pending totals as soon as there is a network connection. */
     fun syncNow(context: Context) {
-        val syncWorkRequest = OneTimeWorkRequestBuilder<StepSyncWorker>()
-            .addTag(UNIQUE_ONE_TIME_WORK_NAME)
+        val request = OneTimeWorkRequestBuilder<StepSyncWorker>()
+            .setConstraints(networkConstraints)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
             .build()
 
+        // APPEND_OR_REPLACE: a sync requested while one runs is not lost.
         WorkManager.getInstance(context).enqueueUniqueWork(
             UNIQUE_ONE_TIME_WORK_NAME,
-            ExistingWorkPolicy.REPLACE,
-            syncWorkRequest
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            request
         )
+    }
+
+    fun cancelAll(context: Context) {
+        val workManager = WorkManager.getInstance(context)
+        workManager.cancelUniqueWork(UNIQUE_PERIODIC_WORK_NAME)
+        workManager.cancelUniqueWork(UNIQUE_ONE_TIME_WORK_NAME)
     }
 }

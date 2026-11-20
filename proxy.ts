@@ -1,38 +1,104 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyToken } from "@/lib/auth/jwt";
+import { signToken, verifyToken, SESSION_RENEW_AFTER_SECONDS } from "@/lib/auth/jwt";
+import { SESSION_COOKIE_NAME, setTokenCookie } from "@/lib/auth/cookies";
+
+/**
+ * Optimistic pre-filter only: it checks that a session cookie is present and
+ * correctly signed, and blocks cross-site writes. It never reads the database.
+ *
+ * The real authorization (account exists, not banned, session not revoked,
+ * admin role) happens in lib/auth/session.ts, which every page, Server
+ * Function and Route Handler calls itself.
+ */
+
+const PUBLIC_API_PREFIXES = ["/api/auth/"];
+/** Shown only to signed-out visitors (a signed-in one is sent to the app). */
+const AUTH_PAGES = ["/login", "/signup"];
+/** Open to everyone: a reset link must work even where another account is signed in. */
+const PUBLIC_PAGES = ["/forgot-password", "/reset-password"];
+
+function isCrossSiteWrite(request: NextRequest): boolean {
+  if (["GET", "HEAD", "OPTIONS"].includes(request.method)) return false;
+  const origin = request.headers.get("origin");
+  // Native clients (the Android background sync) send no Origin header.
+  if (!origin) return false;
+  try {
+    return new URL(origin).host !== request.nextUrl.host;
+  } catch {
+    return true;
+  }
+}
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const isApiRoute = pathname.startsWith("/api/");
+  const isApi = pathname.startsWith("/api/");
 
-  const token = request.cookies.get("token")?.value;
-
-  if (!token) {
-    if (isApiRoute) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
-    return NextResponse.redirect(new URL("/login", request.url));
+  if (isApi && isCrossSiteWrite(request)) {
+    return NextResponse.json({ success: false, error: "Cross-site request blocked" }, { status: 403 });
   }
 
-  const payload = await verifyToken(token);
-  if (!payload) {
-    if (isApiRoute) {
-      return NextResponse.json({ error: "invalid_token" }, { status: 401 });
+  if (PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+    return NextResponse.next();
+  }
+
+  if (PUBLIC_PAGES.includes(pathname)) {
+    return NextResponse.next();
+  }
+
+  const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  const payload = token ? await verifyToken(token) : null;
+
+  if (AUTH_PAGES.includes(pathname)) {
+    // Already signed in: skip the auth screens. (A revoked session is caught
+    // by the app layout, which clears it and sends the user back here.)
+    if (request.nextUrl.searchParams.has("expired")) {
+      // The app found this session revoked, banned or deleted: drop the cookie.
+      const cleared = NextResponse.next();
+      if (token) cleared.cookies.delete(SESSION_COOKIE_NAME);
+      return cleared;
     }
-    const response = NextResponse.redirect(new URL("/login", request.url));
-    response.cookies.delete("token");
+    if (payload) {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+    return NextResponse.next();
+  }
+
+  if (!payload) {
+    if (isApi) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+    const loginUrl = new URL("/login", request.url);
+    const response = NextResponse.redirect(loginUrl);
+    if (token) response.cookies.delete(SESSION_COOKIE_NAME);
     return response;
   }
 
-  // Forward userId to route handlers via header (avoids re-parsing JWT)
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.set("x-user-id", String(payload.userId));
+  const response = NextResponse.next();
 
-  return NextResponse.next({ request: { headers: requestHeaders } });
+  // Sliding session: re-issue tokens older than a week so active users are
+  // never logged out mid-use. The claims (including tokenVersion) are copied
+  // unchanged, so a revoked session stays revoked.
+  const issuedAt = typeof payload.iat === "number" ? payload.iat : 0;
+  const ageSeconds = Math.floor(Date.now() / 1000) - issuedAt;
+  if (issuedAt > 0 && ageSeconds > SESSION_RENEW_AFTER_SECONDS) {
+    const renewed = await signToken({
+      userId: payload.userId,
+      email: payload.email,
+      name: payload.name,
+      tokenVersion: payload.tokenVersion,
+    });
+    setTokenCookie(response, renewed);
+  }
+
+  return response;
 }
 
 export const config = {
-  // Protect all (app) pages, onboarding, admin panel, and all API routes except /api/auth/*
-  matcher: ["/(app)/:path*", "/onboarding", "/admin/:path*", "/api/((?!auth).*)"],
+  matcher: [
+    /*
+     * Everything except Next.js internals, the image proxy (public, hardened
+     * separately) and static files.
+     */
+    "/((?!_next/static|_next/image|fit-tracker/images|favicon.ico|manifest.json|sw.js|icons/|offline.html|.*\\.(?:png|jpg|jpeg|webp|svg|ico|txt|xml|webmanifest)$).*)",
+  ],
 };
-

@@ -31,9 +31,9 @@ export function StatsCard({
       )}
     >
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">{label}</p>
+        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">{label}</p>
         <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center", bgColor)}>
-          <Icon className={cn("w-5 h-5", iconColor)} />
+          <Icon className={cn("w-5 h-5", iconColor)} aria-hidden="true" />
         </div>
       </div>
 
@@ -45,10 +45,10 @@ export function StatsCard({
           <p
             className={cn(
               "text-xs font-medium mt-1",
-              deltaPositive ? "text-emerald-400" : "text-red-400"
+              deltaPositive ? "text-zinc-300" : "text-red-400"
             )}
           >
-            {deltaPositive ? "+" : ""}{delta}
+            {delta}
           </p>
         )}
       </div>

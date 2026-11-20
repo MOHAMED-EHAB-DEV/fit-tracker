@@ -1,12 +1,14 @@
 import React from "react";
 import { Metadata } from "next";
+import { requireAdminPage } from "@/lib/auth/admin";
 import { AdminNutritionClient } from "@/components/admin/AdminNutritionClient";
 
 export const metadata: Metadata = {
-  title: "Nutrition Plans — Control Panel",
-  description: "Create and assign public and custom nutrition & macro plans to athletes and users.",
+  title: "Nutrition plans",
+  description: "Create nutrition plans and assign them to users.",
 };
 
-export default function AdminNutritionPage() {
+export default async function AdminNutritionPage() {
+  await requireAdminPage();
   return <AdminNutritionClient />;
 }

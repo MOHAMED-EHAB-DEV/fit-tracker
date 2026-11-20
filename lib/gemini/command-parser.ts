@@ -1,264 +1,213 @@
+export type CoachDataType = "meals" | "workouts" | "bodycomp" | "progress" | "all" | "today";
+
 export interface ParsedCoachCommand {
   isCommand: boolean;
   commandName?: string;
-  dataType?: "meals" | "workouts" | "bodycomp" | "progress" | "all" | "today";
+  dataType?: CoachDataType;
   days?: number;
-  modelOverride?: string;
   userPrompt: string;
   originalMessage: string;
   coachingFocus?: string;
 }
 
+export const MIN_DAYS = 1;
+export const MAX_DAYS = 90;
+
+export function clampDays(value: number | undefined, fallback: number): number {
+  if (value === undefined || !Number.isFinite(value)) return fallback;
+  return Math.min(MAX_DAYS, Math.max(MIN_DAYS, Math.round(value)));
+}
+
+/** A data-type keyword, or null when the word is not one. */
+export function matchDataType(word: string): CoachDataType | null {
+  const lower = word.toLowerCase();
+  if (!lower) return null;
+  if (/^(meals?|nutrition|diet|food|macros)$/.test(lower)) return "meals";
+  if (/^(workouts?|training|gym|lifts?|lifting)$/.test(lower)) return "workouts";
+  if (/^(bodycomp|body|comp|weight|physique)$/.test(lower)) return "bodycomp";
+  if (/^(progress|trends?)$/.test(lower)) return "progress";
+  if (/^(today|live|now)$/.test(lower)) return "today";
+  if (/^(all|everything)$/.test(lower)) return "all";
+  return null;
+}
+
+export function defaultDaysForType(dataType: CoachDataType): number {
+  switch (dataType) {
+    case "today":
+      return 1;
+    case "workouts":
+      return 14;
+    case "bodycomp":
+      return 60;
+    default:
+      return 30;
+  }
+}
+
+const DAYS_TOKEN = /^(\d{1,4})(?:d|days?)?$/i;
+
+/** Reads an optional leading "30", "30d" or "30 days" from words; returns the rest. */
+function takeDays(words: string[]): { days?: number; rest: string[] } {
+  if (words.length === 0) return { rest: words };
+  const match = DAYS_TOKEN.exec(words[0]);
+  if (!match) return { rest: words };
+  const rest = words.slice(1);
+  if (/^\d+$/.test(words[0]) && rest[0] && /^days?$/i.test(rest[0])) rest.shift();
+  return { days: Number(match[1]), rest };
+}
+
+interface Shortcut {
+  dataType: CoachDataType;
+  days?: number;
+  name?: string;
+  focus?: string;
+  prompt: (days: number) => string;
+}
+
+const SHORTCUTS: Record<string, Shortcut> = {
+  meals: { dataType: "meals", prompt: (d) => `Review my last ${d} days of meals, macro adherence and calorie consistency.` },
+  nutrition: { dataType: "meals", prompt: (d) => `Review my last ${d} days of meals, macro adherence and calorie consistency.` },
+  diet: { dataType: "meals", prompt: (d) => `Review my last ${d} days of meals, macro adherence and calorie consistency.` },
+  workouts: { dataType: "workouts", prompt: (d) => `Analyze my last ${d} days of workouts, muscle group volume and intensity.` },
+  training: { dataType: "workouts", prompt: (d) => `Analyze my last ${d} days of workouts, muscle group volume and intensity.` },
+  gym: { dataType: "workouts", prompt: (d) => `Analyze my last ${d} days of workouts, muscle group volume and intensity.` },
+  bodycomp: { dataType: "bodycomp", prompt: (d) => `Evaluate my weight trend and check-ins over the last ${d} days.` },
+  weight: { dataType: "bodycomp", prompt: (d) => `Evaluate my weight trend and check-ins over the last ${d} days.` },
+  physique: { dataType: "bodycomp", prompt: (d) => `Evaluate my weight trend and check-ins over the last ${d} days.` },
+  progress: { dataType: "all", prompt: (d) => `Give me a complete review of my nutrition, training and body weight over the last ${d} days.` },
+  report: { dataType: "all", prompt: (d) => `Give me a complete review of my nutrition, training and body weight over the last ${d} days.` },
+  all: { dataType: "all", prompt: (d) => `Give me a complete review of my nutrition, training and body weight over the last ${d} days.` },
+  summary: { dataType: "today", days: 1, prompt: () => "Give me a status of today's calories, remaining macros, water, steps and workouts." },
+  today: { dataType: "today", days: 1, prompt: () => "Give me a status of today's calories, remaining macros, water, steps and workouts." },
+  plateau: {
+    dataType: "all",
+    days: 30,
+    name: "/plateau",
+    focus: "plateau_diagnosis",
+    prompt: () => "Diagnose why my progress or strength is stalling and suggest nutrition and training adjustments.",
+  },
+  macros: {
+    dataType: "meals",
+    name: "/macros",
+    focus: "macro_partitioning",
+    prompt: (d) => `Break down my protein distribution, meal timing and macro ratios over the last ${d} days.`,
+  },
+  volume: {
+    dataType: "workouts",
+    name: "/volume",
+    focus: "hypertrophy_volume",
+    prompt: () => "Calculate my weekly working sets per muscle group and compare them with hypertrophy volume landmarks (MEV/MAV/MRV).",
+  },
+  prs: {
+    dataType: "workouts",
+    days: undefined,
+    name: "/prs",
+    focus: "strength_progression",
+    prompt: (d) => `Analyze my personal records and strength progression over the last ${d} days.`,
+  },
+  recalc: {
+    dataType: "all",
+    days: 30,
+    name: "/recalc",
+    focus: "target_recalculation",
+    prompt: () => "Based on my actual rate of weight change and intake, recalculate my calorie and protein targets.",
+  },
+};
+
+const SHORTCUT_ALIASES: Record<string, string> = {
+  "analyze:plateau": "plateau",
+  "analyze:macros": "macros",
+  "analyze:volume": "volume",
+  "analyze:prs": "prs",
+  "plan:recalc": "recalc",
+};
+
 /**
- * Parses user chat text to detect slash commands, data extraction intents, day ranges, model overrides, and user prompt.
+ * Parses a coach message: slash commands, "/data" requests and day ranges.
+ * Never builds a RegExp from user text. The server chooses the AI model: a
+ * "/model:x" or "--model=x" token is dropped from the text and has no effect.
  */
-export function parseCoachCommand(text: string, defaultModel?: string): ParsedCoachCommand {
+export function parseCoachCommand(text: string): ParsedCoachCommand {
   const trimmed = text.trim();
   let cleanText = trimmed;
-  let modelOverride = defaultModel;
-
-  // 1. Check for inline model flags like /model:pro, /model:flash, --model=pro, etc.
-  const modelMatch = cleanText.match(/\/(model|engine):([a-zA-Z0-9._-]+)/i) ||
-    cleanText.match(/--model=([a-zA-Z0-9._-]+)/i);
+  const modelMatch = /(?:^|\s)(?:\/(?:model|engine):|--model=)([a-zA-Z0-9._-]{1,40})/i.exec(cleanText);
   if (modelMatch) {
-    modelOverride = modelMatch[2] || modelMatch[1];
-    cleanText = cleanText.replace(modelMatch[0], "").trim();
+    cleanText = (cleanText.slice(0, modelMatch.index) + cleanText.slice(modelMatch.index + modelMatch[0].length)).trim();
   }
 
-  // 2. Check for slash commands
-  const slashMatch = cleanText.match(/^\/([a-zA-Z0-9_:-]+)(\s+.*)?$/i);
+  const slashMatch = /^\/([a-zA-Z0-9_:-]{1,40})(?:\s+([\s\S]*))?$/.exec(cleanText);
 
   if (!slashMatch) {
-    // Check if message is a general data request or contains inline /data:...
-    const inlineDataMatch = cleanText.match(/\/data:?([a-zA-Z0-9_-]+)?(\s+(\d+)d?)?/i);
-    if (inlineDataMatch) {
-      const sub = (inlineDataMatch[1] || "all").toLowerCase();
-      const numDays = inlineDataMatch[3] ? parseInt(inlineDataMatch[3], 10) : undefined;
-      const promptWithoutCmd = cleanText.replace(inlineDataMatch[0], "").trim();
-
-      const dataType = resolveDataType(sub);
+    const inline = /(?:^|\s)\/data(?::([a-zA-Z]{1,20}))?(?:\s+(\d{1,4})d?\b)?/i.exec(cleanText);
+    if (inline) {
+      const dataType = (inline[1] && matchDataType(inline[1])) || "all";
+      const days = clampDays(inline[2] ? Number(inline[2]) : undefined, defaultDaysForType(dataType));
+      const prompt = (cleanText.slice(0, inline.index) + cleanText.slice(inline.index + inline[0].length)).trim();
       return {
         isCommand: true,
-        commandName: `/data:${sub}`,
+        commandName: `/data:${dataType}`,
         dataType,
-        days: numDays || defaultDaysForType(dataType),
-        modelOverride,
-        userPrompt: promptWithoutCmd || `Analyze my ${dataType} data for the past ${numDays || defaultDaysForType(dataType)} days.`,
+        days,
+        userPrompt: prompt || `Analyze my ${dataType} data for the last ${days} days.`,
         originalMessage: text,
       };
     }
-
-    return {
-      isCommand: false,
-      modelOverride,
-      userPrompt: trimmed,
-      originalMessage: text,
-    };
+    return { isCommand: false, userPrompt: cleanText, originalMessage: text };
   }
 
   const rawCmd = slashMatch[1].toLowerCase();
-  const rest = (slashMatch[2] || "").trim();
+  let words = (slashMatch[2] || "").trim().split(/\s+/).filter(Boolean);
 
-  // Extract optional day number from the start of rest (e.g. "30d", "14", "60 days")
-  let days: number | undefined = undefined;
-  let promptText = rest;
+  let { days, rest } = takeDays(words);
+  words = rest;
 
-  const daysMatch = rest.match(/^(\d+)(d|days)?\s*(.*)$/i);
-  if (daysMatch) {
-    days = parseInt(daysMatch[1], 10);
-    promptText = (daysMatch[3] || "").trim();
-  }
-
-  // Handle Command Routes
-  if (rawCmd.startsWith("data:") || rawCmd === "data") {
-    const sub = rawCmd.includes(":") ? rawCmd.split(":")[1] : (promptText.split(" ")[0] || "all");
-    if (!rawCmd.includes(":") && promptText.startsWith(sub)) {
-      promptText = promptText.replace(new RegExp(`^${sub}\\s*`, "i"), "").trim();
-      const secondDaysMatch = promptText.match(/^(\d+)(d|days)?\s*(.*)$/i);
-      if (secondDaysMatch) {
-        days = parseInt(secondDaysMatch[1], 10);
-        promptText = (secondDaysMatch[3] || "").trim();
+  if (rawCmd === "data" || rawCmd.startsWith("data:")) {
+    let dataType: CoachDataType = "all";
+    if (rawCmd.includes(":")) {
+      dataType = matchDataType(rawCmd.split(":")[1] || "") || "all";
+    } else if (words.length > 0) {
+      const keyword = matchDataType(words[0]);
+      if (keyword) {
+        dataType = keyword;
+        words = words.slice(1);
+        if (days === undefined) {
+          ({ days, rest } = takeDays(words));
+          words = rest;
+        }
       }
     }
-
-    const dataType = resolveDataType(sub);
-    const resolvedDays = days || defaultDaysForType(dataType);
-
+    const resolvedDays = clampDays(days, defaultDaysForType(dataType));
     return {
       isCommand: true,
-      commandName: `/data:${sub}`,
+      commandName: `/data:${dataType}`,
       dataType,
       days: resolvedDays,
-      modelOverride,
-      userPrompt: promptText || `Analyze my ${dataType} data for the last ${resolvedDays} days and provide actionable insights.`,
+      userPrompt: words.join(" ") || `Analyze my ${dataType} data for the last ${resolvedDays} days and give me actionable insights.`,
       originalMessage: text,
     };
   }
 
-  // Specialized shortcuts
-  if (rawCmd === "meals" || rawCmd === "nutrition" || rawCmd === "diet") {
-    const resolvedDays = days || 30;
+  const shortcut = SHORTCUTS[SHORTCUT_ALIASES[rawCmd] || rawCmd];
+  if (shortcut) {
+    const resolvedDays = shortcut.days ?? clampDays(days, defaultDaysForType(shortcut.dataType));
     return {
       isCommand: true,
-      commandName: `/${rawCmd}`,
-      dataType: "meals",
+      commandName: shortcut.name || `/${rawCmd}`,
+      dataType: shortcut.dataType,
       days: resolvedDays,
-      modelOverride,
-      userPrompt: promptText || `Review my last ${resolvedDays} days of meals, macro adherence, and calorie consistency.`,
+      coachingFocus: shortcut.focus,
+      userPrompt: words.join(" ") || shortcut.prompt(resolvedDays),
       originalMessage: text,
     };
   }
 
-  if (rawCmd === "workouts" || rawCmd === "training" || rawCmd === "gym") {
-    const resolvedDays = days || 14;
-    return {
-      isCommand: true,
-      commandName: `/${rawCmd}`,
-      dataType: "workouts",
-      days: resolvedDays,
-      modelOverride,
-      userPrompt: promptText || `Analyze my last ${resolvedDays} days of workout sessions, muscle group volume, and intensity.`,
-      originalMessage: text,
-    };
-  }
-
-  if (rawCmd === "bodycomp" || rawCmd === "weight" || rawCmd === "physique") {
-    const resolvedDays = days || 60;
-    return {
-      isCommand: true,
-      commandName: `/${rawCmd}`,
-      dataType: "bodycomp",
-      days: resolvedDays,
-      modelOverride,
-      userPrompt: promptText || `Evaluate my body composition, weight trend, and progress check-ins over the last ${resolvedDays} days.`,
-      originalMessage: text,
-    };
-  }
-
-  if (rawCmd === "progress" || rawCmd === "report" || rawCmd === "all") {
-    const resolvedDays = days || 30;
-    return {
-      isCommand: true,
-      commandName: `/${rawCmd}`,
-      dataType: "all",
-      days: resolvedDays,
-      modelOverride,
-      userPrompt: promptText || `Provide a holistic 360-degree review of my nutrition, workouts, and body composition over the last ${resolvedDays} days.`,
-      originalMessage: text,
-    };
-  }
-
-  if (rawCmd === "summary" || rawCmd === "today") {
-    return {
-      isCommand: true,
-      commandName: `/${rawCmd}`,
-      dataType: "today",
-      days: 1,
-      modelOverride,
-      userPrompt: promptText || "Give me a live status breakdown of today's calories, remaining macros, water, and workouts.",
-      originalMessage: text,
-    };
-  }
-
-  // Analytical coaching commands
-  if (rawCmd === "plateau" || rawCmd === "analyze:plateau") {
-    return {
-      isCommand: true,
-      commandName: "/plateau",
-      dataType: "all",
-      days: 30,
-      modelOverride,
-      coachingFocus: "plateau_diagnosis",
-      userPrompt: promptText || "Diagnose why my progress or strength is plateauing and provide corrective nutrition and volume adjustments.",
-      originalMessage: text,
-    };
-  }
-
-  if (rawCmd === "macros" || rawCmd === "analyze:macros") {
-    const resolvedDays = days || 14;
-    return {
-      isCommand: true,
-      commandName: "/macros",
-      dataType: "meals",
-      days: resolvedDays,
-      modelOverride,
-      coachingFocus: "macro_partitioning",
-      userPrompt: promptText || `Perform a deep breakdown of my protein distribution, meal timing, and macro ratios over the last ${resolvedDays} days.`,
-      originalMessage: text,
-    };
-  }
-
-  if (rawCmd === "volume" || rawCmd === "analyze:volume") {
-    const resolvedDays = days || 14;
-    return {
-      isCommand: true,
-      commandName: "/volume",
-      dataType: "workouts",
-      days: resolvedDays,
-      modelOverride,
-      coachingFocus: "hypertrophy_volume",
-      userPrompt: promptText || `Calculate my weekly direct sets per muscle group and compare against optimal hypertrophy volume landmarks (MEV/MAV/MRV).`,
-      originalMessage: text,
-    };
-  }
-
-  if (rawCmd === "prs" || rawCmd === "analyze:prs") {
-    const resolvedDays = days || 30;
-    return {
-      isCommand: true,
-      commandName: "/prs",
-      dataType: "workouts",
-      days: resolvedDays,
-      modelOverride,
-      coachingFocus: "strength_progression",
-      userPrompt: promptText || `Analyze my personal records and strength progression on compound exercises over the last ${resolvedDays} days.`,
-      originalMessage: text,
-    };
-  }
-
-  if (rawCmd === "recalc" || rawCmd === "plan:recalc") {
-    return {
-      isCommand: true,
-      commandName: "/recalc",
-      dataType: "all",
-      days: 30,
-      modelOverride,
-      coachingFocus: "target_recalculation",
-      userPrompt: promptText || "Based on my actual 30-day rate of weight change and intake, recalculate my optimal calorie and protein targets.",
-      originalMessage: text,
-    };
-  }
-
-  // Fallback for unknown slash command
+  // Unknown slash command: treat the text as a question with the full context.
   return {
     isCommand: true,
     commandName: `/${rawCmd}`,
     dataType: "all",
-    days: 30,
-    modelOverride,
-    userPrompt: cleanText,
+    days: clampDays(days, 30),
+    userPrompt: words.join(" ") || cleanText,
     originalMessage: text,
   };
-}
-
-function resolveDataType(sub: string): "meals" | "workouts" | "bodycomp" | "progress" | "all" | "today" {
-  const lower = sub.toLowerCase();
-  if (lower.includes("meal") || lower.includes("nutri") || lower.includes("diet") || lower.includes("food")) return "meals";
-  if (lower.includes("workout") || lower.includes("train") || lower.includes("gym") || lower.includes("lift")) return "workouts";
-  if (lower.includes("body") || lower.includes("comp") || lower.includes("weight") || lower.includes("physique")) return "bodycomp";
-  if (lower.includes("prog") || lower.includes("trend")) return "progress";
-  if (lower.includes("today") || lower.includes("live") || lower.includes("now")) return "today";
-  return "all";
-}
-
-function defaultDaysForType(dataType: "meals" | "workouts" | "bodycomp" | "progress" | "all" | "today"): number {
-  switch (dataType) {
-    case "today": return 1;
-    case "workouts": return 14;
-    case "bodycomp": return 60;
-    case "meals": return 30;
-    case "progress": return 30;
-    case "all": return 30;
-    default: return 30;
-  }
 }

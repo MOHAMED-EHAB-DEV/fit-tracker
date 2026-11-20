@@ -1,303 +1,312 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Plus, Sparkles, CalendarClock, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Plus, Sparkles, CalendarClock, Loader2, AlertCircle, RotateCw } from "lucide-react";
 import PlannerDayPicker from "./PlannerDayPicker";
 import PlannerTimeline from "./PlannerTimeline";
-import EventDrawer from "./EventDrawer";
+import EventDrawer, { DeleteMode } from "./EventDrawer";
 import AddEventModal from "./AddEventModal";
 import AIPlannerModal from "./AIPlannerModal";
-import { PlannedEventItem, HabitOption, EventCategory, sortEventsByPlannerTime } from "./types";
+import { useToday } from "./useToday";
+import {
+  EventFormValues,
+  HabitOption,
+  PlannedEventItem,
+  readApiResponse,
+  sortEventsByPlannerTime,
+} from "./types";
+import type { AiPlanEvent } from "@/lib/planner/ai-plan";
 import { useToast } from "@/components/ui/Toast";
 import { Button } from "@/components/ui/Button";
+import { syncPlannerReminders } from "@/services/planner-reminders";
 
 interface PlannerPageProps {
   initialDate: string;
   initialEvents: PlannedEventItem[];
   availableHabits: HabitOption[];
+  timeZone: string;
 }
 
-export default function PlannerPage({
-  initialDate,
-  initialEvents,
-  availableHabits,
-}: PlannerPageProps) {
+type LoadState = { status: "ready" } | { status: "loading" } | { status: "error"; message: string };
+
+function afterPlannerChange() {
+  syncPlannerReminders().catch(() => undefined);
+}
+
+export default function PlannerPage({ initialDate, initialEvents, availableHabits, timeZone }: PlannerPageProps) {
   const { toast } = useToast();
+  const { today, time: nowTime } = useToday(timeZone, initialDate);
 
-  const [selectedDate, setSelectedDate] = useState<string>(initialDate);
+  const [selectedDate, setSelectedDate] = useState(initialDate);
   const [events, setEvents] = useState<PlannedEventItem[]>(initialEvents);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [loadState, setLoadState] = useState<LoadState>({ status: "ready" });
+  const [togglingIds, setTogglingIds] = useState<ReadonlySet<string>>(new Set());
 
-  // Drawer & Modals state
-  const [selectedEvent, setSelectedEvent] = useState<PlannedEventItem | null>(null);
-  const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
-  const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
-  const [isAIModalOpen, setIsAIModalOpen] = useState<boolean>(false);
+  const [drawerEventId, setDrawerEventId] = useState<string | null>(null);
+  const [drawerSnapshot, setDrawerSnapshot] = useState<PlannedEventItem | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isAIModalOpen, setIsAIModalOpen] = useState(false);
+  const [aiModalKey, setAiModalKey] = useState(0);
 
-  // Fetch events when selectedDate changes (after initial mount)
-  const fetchEventsForDate = useCallback(
-    async (dateStr: string) => {
-      setIsLoading(true);
-      try {
-        const res = await fetch(`/api/planner?date=${dateStr}`);
-        const data = await res.json();
-        if (data.success) {
-          setEvents(data.events || []);
-        } else {
-          toast(data.error || "Failed to load events", "error");
-        }
-      } catch (err: any) {
-        toast(err.message || "Failed to load day events", "error");
-      } finally {
-        setIsLoading(false);
+  const selectedDateRef = useRef(selectedDate);
+  // Counts day loads; a response from an older load is ignored (requests are never aborted).
+  const loadSeqRef = useRef(0);
+  const togglingRef = useRef(new Set<string>());
+  const lastTodayRef = useRef(initialDate);
+
+  // The drawer follows the live list; the snapshot keeps it filled while it animates closed.
+  const drawerEvent = events.find((event) => event._id === drawerEventId) || drawerSnapshot;
+
+  const loadDate = useCallback(async (date: string) => {
+    const seq = ++loadSeqRef.current;
+    selectedDateRef.current = date;
+    setSelectedDate(date);
+    setLoadState({ status: "loading" });
+    setIsDrawerOpen(false);
+
+    try {
+      const res = await fetch(`/api/planner?date=${encodeURIComponent(date)}`);
+      const result = await readApiResponse<{ events: PlannedEventItem[] }>(res);
+      if (loadSeqRef.current !== seq || selectedDateRef.current !== date) return;
+      if (result.ok) {
+        setEvents(result.data.events);
+        setLoadState({ status: "ready" });
+      } else {
+        setEvents([]);
+        setLoadState({ status: "error", message: result.error });
       }
+    } catch {
+      if (loadSeqRef.current !== seq || selectedDateRef.current !== date) return;
+      setEvents([]);
+      setLoadState({ status: "error", message: "Could not load this day. Check your connection and try again." });
+    }
+  }, []);
+
+  // Leaving the page invalidates any load still in flight.
+  useEffect(
+    () => () => {
+      loadSeqRef.current += 1;
     },
-    [toast]
+    []
   );
 
-  const handleDateChange = (newDate: string) => {
-    setSelectedDate(newDate);
-    fetchEventsForDate(newDate);
+  // After midnight, move a planner that was showing "today" on to the new day.
+  useEffect(() => {
+    const previous = lastTodayRef.current;
+    if (today === previous) return;
+    lastTodayRef.current = today;
+    if (selectedDateRef.current === previous) void loadDate(today);
+  }, [today, loadDate]);
+
+  const replaceEvent = (updated: PlannedEventItem, date: string) => {
+    if (selectedDateRef.current !== date) return;
+    setEvents((prev) => sortEventsByPlannerTime(prev.map((event) => (event._id === updated._id ? updated : event))));
   };
 
-  // Toggle completion with optimistic UI
+  const setToggling = (id: string, on: boolean) => {
+    if (on) togglingRef.current.add(id);
+    else togglingRef.current.delete(id);
+    setTogglingIds(new Set(togglingRef.current));
+  };
+
   const handleToggleComplete = async (event: PlannedEventItem) => {
-    const nextStatus = !event.isCompleted;
+    if (togglingRef.current.has(event._id)) return;
+    const date = event.occurrenceDate;
+    const next = !event.isCompleted;
+    setToggling(event._id, true);
+    setEvents((prev) => prev.map((e) => (e._id === event._id ? { ...e, isCompleted: next } : e)));
 
-    // Optimistic local update
-    setEvents((prev) =>
-      prev.map((e) => (e._id === event._id ? { ...e, isCompleted: nextStatus } : e))
-    );
-    if (selectedEvent && selectedEvent._id === event._id) {
-      setSelectedEvent((prev) => (prev ? { ...prev, isCompleted: nextStatus } : null));
-    }
-
+    let error: string | null = null;
     try {
       const res = await fetch(`/api/planner/${event._id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isCompleted: nextStatus, targetDate: selectedDate }),
+        body: JSON.stringify({ isCompleted: next, targetDate: date }),
       });
-      const data = await res.json();
-      if (!data.success) {
-        throw new Error(data.error || "Failed to update completion");
-      }
-
-      // Sync updated item
-      setEvents((prev) =>
-        prev.map((e) => (e._id === event._id ? data.event : e))
-      );
-      if (selectedEvent && selectedEvent._id === event._id) {
-        setSelectedEvent(data.event);
-      }
-
-      toast(
-        nextStatus
-          ? `Completed "${event.title}"`
-          : `Marked "${event.title}" as incomplete`,
-        "success"
-      );
-    } catch (err: any) {
-      // Revert optimistic update
-      setEvents((prev) =>
-        prev.map((e) => (e._id === event._id ? { ...e, isCompleted: !nextStatus } : e))
-      );
-      toast(err.message || "Could not update status", "error");
+      const result = await readApiResponse<{ event: PlannedEventItem }>(res);
+      if (result.ok) replaceEvent(result.data.event, date);
+      else error = result.error;
+    } catch {
+      error = "Could not reach the server. Your change was not saved.";
     }
+
+    if (error) {
+      if (selectedDateRef.current === date) {
+        setEvents((prev) => prev.map((e) => (e._id === event._id ? { ...e, isCompleted: !next } : e)));
+      }
+      toast(error, "error");
+    } else {
+      afterPlannerChange();
+    }
+    setToggling(event._id, false);
   };
 
   const handleSelectEvent = (event: PlannedEventItem) => {
-    setSelectedEvent(event);
+    setDrawerEventId(event._id);
+    setDrawerSnapshot(event);
     setIsDrawerOpen(true);
   };
 
-  const handleUpdateEvent = async (id: string, updates: Partial<PlannedEventItem>) => {
+  const closeDrawer = () => {
+    if (drawerEvent) setDrawerSnapshot(drawerEvent);
+    setIsDrawerOpen(false);
+  };
+
+  const handleUpdateEvent = async (id: string, values: EventFormValues): Promise<string | null> => {
+    const date = selectedDateRef.current;
     try {
       const res = await fetch(`/api/planner/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...updates, targetDate: selectedDate }),
+        body: JSON.stringify({ ...values, targetDate: date }),
       });
-      const data = await res.json();
-      if (!data.success) {
-        throw new Error(data.error || "Failed to update event");
-      }
-
-      setEvents((prev) =>
-        sortEventsByPlannerTime(prev.map((e) => (e._id === id ? data.event : e)))
-      );
-      setSelectedEvent(data.event);
-      toast("Event updated successfully", "success");
-    } catch (err: any) {
-      toast(err.message || "Failed to update event", "error");
-      throw err;
+      const result = await readApiResponse<{ event: PlannedEventItem }>(res);
+      if (!result.ok) return result.error;
+      replaceEvent(result.data.event, date);
+      setDrawerSnapshot(result.data.event);
+      toast("Event saved", "success");
+      afterPlannerChange();
+      return null;
+    } catch {
+      return "Could not reach the server. Your changes were not saved.";
     }
   };
 
-  const handleDeleteEvent = async (id: string, mode?: "this" | "all") => {
+  const handleDeleteEvent = async (id: string, mode: DeleteMode): Promise<string | null> => {
+    const date = selectedDateRef.current;
     try {
-      const query = mode === "this" ? `?mode=this&date=${selectedDate}` : "?mode=all";
-      const res = await fetch(`/api/planner/${id}${query}`, {
-        method: "DELETE",
-      });
-      const data = await res.json();
-      if (!data.success) {
-        throw new Error(data.error || "Failed to delete event");
-      }
-
-      setEvents((prev) => prev.filter((e) => e._id !== id));
-      if (selectedEvent?._id === id) {
-        setSelectedEvent(null);
-        setIsDrawerOpen(false);
-      }
-      toast(mode === "this" ? "Removed for this day" : "Event deleted", "info");
-    } catch (err: any) {
-      toast(err.message || "Failed to delete event", "error");
-      throw err;
+      const params = new URLSearchParams({ mode, date });
+      const res = await fetch(`/api/planner/${id}?${params.toString()}`, { method: "DELETE" });
+      const result = await readApiResponse<{ deleted: string }>(res);
+      if (!result.ok) return result.error;
+      if (selectedDateRef.current === date) setEvents((prev) => prev.filter((event) => event._id !== id));
+      closeDrawer();
+      toast(mode === "this" ? "Removed from this day" : mode === "following" ? "Removed from this day onwards" : "Event deleted", "success");
+      afterPlannerChange();
+      return null;
+    } catch {
+      return "Could not reach the server. Nothing was deleted.";
     }
   };
 
-  const handleAddEvent = async (eventData: {
-    title: string;
-    description: string;
-    startTime: string;
-    endTime: string;
-    category: EventCategory;
-    color: string;
-    recurrence: any;
-    linkedHabitIds: string[];
-  }) => {
+  const handleAddEvent = async (values: EventFormValues): Promise<string | null> => {
+    const date = selectedDateRef.current;
     try {
       const res = await fetch("/api/planner", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          date: selectedDate,
-          ...eventData,
-        }),
+        body: JSON.stringify({ ...values, date }),
       });
-      const data = await res.json();
-      if (!data.success) {
-        throw new Error(data.error || "Failed to create event");
+      const result = await readApiResponse<{ event: PlannedEventItem }>(res);
+      if (!result.ok) return result.error;
+      if (selectedDateRef.current === date) {
+        setEvents((prev) => sortEventsByPlannerTime([...prev, result.data.event]));
       }
-
-      setEvents((prev) =>
-        sortEventsByPlannerTime([...prev, data.event])
-      );
-      toast(`Added "${eventData.title}" to ${selectedDate}`, "success");
-    } catch (err: any) {
-      toast(err.message || "Failed to add event", "error");
-      throw err;
+      toast(`Added "${values.title}"`, "success");
+      afterPlannerChange();
+      return null;
+    } catch {
+      return "Could not reach the server. The event was not added.";
     }
   };
 
-  const handleApplySchedule = async (
-    generatedEvents: any[],
-    replaceExisting: boolean
-  ) => {
+  const handleApplySchedule = async (planEvents: AiPlanEvent[], replaceEventIds: string[]): Promise<string | null> => {
+    const date = selectedDateRef.current;
     try {
       const res = await fetch("/api/planner", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          date: selectedDate,
-          events: generatedEvents,
-          replaceExisting,
-        }),
+        body: JSON.stringify({ date, events: planEvents, replaceEventIds }),
       });
-      const data = await res.json();
-      if (!data.success) {
-        throw new Error(data.error || "Failed to apply schedule");
-      }
-
-      setEvents(data.events || []);
-      toast(`Applied ${generatedEvents.length} events to your day!`, "success");
-    } catch (err: any) {
-      toast(err.message || "Failed to apply AI schedule", "error");
-      throw err;
+      const result = await readApiResponse<{ events: PlannedEventItem[]; created: number; removed: number }>(res);
+      if (!result.ok) return result.error;
+      if (selectedDateRef.current === date) setEvents(result.data.events);
+      const { created, removed } = result.data;
+      toast(
+        removed > 0 ? `Added ${created} events and removed ${removed}` : `Added ${created} event${created === 1 ? "" : "s"}`,
+        "success"
+      );
+      afterPlannerChange();
+      return null;
+    } catch {
+      return "Could not reach the server. The plan was not applied.";
     }
   };
+
+  const openAIModal = () => {
+    setAiModalKey((key) => key + 1);
+    setIsAIModalOpen(true);
+  };
+
+  const isLoading = loadState.status === "loading";
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-16">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <div className="p-2.5 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              <CalendarClock className="w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-zinc-100 tracking-tight">
-                Day Planner
-              </h1>
-              <p className="text-xs sm:text-sm text-zinc-400 mt-0.5">
-                Precision time-block execution synchronized with your daily fitness habits
-              </p>
-            </div>
+        <div className="flex items-center gap-2.5">
+          <div className="p-2.5 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <CalendarClock className="w-6 h-6" aria-hidden="true" />
+          </div>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-zinc-100 tracking-tight">Day Planner</h1>
+            <p className="text-sm text-zinc-400 mt-0.5">Time-block your day and link blocks to your habits</p>
           </div>
         </div>
 
-        {/* Action button on desktop */}
-        <div className="hidden sm:flex items-center gap-2">
-          <Button
-            variant="flat"
-            size="md"
-            onClick={() => setIsAIModalOpen(true)}
-            startContent={<Sparkles className="w-4 h-4 text-emerald-400" />}
-          >
-            AI Day Architect
+        <div className="grid grid-cols-2 sm:flex items-center gap-2">
+          <Button variant="flat" size="md" onClick={openAIModal} startContent={<Sparkles className="w-4 h-4" />}>
+            Plan with AI
           </Button>
-          <Button
-            variant="solid"
-            size="md"
-            onClick={() => setIsAddModalOpen(true)}
-            startContent={<Plus className="w-4 h-4" />}
-          >
-            Add Event
+          <Button variant="solid" size="md" onClick={() => setIsAddModalOpen(true)} startContent={<Plus className="w-4 h-4" />}>
+            Add event
           </Button>
         </div>
       </div>
 
-      {/* Date Navigator */}
-      <PlannerDayPicker
-        selectedDate={selectedDate}
-        onSelectDate={handleDateChange}
-      />
+      <PlannerDayPicker selectedDate={selectedDate} today={today} onSelectDate={(date) => void loadDate(date)} />
 
-      {/* Loading state indicator */}
-      {isLoading ? (
-        <div className="flex items-center justify-center min-h-75 gap-2 text-zinc-400">
-          <Loader2 className="w-5 h-5 animate-spin text-emerald-400" />
-          <span className="text-sm font-medium">Loading schedule...</span>
-        </div>
-      ) : (
-        /* Timeline */
-        <PlannerTimeline
-          events={events}
-          selectedDate={selectedDate}
-          onToggleComplete={handleToggleComplete}
-          onSelectEvent={handleSelectEvent}
-          onOpenAddModal={() => setIsAddModalOpen(true)}
-          onOpenAIModal={() => setIsAIModalOpen(true)}
-        />
-      )}
+      <section aria-busy={isLoading} aria-label="Schedule" className="relative">
+        {isLoading && (
+          <div role="status" className="absolute top-2 inset-e-2 z-10 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-900/90 border border-zinc-800 text-xs text-zinc-300">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" aria-hidden="true" />
+            Loading...
+          </div>
+        )}
+        {loadState.status === "error" ? (
+          <div role="alert" className="p-6 rounded-3xl bg-rose-500/5 border border-rose-500/20 flex flex-col items-center gap-3 text-center">
+            <AlertCircle className="w-6 h-6 text-rose-400" aria-hidden="true" />
+            <p className="text-sm text-zinc-200">{loadState.message}</p>
+            <Button variant="bordered" size="md" onClick={() => void loadDate(selectedDate)} startContent={<RotateCw className="w-4 h-4" />}>
+              Try again
+            </Button>
+          </div>
+        ) : (
+          <div className={isLoading ? "opacity-50 pointer-events-none transition-opacity" : "transition-opacity"}>
+            <PlannerTimeline
+              events={events}
+              selectedDate={selectedDate}
+              isToday={selectedDate === today}
+              nowTime={nowTime}
+              togglingIds={togglingIds}
+              onToggleComplete={handleToggleComplete}
+              onSelectEvent={handleSelectEvent}
+            />
+          </div>
+        )}
+      </section>
 
-      {/* Left-Side Event Drawer */}
       <EventDrawer
-        event={selectedEvent}
+        event={drawerEvent}
         isOpen={isDrawerOpen}
-        onClose={() => {
-          setIsDrawerOpen(false);
-          setSelectedEvent(null);
-        }}
+        onClose={closeDrawer}
         onUpdate={handleUpdateEvent}
         onDelete={handleDeleteEvent}
         onToggleComplete={handleToggleComplete}
+        isToggling={drawerEvent ? togglingIds.has(drawerEvent._id) : false}
         availableHabits={availableHabits}
       />
 
-      {/* Add Event Modal */}
       <AddEventModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
@@ -306,28 +315,15 @@ export default function PlannerPage({
         targetDate={selectedDate}
       />
 
-      {/* AI Planner Modal */}
       <AIPlannerModal
+        key={`${aiModalKey}-${selectedDate}`}
         isOpen={isAIModalOpen}
         onClose={() => setIsAIModalOpen(false)}
         targetDate={selectedDate}
+        existingEvents={events}
         availableHabits={availableHabits}
         onApplySchedule={handleApplySchedule}
       />
-
-      {/* Floating Action Button for Mobile */}
-      <div className="sm:hidden fixed bottom-20 inset-e-5 z-40">
-        <Button
-          variant="solid"
-          size="lg"
-          radius="full"
-          onClick={() => setIsAddModalOpen(true)}
-          className="shadow-xl shadow-emerald-500/30 p-4"
-          aria-label="Add Event"
-        >
-          <Plus className="w-6 h-6" />
-        </Button>
-      </div>
     </div>
   );
 }

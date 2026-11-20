@@ -1,209 +1,94 @@
-import React, { Suspense } from "react";
 import Link from "next/link";
-import { Camera, Loader2 } from "lucide-react";
-import { getFullUser } from "@/lib/auth/session";
+import type { Metadata } from "next";
+import { Camera } from "lucide-react";
+import { requirePageUser } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/mongoose";
-import DailyLog from "@/lib/db/models/DailyLog";
 import Meal from "@/lib/db/models/Meal";
-import { getTodayDateString } from "@/lib/fitness/timezone";
-import { getUserCustomizedMacroTargets } from "@/lib/fitness/bmr";
-import { Metadata } from "next";
-
+import { dailyTargets } from "@/lib/fitness/targets";
+import { addDays, formatDateString, isValidDateString, localDateString, resolveTimeZone } from "@/lib/time";
+import { listMealsForDay } from "@/lib/nutrition/meals";
+import { EARLIEST_LOG_DATE } from "@/lib/nutrition/meal-time";
+import { sumMacros } from "@/lib/nutrition/totals";
 import { NutritionDateNavigator } from "@/components/nutrition/NutritionDateNavigator";
-import { MacroRemainingCards, MacroStatsData } from "@/components/nutrition/MacroRemainingCards";
+import { MacroRemainingCards, type MacroStatsData } from "@/components/nutrition/MacroRemainingCards";
 import { MealListClient } from "@/components/nutrition/MealListClient";
-import { MealData } from "@/components/nutrition/EditMealModal";
+import { AddMealButton } from "@/components/nutrition/AddMealButton";
 
 export const metadata: Metadata = {
-  title: "Nutrition & Macro Log — AI Fit Tracker",
-  description: "Track your daily calories, protein, carbs, fat, and fiber breakdown with customized targets.",
+  title: "Nutrition",
+  description: "Your meals, calories and macros for any day.",
 };
 
 interface NutritionPageProps {
-  searchParams: Promise<{ date?: string }>;
+  searchParams: Promise<{ date?: string | string[] }>;
 }
 
-async function NutritionContent({ searchParams }: NutritionPageProps) {
-  const user = await getFullUser();
+export default async function NutritionPage({ searchParams }: NutritionPageProps) {
+  const user = await requirePageUser();
+  const userId = String(user._id);
+  const tz = resolveTimeZone(user.preferences?.timezone);
+  const todayStr = localDateString(new Date(), tz);
+
+  const { date } = await searchParams;
+  const requested = typeof date === "string" ? date : undefined;
+  const selectedDate =
+    requested && isValidDateString(requested) && requested <= todayStr && requested >= EARLIEST_LOG_DATE
+      ? requested
+      : todayStr;
+
   await getDb();
-
-  const todayStr = getTodayDateString();
-
-  // Fetch all distinct dates for this user that have recorded meals or non-zero macro logs
-  const [mealDates, logDates] = await Promise.all([
-    Meal.distinct("dateString", { userId: user?._id }),
-    DailyLog.distinct("dateString", {
-      userId: user?._id,
-      $or: [
-        { caloriesIn: { $gt: 0 } },
-        { "macros.protein": { $gt: 0 } },
-        { "macros.carbs": { $gt: 0 } },
-        { "macros.fat": { $gt: 0 } },
-        { "macros.fiber": { $gt: 0 } },
-      ],
-    }),
+  const [meals, datesWithMeals] = await Promise.all([
+    listMealsForDay(userId, selectedDate),
+    Meal.distinct("dateString", {
+      userId: user._id,
+      dateString: { $gte: addDays(todayStr, -730), $lte: todayStr },
+    }) as Promise<string[]>,
   ]);
 
-  const distinctDatesSet = new Set<string>([...mealDates, ...logDates, todayStr]);
-  const availableDates = Array.from(distinctDatesSet).filter(Boolean).sort();
-  const minDate = availableDates[0] || todayStr;
-  const maxDate = todayStr;
-
-  const resolvedParams = await searchParams;
-  const rawDate = resolvedParams?.date;
-  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-  let selectedDateStr = rawDate && dateRegex.test(rawDate) ? rawDate : todayStr;
-
-  // Clamp date: cannot exceed today or precede minDate
-  if (selectedDateStr > maxDate) selectedDateStr = maxDate;
-  if (minDate && selectedDateStr < minDate) selectedDateStr = minDate;
-
-  const [dailyLog, meals] = await Promise.all([
-    DailyLog.findOne({ userId: user?._id, dateString: selectedDateStr }).lean(),
-    Meal.find({ userId: user?._id, dateString: selectedDateStr }).sort({ loggedAt: -1 }).lean(),
-  ]);
-
-  // Derive targets strictly customized from user settings & biometric profile
-  const userTargets = getUserCustomizedMacroTargets(user);
-
-  const caloriesIn = dailyLog?.caloriesIn || 0;
-  const protein = dailyLog?.macros?.protein || 0;
-  const carbs = dailyLog?.macros?.carbs || 0;
-  const fat = dailyLog?.macros?.fat || 0;
-  const fiber = dailyLog?.macros?.fiber || 0;
-
+  // Totals are the sum of the meals listed below, so the cards always match the list.
+  const eaten = sumMacros(meals.map((meal) => meal.macros));
+  // A target of 0 is shown as "No target set" (profile without weight and height).
+  const targets = dailyTargets(user.fitnessProfile);
   const stats: MacroStatsData = {
-    calories: {
-      consumed: caloriesIn,
-      target: userTargets.calories,
-    },
-    protein: {
-      consumed: protein,
-      target: userTargets.protein,
-    },
-    carbs: {
-      consumed: carbs,
-      target: userTargets.carbs,
-    },
-    fat: {
-      consumed: fat,
-      target: userTargets.fat,
-    },
-    fiber: {
-      consumed: fiber,
-      target: userTargets.fiber,
-    },
+    calories: { consumed: eaten.calories, target: targets.calories ?? 0 },
+    protein: { consumed: eaten.protein, target: targets.protein ?? 0 },
+    carbs: { consumed: eaten.carbs, target: targets.carbs ?? 0 },
+    fat: { consumed: eaten.fat, target: targets.fat ?? 0 },
+    fiber: { consumed: eaten.fiber, target: targets.fiber ?? 0 },
   };
 
-  const mappedMeals: MealData[] = meals.map((m: any) => ({
-    _id: m._id.toString(),
-    mealType: m.mealType,
-    description: m.description,
-    loggedAt: m.loggedAt ? new Date(m.loggedAt).toISOString() : new Date().toISOString(),
-    dateString: m.dateString,
-    imageSource: m.imageSource,
-    isManualOverride: Boolean(m.isManualOverride),
-    items: Array.isArray(m.items)
-      ? m.items.map((item: any) => ({
-          _id: item._id ? item._id.toString() : undefined,
-          name: item.name || "",
-          quantity: item.quantity || "",
-          calories: Number(item.calories) || 0,
-          protein: Number(item.protein) || 0,
-          carbs: Number(item.carbs) || 0,
-          fat: Number(item.fat) || 0,
-          fiber: Number(item.fiber) || 0,
-        }))
-      : [],
-    macros: {
-      calories: m.macros?.calories || 0,
-      protein: m.macros?.protein || 0,
-      carbs: m.macros?.carbs || 0,
-      fat: m.macros?.fat || 0,
-      fiber: m.macros?.fiber || 0,
-    },
-    aiMacros: m.aiMacros ? {
-      calories: m.aiMacros.calories,
-      protein: m.aiMacros.protein,
-      carbs: m.aiMacros.carbs,
-      fat: m.aiMacros.fat,
-      fiber: m.aiMacros.fiber,
-      confidence: m.aiMacros.confidence,
-      confidenceReason: m.aiMacros.confidenceReason,
-      geminiNotes: m.aiMacros.geminiNotes,
-      modelUsed: m.aiMacros.modelUsed,
-    } : null,
-    images: Array.isArray(m.images)
-      ? m.images.map((img: any) => ({
-          secureUrl: img.secureUrl,
-          publicId: img.publicId,
-          width: img.width,
-          height: img.height,
-        }))
-      : [],
-    createdAt: m.createdAt ? new Date(m.createdAt).toISOString() : undefined,
-    updatedAt: m.updatedAt ? new Date(m.updatedAt).toISOString() : undefined,
-  }));
-
-  const analyzeLinkUrl = selectedDateStr !== todayStr
-    ? `/nutrition/analyze?date=${selectedDateStr}`
-    : "/nutrition/analyze";
+  const isToday = selectedDate === todayStr;
+  const dayLabel = isToday
+    ? "today"
+    : selectedDate === addDays(todayStr, -1)
+      ? "yesterday"
+      : formatDateString(selectedDate);
+  const analyzeHref = isToday ? "/nutrition/analyze" : `/nutrition/analyze?date=${selectedDate}`;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-            Nutrition & Macro Log
-          </h1>
-          <p className="text-sm text-zinc-400 mt-0.5">
-            Monitor caloric and macronutrient intake for any selected day
-          </p>
+          <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white">Nutrition</h1>
+          <p className="text-sm text-zinc-400 mt-0.5">Meals, calories and macros for any day</p>
         </div>
-
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <AddMealButton dateString={selectedDate} />
           <Link
-            href={analyzeLinkUrl}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-bold text-xs shadow-lg shadow-emerald-500/20 transition active:scale-95 cursor-pointer"
+            href={analyzeHref}
+            className="inline-flex items-center gap-2 min-h-11 px-4 rounded-xl bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-semibold text-sm transition active:scale-95"
           >
-            <Camera className="w-4 h-4" />
-            <span>AI Food Photo</span>
+            <Camera className="w-4 h-4" aria-hidden="true" />
+            <span>AI photo estimate</span>
           </Link>
         </div>
       </div>
 
-      {/* Date Navigation & Picker Bar with Limits */}
-      <NutritionDateNavigator
-        selectedDate={selectedDateStr}
-        availableDates={availableDates}
-        minDate={minDate}
-        maxDate={maxDate}
-      />
+      <NutritionDateNavigator selectedDate={selectedDate} todayStr={todayStr} datesWithMeals={datesWithMeals} />
 
-      {/* 5 Macro Target Cards with Remaining Calculations */}
       <MacroRemainingCards stats={stats} />
 
-      {/* Interactive Meals List with Edit & Delete */}
-      <MealListClient
-        initialMeals={mappedMeals}
-        selectedDate={selectedDateStr}
-      />
+      <MealListClient key={selectedDate} meals={meals} selectedDate={selectedDate} dayLabel={dayLabel} isToday={isToday} />
     </div>
-  );
-}
-
-export default async function NutritionPage({ searchParams }: NutritionPageProps) {
-  return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center min-h-[50vh] text-zinc-500 gap-2">
-          <Loader2 className="w-5 h-5 animate-spin text-emerald-400" />
-          <span>Loading nutrition data...</span>
-        </div>
-      }
-    >
-      <NutritionContent searchParams={searchParams} />
-    </Suspense>
   );
 }

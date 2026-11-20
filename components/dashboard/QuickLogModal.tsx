@@ -1,31 +1,22 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Plus,
-  UtensilsCrossed,
-  Droplets,
-  Scale,
-  Footprints,
-  Check,
-  Loader2,
-  Trash2,
-} from "lucide-react";
-import { MealType } from "@/types/fitness";
+import { Check, Droplets, Footprints, Plus, Scale, Undo2, UtensilsCrossed } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
-import { MEAL_TYPE_OPTIONS, WATER_QUICK_AMOUNTS } from "@/constants/nutrition";
+import { Button } from "@/components/ui/Button";
+import { useToast } from "@/components/ui/Toast";
+import { WATER_QUICK_AMOUNTS } from "@/constants/nutrition";
 import { useNativeStepTracker } from "@/hooks/useNativeStepTracker";
-
-interface QuickLogItem {
-  name: string;
-  quantity?: string;
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
-  fiber?: number;
-}
+import { useUser } from "@/hooks/useUser";
+import { MealForm } from "@/components/nutrition/MealForm";
+import { todayInZone, useUserTimeZone } from "@/components/nutrition/useUserTimeZone";
+import { newMealDraft, validateDraft, type MealDraft } from "@/lib/nutrition/draft";
+import { createMealRequest, readApiResponse } from "@/lib/nutrition/client";
+import { logWaterAction } from "@/lib/nutrition/actions";
+import { formatAmount } from "@/lib/nutrition/totals";
+import { toKg } from "@/lib/fitness/units";
+import { cn } from "@/lib/utils";
 
 interface QuickLogModalProps {
   isOpen: boolean;
@@ -35,771 +26,354 @@ interface QuickLogModalProps {
 
 type TabType = "food" | "water" | "weight" | "steps";
 
-export function QuickLogModal({
-  isOpen,
-  onClose,
-  initialWaterMl,
-}: QuickLogModalProps) {
+const TABS: Array<{ id: TabType; label: string; icon: React.ReactNode; ring: string; active: string }> = [
+  { id: "food", label: "Food", icon: <UtensilsCrossed className="w-4 h-4" aria-hidden="true" />, ring: "focus-visible:ring-emerald-400", active: "text-emerald-300" },
+  { id: "water", label: "Water", icon: <Droplets className="w-4 h-4" aria-hidden="true" />, ring: "focus-visible:ring-cyan-400", active: "text-cyan-300" },
+  { id: "weight", label: "Weight", icon: <Scale className="w-4 h-4" aria-hidden="true" />, ring: "focus-visible:ring-amber-400", active: "text-amber-300" },
+  { id: "steps", label: "Steps", icon: <Footprints className="w-4 h-4" aria-hidden="true" />, ring: "focus-visible:ring-blue-400", active: "text-blue-300" },
+];
+
+/** Body weight bounds per display unit (kg 20-400). */
+const WEIGHT_BOUNDS = { kg: { min: 20, max: 400 }, lbs: { min: 44, max: 880 } } as const;
+const MAX_STEPS = 100_000;
+
+const fieldClass =
+  "w-full min-h-11 px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2";
+
+export function QuickLogModal({ isOpen, onClose, initialWaterMl }: QuickLogModalProps) {
   const router = useRouter();
+  const { toast } = useToast();
+  const tz = useUserTimeZone();
+  const { weightUnit } = useUser();
   const { isNative, steps: nativeSteps } = useNativeStepTracker();
+
   const [activeTab, setActiveTab] = useState<TabType>("food");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
 
-  // Food Form State
-  const [mealDescription, setMealDescription] = useState("");
-  const [mealCalories, setMealCalories] = useState("");
-  const [mealProtein, setMealProtein] = useState("");
-  const [mealCarbs, setMealCarbs] = useState("");
-  const [mealFat, setMealFat] = useState("");
-  const [mealFiber, setMealFiber] = useState("");
-  const [mealType, setMealType] = useState<MealType>("snack");
+  // Food
+  const [draft, setDraft] = useState<MealDraft>(() => newMealDraft(todayInZone(tz), tz));
+  const [today, setToday] = useState(() => todayInZone(tz));
 
-  // Ingredients State
-  const [items, setItems] = useState<QuickLogItem[]>([]);
-  const [showIngredients, setShowIngredients] = useState(false);
-  const [ingName, setIngName] = useState("");
-  const [ingQty, setIngQty] = useState("");
-  const [ingCalories, setIngCalories] = useState("");
-  const [ingProtein, setIngProtein] = useState("");
-  const [ingCarbs, setIngCarbs] = useState("");
-  const [ingFat, setIngFat] = useState("");
-  const [ingFiber, setIngFiber] = useState("");
+  // Water
+  const [waterMl, setWaterMl] = useState(initialWaterMl);
+  const [lastWater, setLastWater] = useState<number | null>(null);
+  const [lastWaterDay, setLastWaterDay] = useState<string | undefined>(undefined);
 
-  // Weight Form State
-  const [weightKg, setWeightKg] = useState("");
+  // Weight / steps
+  const [weight, setWeight] = useState("");
   const [bodyFat, setBodyFat] = useState("");
+  const [steps, setSteps] = useState("");
 
-  // Steps Form State
-  const [stepsCount, setStepsCount] = useState("");
-
-  const handleAddIngredient = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!ingName.trim()) return;
-    const p = parseFloat(ingProtein) || 0;
-    const c = parseFloat(ingCarbs) || 0;
-    const f = parseFloat(ingFat) || 0;
-    const fib = parseFloat(ingFiber) || 0;
-    const cal = ingCalories ? parseInt(ingCalories, 10) : Math.round(p * 4 + c * 4 + f * 9);
-
-    const newItem: QuickLogItem = {
-      name: ingName.trim(),
-      quantity: ingQty.trim(),
-      calories: cal,
-      protein: p,
-      carbs: c,
-      fat: f,
-      fiber: fib,
-    };
-
-    const nextItems = [...items, newItem];
-    setItems(nextItems);
-
-    const totalCal = nextItems.reduce((sum, it) => sum + it.calories, 0);
-    const totalP = nextItems.reduce((sum, it) => sum + it.protein, 0);
-    const totalC = nextItems.reduce((sum, it) => sum + it.carbs, 0);
-    const totalF = nextItems.reduce((sum, it) => sum + it.fat, 0);
-    const totalFib = nextItems.reduce((sum, it) => sum + (it.fiber || 0), 0);
-
-    setMealCalories(String(Math.round(totalCal)));
-    setMealProtein(totalP.toFixed(1));
-    setMealCarbs(totalC.toFixed(1));
-    setMealFat(totalF.toFixed(1));
-    setMealFiber(totalFib.toFixed(1));
-
-    if (!mealDescription.trim()) {
-      setMealDescription(nextItems.map((it) => it.name).join(", "));
+  // Each time the dialog opens, start from a fresh form on the user's current day.
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  if (isOpen !== wasOpen) {
+    setWasOpen(isOpen);
+    if (isOpen) {
+      const now = todayInZone(tz);
+      setToday(now);
+      setDraft(newMealDraft(now, tz));
+      setWaterMl(initialWaterMl);
+      setLastWater(null);
+      setWeight("");
+      setBodyFat("");
+      setSteps("");
+      setError(null);
     }
+  }
 
-    setIngName("");
-    setIngQty("");
-    setIngCalories("");
-    setIngProtein("");
-    setIngCarbs("");
-    setIngFat("");
-    setIngFiber("");
-  };
-
-  const handleRemoveIngredient = (index: number) => {
-    const nextItems = items.filter((_, idx) => idx !== index);
-    setItems(nextItems);
-    if (nextItems.length > 0) {
-      const totalCal = nextItems.reduce((sum, it) => sum + it.calories, 0);
-      const totalP = nextItems.reduce((sum, it) => sum + it.protein, 0);
-      const totalC = nextItems.reduce((sum, it) => sum + it.carbs, 0);
-      const totalF = nextItems.reduce((sum, it) => sum + it.fat, 0);
-      const totalFib = nextItems.reduce((sum, it) => sum + (it.fiber || 0), 0);
-
-      setMealCalories(String(Math.round(totalCal)));
-      setMealProtein(totalP.toFixed(1));
-      setMealCarbs(totalC.toFixed(1));
-      setMealFat(totalF.toFixed(1));
-      setMealFiber(totalFib.toFixed(1));
-    }
-  };
-
-  const handleSyncTotals = () => {
-    if (items.length === 0) return;
-    const totalCal = items.reduce((sum, it) => sum + it.calories, 0);
-    const totalP = items.reduce((sum, it) => sum + it.protein, 0);
-    const totalC = items.reduce((sum, it) => sum + it.carbs, 0);
-    const totalF = items.reduce((sum, it) => sum + it.fat, 0);
-    const totalFib = items.reduce((sum, it) => sum + (it.fiber || 0), 0);
-
-    setMealCalories(String(Math.round(totalCal)));
-    setMealProtein(totalP.toFixed(1));
-    setMealCarbs(totalC.toFixed(1));
-    setMealFat(totalF.toFixed(1));
-    setMealFiber(totalFib.toFixed(1));
-  };
-
-  const handleLogFood = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!mealCalories || !mealDescription.trim()) {
-      setErrorMsg("Please enter description and calories");
-      return;
-    }
-
-    setIsSubmitting(true);
-    setErrorMsg(null);
-
+  const run = async (task: () => Promise<void>) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    setError(null);
     try {
-      const res = await fetch("/api/meals", {
+      await task();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "That didn't save. Please try again.");
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
+
+  const logFood = () =>
+    run(async () => {
+      const checked = validateDraft(draft, todayInZone(tz));
+      if (!checked.ok) throw new Error(checked.error);
+      await createMealRequest(checked.payload);
+      toast("Meal logged", "success");
+      onClose();
+      router.refresh();
+    });
+
+  const changeWater = (amount: number, isUndo: boolean) =>
+    run(async () => {
+      const result = await logWaterAction(amount, isUndo ? lastWaterDay : undefined);
+      if (!result.success || typeof result.waterMl !== "number") {
+        throw new Error(result.error || "Water could not be saved.");
+      }
+      setWaterMl(result.waterMl);
+      setLastWater(isUndo ? null : amount);
+      setLastWaterDay(isUndo ? undefined : result.dateString);
+      router.refresh();
+    });
+
+  const logWeight = () =>
+    run(async () => {
+      const bounds = WEIGHT_BOUNDS[weightUnit];
+      const value = Number(weight.replace(",", "."));
+      if (!weight.trim() || !Number.isFinite(value) || value < bounds.min || value > bounds.max) {
+        throw new Error(`Enter a weight between ${bounds.min} and ${bounds.max} ${weightUnit}.`);
+      }
+      let bodyFatPercent: number | null = null;
+      if (bodyFat.trim()) {
+        const fat = Number(bodyFat.replace(",", "."));
+        if (!Number.isFinite(fat) || fat < 2 || fat > 70) throw new Error("Body fat should be between 2 and 70 %.");
+        bodyFatPercent = Math.round(fat * 10) / 10;
+      }
+      // Two decimals, so a weight entered in lbs reads back exactly (165 lbs, not 164.9).
+      const weightKg = Math.round(toKg(value, weightUnit) * 100) / 100;
+      const response = await fetch("/api/body-comp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          description: mealDescription.trim(),
-          mealType,
-          items: items.length > 0 ? items : undefined,
-          macros: {
-            calories: parseInt(mealCalories, 10) || 0,
-            protein: parseFloat(mealProtein) || 0,
-            carbs: parseFloat(mealCarbs) || 0,
-            fat: parseFloat(mealFat) || 0,
-            fiber: parseFloat(mealFiber) || 0,
-          },
-        }),
+        body: JSON.stringify({ weight: weightKg, bodyFatPercent }),
       });
-
-      if (!res.ok) throw new Error("Failed to log meal");
-
-      setSuccessMsg("Meal logged successfully!");
+      await readApiResponse(response);
+      toast("Weight saved", "success");
+      onClose();
       router.refresh();
-      setTimeout(() => {
-        onClose();
-        setSuccessMsg(null);
-        setMealDescription("");
-        setMealCalories("");
-        setMealProtein("");
-        setMealCarbs("");
-        setMealFat("");
-        setMealFiber("");
-        setItems([]);
-        setShowIngredients(false);
-      }, 1000);
-    } catch (err: any) {
-      setErrorMsg(err.message || "Failed to log meal");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+    });
 
-  const handleLogWater = async (amount: number) => {
-    setIsSubmitting(true);
-    setErrorMsg(null);
-
-    try {
-      const res = await fetch("/api/meals", {
+  const logSteps = () =>
+    run(async () => {
+      const value = Number(steps);
+      if (!steps.trim() || !Number.isInteger(value) || value < 0 || value > MAX_STEPS) {
+        throw new Error(`Enter a whole number of steps between 0 and ${MAX_STEPS.toLocaleString("en-US")}.`);
+      }
+      const response = await fetch("/api/steps/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          description: `Water Intake (+${amount}ml)`,
-          mealType: "snack",
-          macros: { calories: 0, protein: 0, carbs: 0, fat: 0 },
-          waterDelta: amount,
-        }),
+        body: JSON.stringify({ steps: value, source: "manual", dateString: todayInZone(tz) }),
       });
-
-      if (!res.ok) throw new Error("Failed to update water");
-
-      setSuccessMsg(`Added +${amount}ml water!`);
+      await readApiResponse(response);
+      toast("Steps saved", "success");
+      onClose();
       router.refresh();
-      setTimeout(() => {
-        onClose();
-        setSuccessMsg(null);
-      }, 800);
-    } catch (err: any) {
-      setErrorMsg(err.message || "Failed to update hydration");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+    });
 
-  const handleLogWeight = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!weightKg) {
-      setErrorMsg("Please enter your weight in kg");
-      return;
-    }
-
-    setIsSubmitting(true);
-    setErrorMsg(null);
-
-    try {
-      const res = await fetch("/api/body-comp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          weight: parseFloat(weightKg),
-          bodyFatPercent: bodyFat ? parseFloat(bodyFat) : null,
-          notes: "Fasted morning weigh-in",
-        }),
-      });
-
-      if (!res.ok) throw new Error("Failed to save weigh-in");
-
-      setSuccessMsg("Weight recorded & metrics updated!");
-      router.refresh();
-      setTimeout(() => {
-        onClose();
-        setSuccessMsg(null);
-      }, 1000);
-    } catch (err: any) {
-      setErrorMsg(err.message || "Failed to log weight");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleLogSteps = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!stepsCount) {
-      setErrorMsg("Please enter step count");
-      return;
-    }
-
-    setIsSubmitting(true);
-    setErrorMsg(null);
-
-    try {
-      const res = await fetch("/api/steps/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          steps: parseInt(stepsCount, 10),
-        }),
-      });
-
-      if (!res.ok) throw new Error("Failed to sync steps");
-
-      setSuccessMsg("Steps synchronized!");
-      router.refresh();
-      setTimeout(() => {
-        onClose();
-        setSuccessMsg(null);
-      }, 1000);
-    } catch (err: any) {
-      setErrorMsg(err.message || "Failed to log steps");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  const weightBounds = WEIGHT_BOUNDS[weightUnit];
 
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
-      size="md"
+      onClose={() => !busy && onClose()}
+      size={activeTab === "food" ? "2xl" : "md"}
       title={
         <div className="flex items-center gap-2">
           <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400" aria-hidden="true">
             <Plus className="w-4 h-4" />
           </div>
-          <span>Quick Log</span>
+          <span>Quick log</span>
         </div>
       }
+      closeOnBackdropClick={!busy}
     >
       <div className="space-y-4">
-        {/* Tab Navigation */}
-        <div role="tablist" aria-label="Quick Log Categories" className="grid grid-cols-4 p-1.5 bg-zinc-950/80 border border-zinc-800 rounded-2xl text-xs font-semibold gap-1 select-none">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "food"}
-            onClick={() => setActiveTab("food")}
-            className={`py-2 px-2 min-h-10 rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
-              activeTab === "food"
-                ? "bg-zinc-800 text-emerald-400 shadow-sm"
-                : "text-zinc-400 hover:text-zinc-200"
-            }`}
-          >
-            <UtensilsCrossed className="w-3.5 h-3.5" aria-hidden="true" />
-            <span>Food</span>
-          </button>
-
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "water"}
-            onClick={() => setActiveTab("water")}
-            className={`py-2 px-2 min-h-10 rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${
-              activeTab === "water"
-                ? "bg-zinc-800 text-cyan-400 shadow-sm"
-                : "text-zinc-400 hover:text-zinc-200"
-            }`}
-          >
-            <Droplets className="w-3.5 h-3.5" aria-hidden="true" />
-            <span>Water</span>
-          </button>
-
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "weight"}
-            onClick={() => setActiveTab("weight")}
-            className={`py-2 px-2 min-h-10 rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
-              activeTab === "weight"
-                ? "bg-zinc-800 text-amber-400 shadow-sm"
-                : "text-zinc-400 hover:text-zinc-200"
-            }`}
-          >
-            <Scale className="w-3.5 h-3.5" aria-hidden="true" />
-            <span>Weight</span>
-          </button>
-
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "steps"}
-            onClick={() => setActiveTab("steps")}
-            className={`py-2 px-2 min-h-10 rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
-              activeTab === "steps"
-                ? "bg-zinc-800 text-blue-400 shadow-sm"
-                : "text-zinc-400 hover:text-zinc-200"
-            }`}
-          >
-            <Footprints className="w-3.5 h-3.5" aria-hidden="true" />
-            <span>Steps</span>
-          </button>
+        <div role="tablist" aria-label="What to log" className="grid grid-cols-4 p-1.5 bg-zinc-950/80 border border-zinc-800 rounded-2xl text-sm font-semibold gap-1">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              id={`quick-tab-${tab.id}`}
+              aria-selected={activeTab === tab.id}
+              aria-controls={`quick-panel-${tab.id}`}
+              disabled={busy}
+              onClick={() => {
+                setActiveTab(tab.id);
+                setError(null);
+              }}
+              className={cn(
+                "min-h-11 px-1 rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer focus:outline-none focus-visible:ring-2",
+                tab.ring,
+                activeTab === tab.id ? cn("bg-zinc-800 shadow-sm", tab.active) : "text-zinc-400 hover:text-zinc-200"
+              )}
+            >
+              {tab.icon}
+              <span>{tab.label}</span>
+            </button>
+          ))}
         </div>
 
-        {/* Status Alerts */}
-        {successMsg && (
-          <div role="status" className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2">
-            <Check className="w-4 h-4" aria-hidden="true" />
-            <span>{successMsg}</span>
+        {error && activeTab !== "food" && (
+          <div role="alert" className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-sm font-medium">
+            {error}
           </div>
         )}
 
-        {errorMsg && (
-          <div role="alert" className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-semibold">
-            {errorMsg}
-          </div>
-        )}
-
-        {/* FOOD TAB */}
         {activeTab === "food" && (
-          <form onSubmit={handleLogFood} className="space-y-4">
-            <div>
-              <label htmlFor="quick-food-desc" className="block text-xs font-semibold text-zinc-400 mb-1 select-none">
-                Description / Item *
-              </label>
-              <input
-                id="quick-food-desc"
-                type="text"
-                required
-                placeholder="e.g. Protein shake + 1 Banana"
-                value={mealDescription}
-                onChange={(e) => setMealDescription(e.target.value)}
-                className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label htmlFor="quick-food-cal" className="block text-xs font-semibold text-zinc-400 mb-1 select-none">
-                  Calories (kcal) *
-                </label>
-                <input
-                  id="quick-food-cal"
-                  type="number"
-                  required
-                  placeholder="350"
-                  value={mealCalories}
-                  onChange={(e) => setMealCalories(e.target.value)}
-                  className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                />
-              </div>
-              <div>
-                <label htmlFor="quick-food-protein" className="block text-xs font-semibold text-emerald-400 mb-1 select-none">
-                  Protein (g)
-                </label>
-                <input
-                  id="quick-food-protein"
-                  type="number"
-                  step="0.1"
-                  placeholder="30"
-                  value={mealProtein}
-                  onChange={(e) => setMealProtein(e.target.value)}
-                  className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2.5">
-              <div>
-                <label htmlFor="quick-food-carbs" className="block text-[10px] font-semibold text-amber-400 mb-1 select-none">
-                  Carbs (g)
-                </label>
-                <input
-                  id="quick-food-carbs"
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  placeholder="25"
-                  value={mealCarbs}
-                  onChange={(e) => setMealCarbs(e.target.value)}
-                  className="w-full px-3 py-2 min-h-10 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
-                />
-              </div>
-              <div>
-                <label htmlFor="quick-food-fat" className="block text-[10px] font-semibold text-orange-400 mb-1 select-none">
-                  Fat (g)
-                </label>
-                <input
-                  id="quick-food-fat"
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  placeholder="5"
-                  value={mealFat}
-                  onChange={(e) => setMealFat(e.target.value)}
-                  className="w-full px-3 py-2 min-h-10 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
-                />
-              </div>
-              <div>
-                <label htmlFor="quick-food-fiber" className="block text-[10px] font-semibold text-teal-400 mb-1 select-none">
-                  Fiber (g)
-                </label>
-                <input
-                  id="quick-food-fiber"
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  placeholder="5"
-                  value={mealFiber}
-                  onChange={(e) => setMealFiber(e.target.value)}
-                  className="w-full px-3 py-2 min-h-10 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
-                />
-              </div>
-            </div>
-
-            {/* Ingredients Breakdown Section */}
-            <div className="p-3.5 rounded-2xl bg-zinc-950/80 border border-zinc-800/90 space-y-3">
-              <div className="flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={() => setShowIngredients(!showIngredients)}
-                  className="text-xs font-bold text-zinc-300 hover:text-white flex items-center gap-1.5 transition cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Add Ingredients {items.length > 0 && `(${items.length})`}</span>
-                </button>
-
-                {items.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleSyncTotals}
-                    className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 transition cursor-pointer"
-                  >
-                    Sync to Totals
-                  </button>
-                )}
-              </div>
-
-              {showIngredients && (
-                <div className="space-y-3 pt-1">
-                  {/* Inline Ingredient Add Form */}
-                  <div className="p-3 rounded-xl bg-zinc-900/90 border border-emerald-500/20 space-y-2.5">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-[10px] font-semibold text-zinc-400 mb-1">
-                          Ingredient *
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Greek Yogurt"
-                          value={ingName}
-                          onChange={(e) => setIngName(e.target.value)}
-                          className="w-full px-2.5 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-semibold text-zinc-400 mb-1">
-                          Portion / Weight
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. 150g"
-                          value={ingQty}
-                          onChange={(e) => setIngQty(e.target.value)}
-                          className="w-full px-2.5 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
-                      <div>
-                        <label className="block text-[9px] font-bold text-zinc-400 mb-0.5">Cal (kcal)</label>
-                        <input
-                          type="number"
-                          placeholder="120"
-                          value={ingCalories}
-                          onChange={(e) => setIngCalories(e.target.value)}
-                          className="w-full px-2 py-1 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[9px] font-bold text-emerald-400 mb-0.5">P (g)</label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          placeholder="15"
-                          value={ingProtein}
-                          onChange={(e) => setIngProtein(e.target.value)}
-                          className="w-full px-2 py-1 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[9px] font-bold text-amber-400 mb-0.5">C (g)</label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          placeholder="6"
-                          value={ingCarbs}
-                          onChange={(e) => setIngCarbs(e.target.value)}
-                          className="w-full px-2 py-1 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-amber-400"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[9px] font-bold text-orange-400 mb-0.5">F (g)</label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          placeholder="2"
-                          value={ingFat}
-                          onChange={(e) => setIngFat(e.target.value)}
-                          className="w-full px-2 py-1 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-orange-400"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[9px] font-bold text-teal-400 mb-0.5">Fib (g)</label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          placeholder="0"
-                          value={ingFiber}
-                          onChange={(e) => setIngFiber(e.target.value)}
-                          className="w-full px-2 py-1 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-teal-400"
-                        />
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleAddIngredient}
-                      disabled={!ingName.trim()}
-                      className="w-full py-1.5 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs rounded-lg transition cursor-pointer disabled:opacity-50"
-                    >
-                      + Add Ingredient to List
-                    </button>
-                  </div>
-
-                  {/* List of Added Ingredients */}
-                  {items.length > 0 && (
-                    <div className="max-h-44 overflow-y-auto space-y-1.5 pe-1">
-                      {items.map((it, idx) => (
-                        <div
-                          key={idx}
-                          className="flex flex-col gap-1 p-2 rounded-xl bg-zinc-900/70 border border-zinc-800 text-start"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="truncate me-2">
-                              <span className="text-zinc-200 font-semibold text-xs">{it.name}</span>
-                              {it.quantity && (
-                                <span className="text-zinc-500 text-[11px] ms-1">({it.quantity})</span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className="text-amber-400 font-bold text-xs tabular-nums">
-                                {it.calories} kcal
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveIngredient(idx)}
-                                className="p-0.5 text-zinc-500 hover:text-red-400 transition cursor-pointer"
-                                title="Remove"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-1.5 flex-wrap text-[10px] font-semibold text-zinc-400">
-                            <span className="text-emerald-400 tabular-nums">P: {it.protein}g</span>
-                            <span className="text-amber-400 tabular-nums">C: {it.carbs}g</span>
-                            <span className="text-orange-400 tabular-nums">F: {it.fat}g</span>
-                            <span className="text-teal-400 tabular-nums">Fib: {it.fiber || 0}g</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <label htmlFor="quick-food-type" className="block text-xs font-semibold text-zinc-400 mb-1 select-none">
-                Meal Type
-              </label>
-              <select
-                id="quick-food-type"
-                value={mealType}
-                onChange={(e) => setMealType(e.target.value as MealType)}
-                className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 cursor-pointer"
-              >
-                {MEAL_TYPE_OPTIONS.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              aria-busy={isSubmitting}
-              className="w-full py-3 min-h-11 bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-bold rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-98 disabled:opacity-50"
-            >
-              {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <span>Log Food</span>}
-            </button>
+          <form
+            id="quick-panel-food"
+            role="tabpanel"
+            aria-labelledby="quick-tab-food"
+            noValidate
+            onSubmit={(event) => {
+              event.preventDefault();
+              logFood();
+            }}
+            className="space-y-4"
+          >
+            <MealForm idPrefix="quick-food" draft={draft} onChange={setDraft} maxDate={today} disabled={busy} error={error} />
+            <Button type="submit" variant="solid" size="lg" className="w-full" isLoading={busy} disabled={busy}>
+              Log food
+            </Button>
           </form>
         )}
 
-        {/* WATER TAB */}
         {activeTab === "water" && (
-          <div className="space-y-5 text-center py-2">
-            <p className="text-xs text-zinc-400">
-              Quickly add hydration to today&apos;s log
+          <div id="quick-panel-water" role="tabpanel" aria-labelledby="quick-tab-water" className="space-y-4 text-center">
+            <p className="text-sm text-zinc-300" aria-live="polite">
+              Today: <strong className="text-cyan-300 tabular-nums">{formatAmount(waterMl)} ml</strong>
+              {lastWater !== null && (
+                <span className="inline-flex items-center gap-1 ms-2 text-emerald-300">
+                  <Check className="w-4 h-4" aria-hidden="true" /> added {lastWater} ml
+                </span>
+              )}
             </p>
-
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {WATER_QUICK_AMOUNTS.map((ml) => (
                 <button
                   key={ml}
                   type="button"
-                  onClick={() => handleLogWater(ml)}
-                  disabled={isSubmitting}
-                  aria-busy={isSubmitting}
-                  aria-label={`Add ${ml} milliliters of water`}
-                  className="py-4 px-3 min-h-12 rounded-2xl bg-zinc-950 border border-cyan-500/20 hover:border-cyan-500/60 hover:bg-cyan-500/10 text-cyan-400 font-bold transition flex flex-col items-center gap-1 group active:scale-95 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:opacity-50"
+                  onClick={() => changeWater(ml, false)}
+                  disabled={busy}
+                  aria-label={`Add ${ml} millilitres of water`}
+                  className="py-3 px-3 min-h-14 rounded-2xl bg-zinc-950 border border-cyan-500/20 hover:border-cyan-500/60 hover:bg-cyan-500/10 font-bold transition flex flex-col items-center gap-1 active:scale-95 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:opacity-50"
                 >
-                  <Droplets className="w-5 h-5 group-hover:scale-110 transition-transform text-cyan-400" aria-hidden="true" />
                   <span className="text-base text-white tabular-nums">+{ml} ml</span>
-                  <span className="text-[10px] text-zinc-500">
-                    {ml === 250 ? "1 Glass" : ml === 500 ? "1 Bottle" : `${ml / 1000}L`}
+                  <span className="text-xs text-zinc-400 font-medium">
+                    {ml === 250 ? "1 glass" : ml === 500 ? "1 bottle" : `${ml / 1000} L`}
                   </span>
                 </button>
               ))}
             </div>
+            {lastWater !== null && (
+              <Button
+                type="button"
+                variant="bordered"
+                size="md"
+                onClick={() => changeWater(-lastWater, true)}
+                disabled={busy}
+                startContent={<Undo2 className="w-4 h-4" />}
+              >
+                Undo +{lastWater} ml
+              </Button>
+            )}
           </div>
         )}
 
-        {/* WEIGHT TAB */}
         {activeTab === "weight" && (
-          <form onSubmit={handleLogWeight} className="space-y-4">
+          <form
+            id="quick-panel-weight"
+            role="tabpanel"
+            aria-labelledby="quick-tab-weight"
+            noValidate
+            onSubmit={(event) => {
+              event.preventDefault();
+              logWeight();
+            }}
+            className="space-y-4"
+          >
             <div>
-              <label htmlFor="quick-weight-val" className="block text-xs font-semibold text-zinc-400 mb-1 select-none">
-                Morning Bodyweight (kg) *
+              <label htmlFor="quick-weight-val" className="block text-xs font-semibold text-zinc-300 mb-1">
+                Body weight ({weightUnit}) *
               </label>
               <input
                 id="quick-weight-val"
                 type="number"
+                inputMode="decimal"
                 step="0.1"
+                min={weightBounds.min}
+                max={weightBounds.max}
                 required
-                placeholder="e.g. 74.8"
-                value={weightKg}
-                onChange={(e) => setWeightKg(e.target.value)}
-                className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                placeholder={weightUnit === "kg" ? "e.g. 74.8" : "e.g. 165"}
+                value={weight}
+                disabled={busy}
+                onChange={(event) => setWeight(event.target.value)}
+                className={cn(fieldClass, "focus-visible:ring-amber-500")}
               />
             </div>
-
             <div>
-              <label htmlFor="quick-weight-bf" className="block text-xs font-semibold text-zinc-400 mb-1 select-none">
-                Estimated Body Fat % (Optional)
+              <label htmlFor="quick-weight-bf" className="block text-xs font-semibold text-zinc-300 mb-1">
+                Body fat % (optional)
               </label>
               <input
                 id="quick-weight-bf"
                 type="number"
+                inputMode="decimal"
                 step="0.1"
+                min={2}
+                max={70}
                 placeholder="e.g. 14.5"
                 value={bodyFat}
-                onChange={(e) => setBodyFat(e.target.value)}
-                className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                disabled={busy}
+                onChange={(event) => setBodyFat(event.target.value)}
+                className={cn(fieldClass, "focus-visible:ring-amber-500")}
               />
             </div>
-
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              aria-busy={isSubmitting}
-              className="w-full py-3 min-h-11 bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-zinc-950 font-bold rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 active:scale-98 disabled:opacity-50"
-            >
-              {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <span>Record Weigh-In</span>}
-            </button>
+            <Button type="submit" variant="solid" size="lg" className="w-full" isLoading={busy} disabled={busy}>
+              Save weight
+            </Button>
           </form>
         )}
 
-        {/* STEPS TAB */}
         {activeTab === "steps" && (
-          <form onSubmit={handleLogSteps} className="space-y-4">
+          <form
+            id="quick-panel-steps"
+            role="tabpanel"
+            aria-labelledby="quick-tab-steps"
+            noValidate
+            onSubmit={(event) => {
+              event.preventDefault();
+              logSteps();
+            }}
+            className="space-y-4"
+          >
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label htmlFor="quick-steps-val" className="block text-xs font-semibold text-zinc-400 select-none">
-                  Total Steps for Today *
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <label htmlFor="quick-steps-val" className="block text-xs font-semibold text-zinc-300">
+                  Total steps today *
                 </label>
                 {isNative && nativeSteps > 0 && (
                   <button
                     type="button"
-                    onClick={() => setStepsCount(String(nativeSteps))}
-                    className="text-[11px] font-bold text-blue-400 hover:text-blue-300 transition flex items-center gap-1 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 rounded"
+                    onClick={() => setSteps(String(nativeSteps))}
+                    className="min-h-11 px-2 text-sm font-semibold text-blue-300 hover:text-blue-200 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 rounded-lg"
                   >
-                    <span>Use Sensor ({nativeSteps.toLocaleString()})</span>
+                    Use phone count ({nativeSteps.toLocaleString("en-US")})
                   </button>
                 )}
               </div>
               <input
                 id="quick-steps-val"
                 type="number"
+                inputMode="numeric"
+                min={0}
+                max={MAX_STEPS}
+                step={1}
                 required
                 placeholder="e.g. 8500"
-                value={stepsCount}
-                onChange={(e) => setStepsCount(e.target.value)}
-                className="w-full px-3.5 py-2.5 min-h-11 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                value={steps}
+                disabled={busy}
+                onChange={(event) => setSteps(event.target.value)}
+                className={cn(fieldClass, "focus-visible:ring-blue-500")}
               />
             </div>
-
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              aria-busy={isSubmitting}
-              className="w-full py-3 min-h-11 bg-linear-to-r from-blue-500 to-cyan-500 hover:from-blue-400 hover:to-cyan-400 text-zinc-950 font-bold rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 active:scale-98 disabled:opacity-50"
-            >
-              {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <span>Sync Steps</span>}
-            </button>
+            <Button type="submit" variant="solid" size="lg" className="w-full" isLoading={busy} disabled={busy}>
+              Save steps
+            </Button>
           </form>
         )}
       </div>

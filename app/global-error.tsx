@@ -1,44 +1,43 @@
 "use client";
 
 import React, { useEffect } from "react";
-import { AlertOctagon, RotateCcw } from "lucide-react";
+import "./globals.css";
 
+/**
+ * Replaces the root layout when the layout itself fails, so it carries its
+ * own <html> and <body> and loads the stylesheet itself.
+ */
 export default function GlobalError({
   error,
-  reset,
+  retry,
 }: {
   error: Error & { digest?: string };
-  reset: () => void;
+  retry: () => void;
 }) {
   useEffect(() => {
-    console.error("Global Layout Error:", error);
+    console.error("[app] root layout error", error);
   }, [error]);
 
   return (
     <html lang="en" className="dark">
-      <body className="bg-zinc-950 text-zinc-100 min-h-screen flex items-center justify-center p-6 antialiased font-sans">
-        <div className="w-full max-w-md text-center space-y-6">
-          <div className="w-20 h-20 mx-auto rounded-3xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center shadow-2xl shadow-rose-950/50">
-            <AlertOctagon className="w-10 h-10 text-rose-400" />
-          </div>
-
-          <div className="space-y-2">
-            <h1 className="text-2xl font-extrabold text-white">
-              Critical System Error
-            </h1>
-            <p className="text-sm text-zinc-400">
-              The root interface failed to render. Please reload to restore session state.
+      <body className="bg-app text-ink min-h-dvh antialiased">
+        <main className="flex min-h-dvh flex-col items-center justify-center px-4 text-center">
+          <div role="alert" className="w-full max-w-md space-y-3">
+            <h1 className="text-2xl font-bold text-white">FitTracker could not start</h1>
+            <p className="text-base text-zinc-300">
+              Something went wrong on our side. Nothing you saved has been lost. Try again; if it keeps happening,
+              check your connection.
             </p>
+            {error?.digest && <p className="text-sm text-zinc-400">Reference: {error.digest}</p>}
           </div>
-
           <button
-            onClick={() => reset()}
-            className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-extrabold text-sm shadow-xl shadow-emerald-500/25 active:scale-95 transition cursor-pointer"
+            type="button"
+            onClick={() => retry()}
+            className="mt-6 inline-flex min-h-12 items-center justify-center rounded-xl bg-emerald-500 px-6 text-base font-bold text-zinc-950 hover:bg-emerald-400 cursor-pointer"
           >
-            <RotateCcw className="w-4 h-4" />
-            <span>Reload Application</span>
+            Try again
           </button>
-        </div>
+        </main>
       </body>
     </html>
   );

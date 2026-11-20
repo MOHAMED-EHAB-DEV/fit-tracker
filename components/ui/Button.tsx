@@ -15,7 +15,7 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 const VARIANT_MAP = {
   solid:
-    "bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-extrabold shadow-lg shadow-emerald-500/25",
+    "bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold",
   bordered:
     "bg-transparent border border-white/15 hover:border-white/30 text-zinc-200 hover:text-white hover:bg-white/[0.04]",
   flat:
@@ -23,12 +23,12 @@ const VARIANT_MAP = {
   ghost:
     "bg-transparent text-zinc-400 hover:text-white hover:bg-white/10",
   danger:
-    "bg-red-500 hover:bg-red-600 text-white font-bold shadow-lg shadow-red-500/25",
+    "bg-red-600 hover:bg-red-700 text-white font-bold",
 };
 
 const SIZE_MAP = {
-  sm: "px-3 py-1.5 min-h-[36px] text-xs gap-1.5",
-  md: "px-4 py-2.5 min-h-[44px] text-xs sm:text-sm gap-2",
+  sm: "px-3 py-2 min-h-[40px] text-sm gap-1.5",
+  md: "px-4 py-2.5 min-h-[44px] text-sm gap-2",
   lg: "px-6 py-3.5 min-h-[48px] text-sm sm:text-base gap-2.5",
 };
 
@@ -52,6 +52,8 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       endContent,
       disabled,
       className,
+      // A button only submits a form when it says so (the browser default is "submit").
+      type = "button",
       ...props
     },
     ref
@@ -59,11 +61,12 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <button
         ref={ref}
+        type={type}
         disabled={disabled || isLoading}
         aria-busy={isLoading}
         aria-disabled={disabled || isLoading}
         className={cn(
-          "inline-flex items-center justify-center font-semibold transition-all duration-150 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 cursor-pointer disabled:opacity-50 disabled:pointer-events-none select-none",
+          "inline-flex items-center justify-center font-semibold transition-all duration-150 active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:pointer-events-none select-none",
           VARIANT_MAP[variant],
           SIZE_MAP[size],
           RADIUS_MAP[radius],

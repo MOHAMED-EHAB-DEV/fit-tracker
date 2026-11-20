@@ -1,237 +1,264 @@
 "use client";
 
 import React, { useEffect } from "react";
-import { Flame, Footprints, Droplets, Target, RefreshCw } from "lucide-react";
-import { useUser } from "@/context/UserContext";
+import Link from "next/link";
+import { Droplets, Flame, Footprints, RefreshCw, Target } from "lucide-react";
 import { useNativeStepTracker } from "@/hooks/useNativeStepTracker";
 import { syncWidgetData } from "@/services/webview-bridge";
+import { useDashboardFreshness } from "@/components/habits/useLiveToday";
+import { goalProgress, liveCaloriesOut, stepCalories } from "@/lib/dashboard/metrics";
 
-interface MetricsGridProps {
-  stats: {
-    caloriesIn: number;
-    caloriesOut: number;
-    targetCalories: number;
-    proteinG: number;
-    targetProteinG: number;
-    carbsG: number;
-    targetCarbsG: number;
-    fatG: number;
-    targetFatG: number;
-    steps: number;
-    stepGoal: number;
-    waterMl: number;
-    waterGoalMl: number;
-  };
+export interface MetricsGridStats {
+  /** Today's food calories (DailyLog.caloriesIn, 0 when nothing logged). */
+  caloriesIn: number;
+  /** Today's tracked expenditure: trackedCaloriesOut(todayLog, bmr) from lib/dashboard/energy (not raised to the TDEE); null when unknown. */
+  caloriesOut: number | null;
+  /** The TDEE estimate the shown expenditure never drops below; null when unknown. */
+  caloriesOutFloor: number | null;
+  /** The user's calorie target; null when none is set (no invented default). */
+  targetCalories: number | null;
+  proteinG: number;
+  targetProteinG: number | null;
+  carbsG: number;
+  fatG: number;
+  /** Steps stored for today. */
+  steps: number;
+  stepGoal: number | null;
+  waterMl: number;
+  waterGoalMl: number | null;
 }
 
-export function MetricsGrid({ stats }: MetricsGridProps) {
-  const { user } = useUser();
+export interface MetricsGridProps {
+  stats: MetricsGridStats;
+  /** Today ("YYYY-MM-DD", user zone) the stats belong to. */
+  todayStr: string;
+  /** The user's IANA zone (session.timezone). */
+  timeZone: string;
+}
+
+const cardClass =
+  "p-4 sm:p-5 rounded-3xl bg-zinc-900/80 border border-zinc-800/80 relative overflow-hidden flex flex-col justify-between shadow-sm";
+
+function NoGoal({ label }: { label: string }) {
+  return (
+    <Link href="/settings" className="text-xs text-zinc-400 underline underline-offset-2 hover:text-white">
+      Set a {label}
+    </Link>
+  );
+}
+
+export function MetricsGrid({ stats, todayStr, timeZone }: MetricsGridProps) {
+  const liveToday = useDashboardFreshness(todayStr, timeZone);
+  const dayIsStale = liveToday !== todayStr;
   const { isNative, steps: liveSteps, isSyncing, syncNow, sensorInfo } = useNativeStepTracker(stats.steps);
 
-  const calorieGoal = stats.targetCalories || user?.fitnessProfile?.targetCalories || user?.computed?.tdee || 2400;
-  const proteinGoal = stats.targetProteinG || user?.fitnessProfile?.targetProteinG || user?.computed?.proteinTargetG || 160;
-  const stepGoal = stats.stepGoal || user?.preferences?.stepGoal || 10000;
-  const waterGoal = stats.waterGoalMl || user?.preferences?.waterGoalMl || 3000;
+  // Live pedometer steps belong to the device's current day; never mix them into yesterday's numbers.
+  const currentSteps = dayIsStale ? stats.steps : Math.max(stats.steps, liveSteps);
+  const caloriesOut = liveCaloriesOut({
+    storedCaloriesOut: stats.caloriesOut,
+    floor: stats.caloriesOutFloor,
+    storedSteps: stats.steps,
+    liveSteps: currentSteps,
+  });
 
-  const currentSteps = Math.max(stats.steps, liveSteps);
-  const liveStepCalories = Math.round(currentSteps * 0.04);
-  const baseOut = stats.caloriesOut - Math.round(stats.steps * 0.04);
-  const dynamicCaloriesOut = Math.max(stats.caloriesOut, baseOut + liveStepCalories);
+  const calories = goalProgress(stats.caloriesIn, stats.targetCalories);
+  const protein = goalProgress(stats.proteinG, stats.targetProteinG);
+  const steps = goalProgress(currentSteps, stats.stepGoal);
+  const water = goalProgress(stats.waterMl, stats.waterGoalMl);
 
-  const caloriePct = Math.min(100, Math.round((stats.caloriesIn / calorieGoal) * 100));
-  const proteinPct = Math.min(100, Math.round((stats.proteinG / proteinGoal) * 100));
-  const stepPct = Math.min(100, Math.round((currentSteps / stepGoal) * 100));
-  const waterPct = Math.min(100, Math.round((stats.waterMl / waterGoal) * 100));
-
-  // Keep native Android home screen widgets synced with full fitness telemetry
   useEffect(() => {
-    if (isNative) {
-      syncWidgetData({
-        steps: currentSteps,
-        stepGoal,
-        caloriesIn: stats.caloriesIn,
-        targetCalories: calorieGoal,
-        waterMl: stats.waterMl,
-        waterGoalMl: waterGoal,
-      });
-    }
-  }, [isNative, currentSteps, stepGoal, stats.caloriesIn, calorieGoal, stats.waterMl, waterGoal]);
+    if (!isNative || dayIsStale) return;
+    syncWidgetData({
+      date: todayStr,
+      // The app itself shows the higher of this and its own count.
+      steps: stats.steps,
+      stepGoal: stats.stepGoal ?? undefined,
+      caloriesIn: stats.caloriesIn,
+      targetCalories: stats.targetCalories ?? undefined,
+      waterMl: stats.waterMl,
+      waterGoalMl: stats.waterGoalMl ?? undefined,
+    });
+  }, [isNative, dayIsStale, todayStr, stats.steps, stats.stepGoal, stats.caloriesIn, stats.targetCalories, stats.waterMl, stats.waterGoalMl]);
 
   return (
-    <section aria-label="Today's Core Nutrition and Activity Metrics" className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 2xl:gap-6">
-      {/* Calories Card */}
-      <article className="p-4 sm:p-5 rounded-3xl bg-zinc-900/80 border border-zinc-800/80 relative overflow-hidden group hover:border-zinc-700/60 transition flex flex-col justify-between shadow-sm">
+    <section aria-label="Today's nutrition and activity" className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 2xl:gap-6">
+      {/* Calories */}
+      <article className={cardClass}>
         <div>
           <div className="flex items-center justify-between mb-2 sm:mb-3">
-            <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-zinc-400">
-              Calories
-            </span>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Calories</h3>
             <div aria-hidden="true" className="p-1.5 sm:p-2 rounded-2xl bg-orange-500/15 text-orange-400">
-              <Flame className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <Flame className="w-4 h-4" />
             </div>
           </div>
-          <div className="flex items-baseline gap-1 sm:gap-2 mb-2">
-            <span className="text-xl sm:text-2xl md:text-3xl font-extrabold text-white truncate">
+          <div className="flex items-baseline gap-1 sm:gap-2 mb-2 flex-wrap">
+            <span className={`text-xl sm:text-2xl md:text-3xl font-extrabold ${calories.isOver ? "text-red-400" : "text-white"}`}>
               {stats.caloriesIn.toLocaleString()}
             </span>
-            <span className="text-[10px] sm:text-xs text-zinc-500 truncate">/ {calorieGoal.toLocaleString()}</span>
+            {stats.targetCalories !== null && (
+              <span className="text-xs text-zinc-400">/ {stats.targetCalories.toLocaleString()} kcal</span>
+            )}
           </div>
         </div>
         <div>
-          <div
-            role="progressbar"
-            aria-valuenow={caloriePct}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label="Caloric intake progress"
-            className="w-full h-1.5 sm:h-2 bg-zinc-800 rounded-full overflow-hidden"
-          >
-            <div
-              className="h-full bg-linear-to-r from-orange-500 to-amber-400 rounded-full transition-all duration-500"
-              style={{ width: `${caloriePct}%` }}
-            />
-          </div>
-          <div className="flex justify-between items-center text-[10px] sm:text-[11px] text-zinc-400 mt-2">
-            <span>{caloriePct}% target</span>
-            <span className="hidden sm:inline">Burned: {dynamicCaloriesOut.toLocaleString()}</span>
-          </div>
+          {calories.percent !== null ? (
+            <>
+              <div
+                role="progressbar"
+                aria-valuenow={calories.percent}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuetext={
+                  calories.isOver
+                    ? `${calories.percent}% of target, ${calories.overBy} kcal over`
+                    : `${calories.percent}% of target`
+                }
+                aria-label="Calories eaten vs target"
+                className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden"
+              >
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${calories.isOver ? "bg-red-500" : "bg-linear-to-r from-orange-500 to-amber-400"}`}
+                  style={{ width: `${calories.barPercent}%` }}
+                />
+              </div>
+              <p className={`text-xs mt-2 ${calories.isOver ? "text-red-400 font-semibold" : "text-zinc-400"}`}>
+                {calories.isOver
+                  ? `${calories.percent}% · ${calories.overBy.toLocaleString()} kcal over`
+                  : `${calories.percent}% · ${calories.remaining.toLocaleString()} left`}
+              </p>
+            </>
+          ) : (
+            <NoGoal label="calorie target" />
+          )}
+          {caloriesOut !== null && (
+            <p className="text-xs text-zinc-400 mt-1">Burned ≈ {caloriesOut.toLocaleString()} kcal</p>
+          )}
         </div>
       </article>
 
-      {/* Protein Card */}
-      <article className="p-4 sm:p-5 rounded-3xl bg-zinc-900/80 border border-zinc-800/80 relative overflow-hidden group hover:border-zinc-700/60 transition flex flex-col justify-between shadow-sm">
+      {/* Protein */}
+      <article className={cardClass}>
         <div>
           <div className="flex items-center justify-between mb-2 sm:mb-3">
-            <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-zinc-400">
-              Protein
-            </span>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Protein</h3>
             <div aria-hidden="true" className="p-1.5 sm:p-2 rounded-2xl bg-emerald-500/15 text-emerald-400">
-              <Target className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <Target className="w-4 h-4" />
             </div>
           </div>
-          <div className="flex items-baseline gap-1 sm:gap-2 mb-2">
-            <span className="text-xl sm:text-2xl md:text-3xl font-extrabold text-white truncate">
-              {Number(stats.proteinG).toFixed(1)}g
-            </span>
-            <span className="text-[10px] sm:text-xs text-zinc-500 truncate">/ {Number(proteinGoal).toFixed(1)}g</span>
+          <div className="flex items-baseline gap-1 sm:gap-2 mb-2 flex-wrap">
+            <span className="text-xl sm:text-2xl md:text-3xl font-extrabold text-white">{Math.round(stats.proteinG)}g</span>
+            {stats.targetProteinG !== null && (
+              <span className="text-xs text-zinc-400">/ {Math.round(stats.targetProteinG)}g</span>
+            )}
           </div>
         </div>
         <div>
-          <div
-            role="progressbar"
-            aria-valuenow={proteinPct}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label="Daily protein intake progress"
-            className="w-full h-1.5 sm:h-2 bg-zinc-800 rounded-full overflow-hidden"
-          >
+          {protein.percent !== null ? (
             <div
-              className="h-full bg-linear-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500"
-              style={{ width: `${proteinPct}%` }}
-            />
-          </div>
-          <div className="flex justify-between items-center text-[10px] sm:text-[11px] text-zinc-400 mt-2">
-            <span>C: {Number(stats.carbsG).toFixed(1)}g</span>
-            <span>F: {Number(stats.fatG).toFixed(1)}g</span>
+              role="progressbar"
+              aria-valuenow={protein.percent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="Protein eaten vs target"
+              className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden"
+            >
+              <div className="h-full bg-linear-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500" style={{ width: `${protein.barPercent}%` }} />
+            </div>
+          ) : (
+            <NoGoal label="protein target" />
+          )}
+          <div className="flex justify-between items-center text-xs text-zinc-400 mt-2">
+            <span>C {Math.round(stats.carbsG)}g</span>
+            <span>F {Math.round(stats.fatG)}g</span>
           </div>
         </div>
       </article>
 
-      {/* Steps Card (Live Native Reactive Integration) */}
-      <article className="p-4 sm:p-5 rounded-3xl bg-zinc-900/80 border border-zinc-800/80 relative overflow-hidden group hover:border-zinc-700/60 transition flex flex-col justify-between shadow-sm">
+      {/* Steps */}
+      <article className={cardClass}>
         <div>
           <div className="flex items-center justify-between mb-2 sm:mb-3">
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-zinc-400">
-                Daily Steps
-              </span>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Steps</h3>
               {isNative && (
                 <span
-                  title={sensorInfo ? `Hardware: ${sensorInfo.name} (${sensorInfo.vendor})` : "Hardware DSP Sensor"}
-                  className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-blue-500/15 text-blue-400 border border-blue-500/20"
+                  title={sensorInfo ? `Sensor: ${sensorInfo.name} (${sensorInfo.vendor})` : "Phone pedometer"}
+                  className="inline-flex items-center gap-1 text-xs font-bold px-1.5 py-0.5 rounded-md bg-blue-500/15 text-blue-400 border border-blue-500/20"
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                  <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-blue-400" />
                   <span className="hidden sm:inline">Pedometer</span>
                 </span>
               )}
             </div>
             <button
+              type="button"
               onClick={() => syncNow()}
               disabled={isSyncing}
-              title="Sync latest steps"
               aria-label="Refresh step count"
-              className="p-1.5 sm:p-2 rounded-2xl bg-blue-500/15 text-blue-400 hover:bg-blue-500/25 transition cursor-pointer active:scale-95 disabled:opacity-50"
+              className="-m-1.5 w-11 h-11 flex items-center justify-center rounded-2xl bg-blue-500/15 text-blue-400 hover:bg-blue-500/25 transition cursor-pointer active:scale-95 disabled:opacity-50"
             >
-              {isSyncing ? (
-                <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin text-blue-300" />
-              ) : (
-                <Footprints className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              )}
+              {isSyncing ? <RefreshCw className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Footprints className="w-4 h-4" aria-hidden="true" />}
             </button>
           </div>
-          <div className="flex items-baseline gap-1 sm:gap-2 mb-2">
-            <span className="text-xl sm:text-2xl md:text-3xl font-extrabold text-white truncate">
-              {currentSteps.toLocaleString()}
-            </span>
-            <span className="text-[10px] sm:text-xs text-zinc-500 truncate">/ {stepGoal.toLocaleString()}</span>
+          <div className="flex items-baseline gap-1 sm:gap-2 mb-2 flex-wrap">
+            <span className="text-xl sm:text-2xl md:text-3xl font-extrabold text-white">{currentSteps.toLocaleString()}</span>
+            {stats.stepGoal !== null && <span className="text-xs text-zinc-400">/ {stats.stepGoal.toLocaleString()}</span>}
           </div>
         </div>
         <div>
-          <div
-            role="progressbar"
-            aria-valuenow={stepPct}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label="Daily steps progress"
-            className="w-full h-1.5 sm:h-2 bg-zinc-800 rounded-full overflow-hidden"
-          >
+          {steps.percent !== null ? (
             <div
-              className="h-full bg-linear-to-r from-blue-500 to-cyan-400 rounded-full transition-all duration-500"
-              style={{ width: `${stepPct}%` }}
-            />
-          </div>
-          <div className="flex justify-between items-center text-[10px] sm:text-[11px] text-zinc-400 mt-2">
-            <span>{stepPct}%</span>
-            <span>~{liveStepCalories} kcal</span>
+              role="progressbar"
+              aria-valuenow={steps.percent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="Steps vs goal"
+              className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden"
+            >
+              <div className="h-full bg-linear-to-r from-blue-500 to-cyan-400 rounded-full transition-all duration-500" style={{ width: `${steps.barPercent}%` }} />
+            </div>
+          ) : (
+            <NoGoal label="step goal" />
+          )}
+          <div className="flex justify-between items-center text-xs text-zinc-400 mt-2">
+            <span>{steps.percent !== null ? `${steps.percent}%` : ""}</span>
+            <span>≈ {stepCalories(currentSteps)} kcal</span>
           </div>
         </div>
       </article>
 
-      {/* Water Card */}
-      <article className="p-4 sm:p-5 rounded-3xl bg-zinc-900/80 border border-zinc-800/80 relative overflow-hidden group hover:border-zinc-700/60 transition flex flex-col justify-between shadow-sm">
+      {/* Water */}
+      <article className={cardClass}>
         <div>
           <div className="flex items-center justify-between mb-2 sm:mb-3">
-            <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-zinc-400">
-              Hydration
-            </span>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Water</h3>
             <div aria-hidden="true" className="p-1.5 sm:p-2 rounded-2xl bg-cyan-500/15 text-cyan-400">
-              <Droplets className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <Droplets className="w-4 h-4" />
             </div>
           </div>
-          <div className="flex items-baseline gap-1 sm:gap-2 mb-2">
-            <span className="text-xl sm:text-2xl md:text-3xl font-extrabold text-white truncate">
-              {(stats.waterMl / 1000).toFixed(1)}L
-            </span>
-            <span className="text-[10px] sm:text-xs text-zinc-500 truncate">/ {(waterGoal / 1000).toFixed(1)}L</span>
+          <div className="flex items-baseline gap-1 sm:gap-2 mb-2 flex-wrap">
+            <span className="text-xl sm:text-2xl md:text-3xl font-extrabold text-white">{(stats.waterMl / 1000).toFixed(1)} L</span>
+            {stats.waterGoalMl !== null && <span className="text-xs text-zinc-400">/ {(stats.waterGoalMl / 1000).toFixed(1)} L</span>}
           </div>
         </div>
         <div>
-          <div
-            role="progressbar"
-            aria-valuenow={waterPct}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label="Hydration progress"
-            className="w-full h-1.5 sm:h-2 bg-zinc-800 rounded-full overflow-hidden"
-          >
+          {water.percent !== null ? (
             <div
-              className="h-full bg-linear-to-r from-cyan-500 to-teal-400 rounded-full transition-all duration-500"
-              style={{ width: `${waterPct}%` }}
-            />
-          </div>
-          <div className="flex justify-between items-center text-[10px] sm:text-[11px] text-zinc-400 mt-2">
-            <span>{waterPct}%</span>
-            <span>{stats.waterMl} ml</span>
+              role="progressbar"
+              aria-valuenow={water.percent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="Water vs goal"
+              className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden"
+            >
+              <div className="h-full bg-linear-to-r from-cyan-500 to-teal-400 rounded-full transition-all duration-500" style={{ width: `${water.barPercent}%` }} />
+            </div>
+          ) : (
+            <NoGoal label="water goal" />
+          )}
+          <div className="flex justify-between items-center text-xs text-zinc-400 mt-2">
+            <span>{water.percent !== null ? `${water.percent}%` : ""}</span>
+            <span>{stats.waterMl.toLocaleString()} ml</span>
           </div>
         </div>
       </article>

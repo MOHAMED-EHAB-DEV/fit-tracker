@@ -1,39 +1,118 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens. Use these names in new code instead of raw palette values:
+ *   bg-app / bg-surface / bg-surface-2      page, card, raised card
+ *   text-ink / text-ink-muted                primary and secondary text
+ *   border-line                              dividers and card borders
+ *   bg-brand text-on-brand                   primary action
+ *   bg-danger                                destructive action
+ */
+@theme {
+  --color-app: #09090b;
+  --color-surface: #18181b;
+  --color-surface-2: #27272a;
+  --color-line: rgb(255 255 255 / 0.1);
+  --color-ink: #f4f4f5;
+  --color-ink-muted: #a1a1aa;
+  --color-brand: #10b981;
+  --color-brand-strong: #34d399;
+  --color-on-brand: #052e22;
+  --color-danger: #dc2626;
+  --color-danger-strong: #ef4444;
+  --color-warning: #f59e0b;
+
+  /*
+   * zinc-500 is used across the app for secondary text. The stock value fails
+   * WCAG contrast on the dark surfaces (3.6:1); this one passes (5.2:1).
+   */
+  --color-zinc-500: #8b8b95;
+
+  --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --animate-overlay-in: overlay-in 180ms ease-out both;
+  --animate-rise-in: rise-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 @layer base {
   :root {
+    color-scheme: dark;
     --background: #09090b;
     --foreground: #f4f4f5;
+    --nav-height: 4rem;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
 
   body {
     background-color: var(--background);
     color: var(--foreground);
-    font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+    font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
   }
 
-  /* Accessible focus indicators for keyboard navigation */
-  :focus-visible {
-    outline: 2px solid #10b981;
-    outline-offset: 2px;
+  /* Numbers that change (timers, weights, totals) must not jitter. */
+  input[type="number"],
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
   }
 
-  button:focus-visible,
-  input:focus-visible,
-  select:focus-visible,
-  textarea:focus-visible,
-  a:focus-visible {
-    outline: 2px solid #10b981;
-    outline-offset: 2px;
+  /* Hide number spinners: fields have their own steppers and keypads. */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
   }
 }
 
-/* Tabular figures for numbers, timers, metrics */
-.tabular-nums {
-  font-variant-numeric: tabular-nums;
+/* ---------------------------------------------------------------------------
+ * Accessibility floor. These rules are deliberately outside Tailwind's layers
+ * so they win over utility classes everywhere in the app.
+ * ------------------------------------------------------------------------- */
+
+/* A focus ring that is visible on every surface, including brand buttons. */
+:focus-visible {
+  outline: 2px solid #6ee7b7;
+  outline-offset: 2px;
+}
+/* Headings, dialogs and the main region receive focus from code only (to move
+ * screen readers along); they are not controls, so they show no ring. */
+[tabindex="-1"]:focus-visible {
+  outline: none;
+}
+
+/* Nothing smaller than 12px. */
+.text-\[9px\],
+.text-\[10px\],
+.text-\[11px\] {
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+/* 16px inputs on phones: readable, and iOS does not zoom the page on focus. */
+@media (max-width: 640px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: 1rem;
+  }
+}
+
+/* Controls revealed on hover must simply be visible on touch screens. */
+@media (hover: none) {
+  [class~="opacity-0"][class*="group-hover"][class*="opacity-100"],
+  [class~="opacity-0"][class*="hover:opacity-100"] {
+    opacity: 1;
+  }
 }
 
 /* Custom subtle scrollbar */
@@ -45,116 +124,148 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #27272a;
+  background: #3f3f46;
   border-radius: 9999px;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #3f3f46;
+
+.no-scrollbar,
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
 }
 
-/* Safe area padding for mobile navigation */
+/* Safe areas (notch, home indicator, gesture bar). */
 .safe-area-pb {
   padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
 }
-
 .safe-area-pt {
   padding-top: max(0.75rem, env(safe-area-inset-top));
 }
-
-/* Glassmorphic surfaces with preserved zinc-950/zinc-900 palette */
-.glass-surface {
-  background-color: rgba(24, 24, 27, 0.75);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+/* Room for the fixed bottom navigation on phones (and the "workout in
+ * progress" bar while one is running: --session-bar-height is set by it). */
+.pb-nav {
+  padding-bottom: calc(var(--nav-height) + var(--session-bar-height, 0px) + env(safe-area-inset-bottom) + 1.5rem);
 }
-
-.glass-panel {
-  background-color: rgba(9, 9, 11, 0.85);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-}
-
-@media (prefers-reduced-transparency: reduce) {
-  .glass-surface {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    background-color: rgba(24, 24, 27, 0.95);
-  }
-  .glass-panel {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    background-color: rgba(9, 9, 11, 0.98);
+@media (min-width: 768px) {
+  .pb-nav {
+    padding-bottom: calc(var(--session-bar-height, 0px) + 2rem);
   }
 }
-
-/* Subtle elevation shadow */
-.elevation-1 {
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 1px 2px -1px rgba(0, 0, 0, 0.4);
+/* Position for things that float just above the bottom navigation. */
+.bottom-above-nav {
+  bottom: calc(var(--nav-height) + var(--session-bar-height, 0px) + env(safe-area-inset-bottom) + 0.75rem);
 }
-
-.elevation-2 {
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.5);
-}
-
-.elevation-3 {
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.6), 0 4px 6px -4px rgba(0, 0, 0, 0.6);
-}
-
-/* Animations */
-@keyframes pulse-glow {
-  0%, 100% {
-    opacity: 0.8;
-    transform: scale(1);
+@media (min-width: 768px) {
+  .bottom-above-nav {
+    bottom: calc(var(--session-bar-height, 0px) + 1.5rem);
   }
-  50% {
+}
+/* Dialogs fill the area that is really visible: on iPhones the keyboard
+ * covers the page, so the size comes from the visual viewport (set by
+ * trackVisibleArea in lib/ui/overlay-stack.ts) and falls back to the page. */
+.overlay-area {
+  top: var(--overlay-top, 0px);
+  height: var(--overlay-height, 100dvh);
+}
+
+/* The "workout in progress" bar itself. */
+.session-bar {
+  bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + 0.5rem);
+}
+@media (min-width: 768px) {
+  .session-bar {
+    bottom: 1.5rem;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Motion
+ * ------------------------------------------------------------------------- */
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
     opacity: 1;
-    transform: scale(1.02);
   }
 }
 
-.animate-pulse-glow {
-  animation: pulse-glow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-/* Native View Transition animations for WebView */
-@supports (view-transition-name: none) {
-  ::view-transition-old(root) {
-    animation: 160ms cubic-bezier(0.4, 0, 1, 1) both fade-out;
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
   }
-  ::view-transition-new(root) {
-    animation: 200ms cubic-bezier(0, 0, 0.2, 1) both fade-in;
-  }
-
-  @keyframes fade-out {
-    from { opacity: 1; transform: scale(1); }
-    to { opacity: 0; transform: scale(0.99); }
-  }
-
-  @keyframes fade-in {
-    from { opacity: 0; transform: scale(0.99); }
-    to { opacity: 1; transform: scale(1); }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-/* Respect user's motion preferences for accessibility (WCAG 2.1) */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
+@keyframes drawer-from-bottom {
+  from {
+    transform: translateY(100%);
   }
-
-  ::view-transition-group(*),
-  ::view-transition-old(*),
-  ::view-transition-new(*) {
-    animation: none !important;
+}
+@keyframes drawer-from-top {
+  from {
+    transform: translateY(-100%);
+  }
+}
+@keyframes drawer-from-right {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes drawer-from-left {
+  from {
+    transform: translateX(-100%);
   }
 }
 
-/* ── Toast Notification Animations ── */
+.overlay-fade-in {
+  animation: overlay-in 180ms ease-out both;
+}
+.dialog-rise-in {
+  animation: rise-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.drawer-in-bottom {
+  animation: drawer-from-bottom 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.drawer-in-top {
+  animation: drawer-from-top 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.drawer-in-right {
+  animation: drawer-from-right 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.drawer-in-left {
+  animation: drawer-from-left 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+[dir="rtl"] .drawer-in-right {
+  animation-name: drawer-from-left;
+}
+[dir="rtl"] .drawer-in-left {
+  animation-name: drawer-from-right;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+.skeleton {
+  border-radius: 0.75rem;
+  background: linear-gradient(90deg, #18181b 25%, #27272a 37%, #18181b 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+/* Toasts */
 @keyframes toast-in {
   from {
     opacity: 0;
@@ -165,7 +276,6 @@
     transform: translateY(0) scale(1);
   }
 }
-
 @keyframes toast-out {
   from {
     opacity: 1;
@@ -176,98 +286,21 @@
     transform: translateY(-8px) scale(0.96);
   }
 }
-
 .toast-enter {
   animation: toast-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-
 .toast-exit {
   animation: toast-out 280ms cubic-bezier(0.4, 0, 1, 1) both;
 }
 
-/* Toast dismiss button — visible focus ring for keyboard navigation */
-.toast-dismiss-btn:focus-visible {
-  outline: 2px solid #10b981;
-  outline-offset: 1px;
-  color: #f4f4f5 !important;
-  background: rgba(255, 255, 255, 0.08) !important;
-}
-
-/* ── Mobile Sidebar Drawer Animations ── */
-@keyframes sidebar-backdrop-fade-in {
-  from {
-    opacity: 0;
+/* Respect the user's motion preference. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes sidebar-backdrop-fade-out {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
-}
-
-@keyframes sidebar-drawer-slide-in {
-  from {
-    transform: translateX(-100%);
-  }
-  to {
-    transform: translateX(0);
-  }
-}
-
-@keyframes sidebar-drawer-slide-out {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-100%);
-  }
-}
-
-@keyframes sidebar-drawer-slide-in-rtl {
-  from {
-    transform: translateX(100%);
-  }
-  to {
-    transform: translateX(0);
-  }
-}
-
-@keyframes sidebar-drawer-slide-out-rtl {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(100%);
-  }
-}
-
-.sidebar-backdrop-enter {
-  animation: sidebar-backdrop-fade-in 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.sidebar-backdrop-exit {
-  animation: sidebar-backdrop-fade-out 200ms cubic-bezier(0.4, 0, 1, 1) both;
-}
-
-.sidebar-drawer-enter {
-  animation: sidebar-drawer-slide-in 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.sidebar-drawer-exit {
-  animation: sidebar-drawer-slide-out 220ms cubic-bezier(0.4, 0, 1, 1) both;
-}
-
-[dir="rtl"] .sidebar-drawer-enter {
-  animation-name: sidebar-drawer-slide-in-rtl;
-}
-
-[dir="rtl"] .sidebar-drawer-exit {
-  animation-name: sidebar-drawer-slide-out-rtl;
 }

@@ -1,72 +1,142 @@
-// For use in React Server Components and API route handlers.
-// Reads the 'token' cookie or 'Authorization: Bearer <token>' header, verifies it, and optionally fetches the full User.
+// The single place that decides who the current user is.
+// Used by Server Components, Server Functions and Route Handlers.
+import "server-only";
+import { cache } from "react";
 import { cookies } from "next/headers";
-import { verifyToken, type JWTPayload } from "@/lib/auth/jwt";
+import { redirect } from "next/navigation";
+import { verifyToken } from "@/lib/auth/jwt";
+import { SESSION_COOKIE_NAME } from "@/lib/auth/cookies";
 import { getDb } from "@/lib/db/mongoose";
 import User, { type IUser } from "@/lib/db/models/User";
+import { normalizeWeekStart, resolveTimeZone, type WeekdayKey } from "@/lib/time";
+import { normalizeWeightUnit, type WeightUnit } from "@/lib/fitness/units";
 
-/**
- * Returns the decoded JWT payload from the 'Authorization' header or 'token' cookie.
- * Does NOT hit the database.
- */
-export async function getServerSession(req?: Request | null): Promise<JWTPayload | null> {
-  try {
-    // 1. Check Bearer Authorization header if request object provided
-    if (req) {
-      const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
-      if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
-        const bearerToken = authHeader.substring(7).trim();
-        if (bearerToken) {
-          const verified = await verifyToken(bearerToken);
-          if (verified) return verified;
-        }
-      }
-    }
+export interface SessionUser {
+  userId: string;
+  email: string;
+  name: string;
+  role: "user" | "admin";
+  tokenVersion: number;
+  /** The user's IANA time zone; every "today" is computed in it. */
+  timezone: string;
+  weightUnit: WeightUnit;
+  weekStartDay: WeekdayKey;
+  isProfileComplete: boolean;
+}
 
-    // 2. Fall back to Next.js cookie store
-    const cookieStore = await cookies();
-    const token = cookieStore.get("token")?.value;
-    if (!token) return null;
-    return verifyToken(token);
-  } catch {
-    return null;
-  }
+type LeanUser = IUser;
+
+/** Where pages send a visitor without a valid session (the proxy clears the stale cookie there). */
+export const LOGIN_REDIRECT = "/login?expired=1";
+
+function hasBiometrics(user: Pick<IUser, "fitnessProfile">): boolean {
+  return Boolean(
+    user.fitnessProfile?.weightKg && user.fitnessProfile?.heightCm && user.fitnessProfile?.sex
+  );
 }
 
 /**
- * Returns the full User document from MongoDB.
- * Calls getServerSession() first, then queries MongoDB once.
- * Call this in (app)/layout.tsx — result is passed to UserContext.
+ * Loads the user behind the session cookie and validates the session against
+ * the database: the account must exist, must not be banned, and the token
+ * must not have been revoked ("log out all devices" bumps tokenVersion).
  */
-export async function getFullUser(req?: Request | null): Promise<IUser | null> {
-  const session = await getServerSession(req);
-  if (!session) return null;
+const loadVerifiedUser = cache(async (): Promise<LeanUser | null> => {
+  let token: string | undefined;
+  try {
+    token = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
+  } catch {
+    return null;
+  }
+  if (!token) return null;
+
+  const payload = await verifyToken(token);
+  if (!payload) return null;
 
   await getDb();
-  const user = await User.findById(session.userId)
+  const user = (await User.findById(payload.userId)
     .select("-passwordHash")
-    .lean();
+    .lean()) as LeanUser | null;
 
   if (!user) return null;
+  if (user.isBanned) return null;
+  if ((user.tokenVersion || 0) !== payload.tokenVersion) return null;
+  return user;
+});
 
-  // Token version check — increment User.tokenVersion to invalidate all sessions
-  if ((user as any).tokenVersion !== session.tokenVersion) return null;
+/**
+ * The verified session, or null. Safe to call many times per request
+ * (memoized during a render pass).
+ */
+export async function getServerSession(): Promise<SessionUser | null> {
+  const user = await loadVerifiedUser();
+  if (!user) return null;
+  return {
+    userId: String(user._id),
+    email: user.email,
+    name: user.name,
+    role: user.role === "admin" ? "admin" : "user",
+    tokenVersion: user.tokenVersion || 0,
+    timezone: resolveTimeZone(user.preferences?.timezone),
+    weightUnit: normalizeWeightUnit(user.preferences?.weightUnit),
+    weekStartDay: normalizeWeekStart(user.preferences?.weekStartDay),
+    isProfileComplete: user.isProfileComplete === true || hasBiometrics(user),
+  };
+}
 
-  // Check if profile is complete (explicit flag OR existing biometrics)
-  const hasBiometrics = Boolean(
-    (user as any).fitnessProfile?.weightKg &&
-    (user as any).fitnessProfile?.heightCm &&
-    (user as any).fitnessProfile?.sex
-  );
+/**
+ * The full user document (without the password hash or stored secrets),
+ * or null when there is no valid session.
+ */
+export async function getFullUser(): Promise<IUser | null> {
+  const user = await loadVerifiedUser();
+  if (!user) return null;
 
-  const isComplete = (user as any).isProfileComplete === true || hasBiometrics;
-
-  // If user has biometrics but isProfileComplete wasn't persisted yet, update asynchronously
-  if (hasBiometrics && (user as any).isProfileComplete !== true) {
-    User.updateOne({ _id: (user as any)._id }, { $set: { isProfileComplete: true } }).exec();
+  const complete = user.isProfileComplete === true || hasBiometrics(user);
+  if (complete && user.isProfileComplete !== true) {
+    await User.updateOne({ _id: user._id }, { $set: { isProfileComplete: true } }).catch(() => undefined);
   }
 
-  (user as any).isProfileComplete = isComplete;
+  return { ...user, isProfileComplete: complete } as unknown as IUser;
+}
 
-  return user as unknown as IUser;
+/** For pages: the signed-in user, or a redirect to /login. */
+export async function requirePageUser(): Promise<IUser> {
+  const user = await getFullUser();
+  if (!user) redirect(LOGIN_REDIRECT);
+  return user;
+}
+
+/** For pages: the session, or a redirect to /login. */
+export async function requirePageSession(): Promise<SessionUser> {
+  const session = await getServerSession();
+  if (!session) redirect(LOGIN_REDIRECT);
+  return session;
+}
+
+/**
+ * The plain object handed to client components. It never contains secrets:
+ * the personal Gemini key is reduced to a yes/no flag.
+ */
+export async function getClientUser(): Promise<Record<string, unknown> | null> {
+  const user = await getFullUser();
+  if (!user) return null;
+
+  const withKey = await User.findById(user._id).select("+preferences.customGeminiApiKey").lean();
+  const hasCustomGeminiKey = Boolean(withKey?.preferences?.customGeminiApiKey);
+
+  const plain = JSON.parse(JSON.stringify(user)) as Record<string, unknown>;
+  delete plain.tokenVersion;
+  delete plain.passwordHash;
+  delete plain.passwordResetTokenHash;
+  delete plain.passwordResetExpiresAt;
+
+  const preferences = { ...((plain.preferences as Record<string, unknown>) || {}) };
+  delete preferences.customGeminiApiKey;
+  preferences.hasCustomGeminiKey = hasCustomGeminiKey;
+  preferences.timezone = resolveTimeZone(user.preferences?.timezone);
+  preferences.weightUnit = normalizeWeightUnit(user.preferences?.weightUnit);
+  preferences.weekStartDay = normalizeWeekStart(user.preferences?.weekStartDay);
+  plain.preferences = preferences;
+
+  return plain;
 }

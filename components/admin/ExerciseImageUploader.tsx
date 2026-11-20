@@ -1,536 +1,560 @@
 "use client";
 
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import {
   UploadCloud,
   Image as ImageIcon,
   Trash2,
-  Eye,
   Star,
   ChevronLeft,
   ChevronRight,
   X,
   Link as LinkIcon,
   AlertCircle,
-  FileImage,
+  Loader2,
+  RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { cn } from "@/lib/utils";
+import { readApi, errorMessage } from "@/components/admin/api";
+import { EXERCISE_LIMITS } from "@/lib/admin/exercise-vocabulary";
+
+/**
+ * Exercise images. Each file is resized in the browser and uploaded on its
+ * own request as soon as it is added, so a save only sends URLs. Previews go
+ * through the same image proxy users see, so a preview that loads here also
+ * loads for them.
+ */
 
 export interface ExerciseImageItem {
   id: string;
+  /** Final URL once uploaded, or the stored/external URL. */
   url?: string;
-  file?: File;
+  /** What the tile shows: a blob preview while uploading, then the URL. */
   previewUrl: string;
+  status: "ready" | "uploading" | "error";
+  error?: string;
+  /** Uploaded in this editing session and not saved into the exercise yet. */
+  unsaved?: boolean;
+  /** Kept to retry a failed upload. */
+  file?: File;
 }
+
+type SetImages = React.Dispatch<React.SetStateAction<ExerciseImageItem[]>>;
 
 export interface ExerciseImageUploaderProps {
   images: ExerciseImageItem[];
-  onChange: (images: ExerciseImageItem[]) => void;
+  setImages: SetImages;
   className?: string;
-  maxImages?: number;
 }
 
-function ExerciseGridImageItem({
+const MAX_UPLOAD_BYTES = 3.5 * 1024 * 1024;
+const MAX_SIDE = 1600;
+const ACCEPTED = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+
+let itemCounter = 0;
+export const newImageId = (prefix: string) => `${prefix}-${++itemCounter}`;
+
+export function revokePreview(item: ExerciseImageItem): void {
+  if (item.previewUrl.startsWith("blob:")) {
+    try {
+      URL.revokeObjectURL(item.previewUrl);
+    } catch {
+      // Already revoked.
+    }
+  }
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob | null> {
+  return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
+}
+
+/** Resizes a photo so the upload stays small. GIFs are kept as they are (resizing would drop animation). */
+async function prepareForUpload(file: File): Promise<File> {
+  if (file.type === "image/gif") {
+    if (file.size > MAX_UPLOAD_BYTES) throw new Error("This GIF is larger than 3.5 MB. Compress it first.");
+    return file;
+  }
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch {
+    throw new Error("This browser cannot read that image. Use a JPG, PNG or WebP file.");
+  }
+  try {
+    for (const [side, quality] of [
+      [MAX_SIDE, 0.85],
+      [1200, 0.75],
+      [900, 0.7],
+    ] as const) {
+      const scale = Math.min(1, side / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("This browser cannot resize images.");
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+      let blob = await canvasToBlob(canvas, "image/webp", quality);
+      if (!blob || blob.type !== "image/webp") blob = await canvasToBlob(canvas, "image/jpeg", quality);
+      if (blob && blob.size <= MAX_UPLOAD_BYTES) {
+        const ext = blob.type === "image/webp" ? "webp" : "jpg";
+        return new File([blob], `exercise.${ext}`, { type: blob.type });
+      }
+    }
+    throw new Error("This image is still too large after resizing.");
+  } finally {
+    bitmap.close();
+  }
+}
+
+async function uploadOne(file: File): Promise<string> {
+  const prepared = await prepareForUpload(file);
+  const body = new FormData();
+  body.append("file", prepared);
+  let response: Response;
+  try {
+    response = await fetch("/api/admin/exercises/images", { method: "POST", body });
+  } catch {
+    throw new Error("Could not reach the server. Check your connection and retry.");
+  }
+  const data = await readApi<{ url: string }>(response);
+  return data.url;
+}
+
+/** Tells the server to drop an upload that will not be saved (best effort). */
+export function discardUpload(url: string, keepalive: boolean = false): void {
+  void fetch("/api/admin/exercises/images", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+    keepalive,
+  }).catch(() => undefined);
+}
+
+/** Same rules as the server's image proxy (the server re-checks and names the exact problem). */
+function urlProblem(raw: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return "Enter a full link that starts with https://";
+  }
+  if (url.protocol !== "https:") return "The link must start with https://";
+  const host = url.hostname.toLowerCase();
+  if (host === "res.cloudinary.com") {
+    return /\/image\/upload\//.test(url.pathname) ? null : "Only public Cloudinary uploads (/image/upload/) can be used";
+  }
+  if (host !== "raw.githubusercontent.com") {
+    return `Images from ${host} cannot be shown to users. Upload the file instead, or use raw.githubusercontent.com.`;
+  }
+  if (!/\.(jpe?g|png|gif|webp|avif)$/i.test(url.pathname)) return "The link must point directly to an image file";
+  return null;
+}
+
+function Tile({
   item,
   index,
-  isPrimary,
-  isLocalFile,
-  totalImages,
-  onSetPrimary,
+  total,
+  onMove,
+  onCover,
   onRemove,
-  onMoveLeft,
-  onMoveRight,
+  onRetry,
   onPreview,
 }: {
   item: ExerciseImageItem;
   index: number;
-  isPrimary: boolean;
-  isLocalFile: boolean;
-  totalImages: number;
-  onSetPrimary: (idx: number) => void;
-  onRemove: (idx: number) => void;
-  onMoveLeft: (idx: number) => void;
-  onMoveRight: (idx: number) => void;
-  onPreview: (url: string) => void;
+  total: number;
+  onMove: (index: number, delta: -1 | 1) => void;
+  onCover: (index: number) => void;
+  onRemove: (index: number) => void;
+  onRetry: (item: ExerciseImageItem) => void;
+  onPreview: (item: ExerciseImageItem) => void;
 }) {
-  const [hasError, setHasError] = useState(false);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const loadFailed = failedSrc === item.previewUrl;
+  const isCover = index === 0;
+  const button =
+    "min-h-11 min-w-11 flex items-center justify-center rounded-lg text-zinc-200 bg-zinc-900 border border-white/10 hover:bg-zinc-800 transition cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400";
 
   return (
-    <div
+    <li
       className={cn(
-        "group relative aspect-4/3 rounded-2xl overflow-hidden bg-zinc-950 border transition-all duration-200 shadow-md",
-        isPrimary
-          ? "border-violet-500 ring-2 ring-violet-500/30"
-          : "border-white/10 hover:border-white/20"
+        "rounded-2xl overflow-hidden bg-zinc-950 border flex flex-col",
+        isCover ? "border-violet-500 ring-2 ring-violet-500/30" : "border-white/10"
       )}
     >
-      {/* Image or Error Fallback */}
-      {!hasError ? (
-        <Image
-          src={item.previewUrl}
-          alt={`Exercise media ${index + 1}`}
-          fill
-          unoptimized
-          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-          onError={() => setHasError(true)}
-          className="object-cover group-hover:scale-105 transition-transform duration-300"
-        />
-      ) : (
-        <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-900/90 p-2 text-center text-zinc-500 space-y-1.5">
-          <AlertCircle className="w-6 h-6 text-amber-400/80" />
-          <span className="text-[10px] text-zinc-400 font-bold leading-tight">Image load error</span>
-        </div>
+      <button
+        type="button"
+        onClick={() => onPreview(item)}
+        disabled={item.status !== "ready" || loadFailed}
+        className="relative aspect-4/3 w-full cursor-zoom-in disabled:cursor-default focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-400"
+        aria-label={`View image ${index + 1}`}
+      >
+        {!loadFailed ? (
+          <Image
+            src={item.previewUrl}
+            alt={`Exercise image ${index + 1}`}
+            fill
+            sizes="(max-width: 640px) 50vw, 25vw"
+            onError={() => setFailedSrc(item.previewUrl)}
+            className="object-cover"
+          />
+        ) : (
+          <span className="absolute inset-0 flex flex-col items-center justify-center gap-1 p-2 text-center bg-zinc-900">
+            <AlertCircle className="w-6 h-6 text-amber-400" aria-hidden="true" />
+            <span className="text-xs text-zinc-300 font-semibold">Users cannot load this image</span>
+          </span>
+        )}
+        <span className="absolute top-2 left-2 flex flex-col gap-1 items-start">
+          {isCover && (
+            <span className="px-2 py-0.5 rounded-lg bg-violet-600 text-white text-xs font-bold flex items-center gap-1">
+              <Star className="w-3 h-3 fill-current text-amber-300" aria-hidden="true" /> Cover
+            </span>
+          )}
+          {item.unsaved && item.status === "ready" && (
+            <span className="px-2 py-0.5 rounded-lg bg-amber-400 text-zinc-950 text-xs font-bold">Not saved yet</span>
+          )}
+        </span>
+        {item.status === "uploading" && (
+          <span className="absolute inset-0 flex items-center justify-center bg-zinc-950/70 text-sm text-zinc-100 gap-2">
+            <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" /> Uploading…
+          </span>
+        )}
+      </button>
+
+      {item.status === "error" && (
+        <p role="alert" className="px-2 pt-2 text-xs text-red-300">
+          {item.error}
+        </p>
       )}
 
-      {/* Badges */}
-      <div className="absolute top-2 left-2 flex flex-col gap-1 z-10">
-        {isPrimary && (
-          <div className="px-2 py-0.5 rounded-lg bg-violet-600/90 backdrop-blur-md text-white text-[10px] font-extrabold flex items-center gap-1 shadow-md border border-violet-400/30">
-            <Star className="w-3 h-3 fill-current text-amber-300" />
-            <span>Primary Cover</span>
-          </div>
-        )}
-        {isLocalFile && (
-          <div className="px-2 py-0.5 rounded-lg bg-amber-500/80 backdrop-blur-md text-zinc-950 text-[9px] font-extrabold flex items-center gap-1 shadow-sm">
-            <FileImage className="w-2.5 h-2.5" />
-            <span>New (Pending Save)</span>
-          </div>
-        )}
-      </div>
-
-      {/* Hover Overlay with Action Buttons */}
-      <div className="absolute inset-0 bg-zinc-950/80 backdrop-blur-xs opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-2.5 z-20">
-        {/* Top Action Row */}
-        <div className="flex items-center justify-between gap-1">
-          {!isPrimary ? (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onSetPrimary(index);
-              }}
-              className="px-2 py-1 rounded-lg bg-zinc-900/90 hover:bg-violet-600 text-zinc-300 hover:text-white text-[11px] font-bold transition flex items-center gap-1 border border-white/10 cursor-pointer shadow-xs"
-              title="Set as primary cover"
-            >
-              <Star className="w-3 h-3 text-amber-400" />
-              <span>Make Cover</span>
-            </button>
-          ) : (
-            <div />
-          )}
-
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onRemove(index);
-            }}
-            className="p-1.5 rounded-lg bg-red-500/20 hover:bg-red-500 text-red-400 hover:text-white transition border border-red-500/30 cursor-pointer"
-            title="Remove image"
-            aria-label="Remove image"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
+      <div className="flex flex-wrap items-center gap-1 p-2">
+        <button type="button" className={button} onClick={() => onMove(index, -1)} disabled={index === 0} aria-label={`Move image ${index + 1} earlier`}>
+          <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+        </button>
+        <button type="button" className={button} onClick={() => onMove(index, 1)} disabled={index === total - 1} aria-label={`Move image ${index + 1} later`}>
+          <ChevronRight className="w-4 h-4" aria-hidden="true" />
+        </button>
+        {!isCover && (
+          <button type="button" className={button} onClick={() => onCover(index)} aria-label={`Use image ${index + 1} as cover`} title="Use as cover">
+            <Star className="w-4 h-4 text-amber-300" aria-hidden="true" />
           </button>
-        </div>
-
-        {/* Bottom Action Row: Reorder & Preview */}
-        <div className="flex items-center justify-between gap-1 pt-1 border-t border-white/10">
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              disabled={index === 0}
-              onClick={(e) => {
-                e.stopPropagation();
-                onMoveLeft(index);
-              }}
-              className="p-1 rounded-lg bg-zinc-900/90 text-zinc-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-zinc-800 transition border border-white/10 cursor-pointer"
-              title="Move Left"
-              aria-label="Move image left"
-            >
-              <ChevronLeft className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              disabled={index === totalImages - 1}
-              onClick={(e) => {
-                e.stopPropagation();
-                onMoveRight(index);
-              }}
-              className="p-1 rounded-lg bg-zinc-900/90 text-zinc-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-zinc-800 transition border border-white/10 cursor-pointer"
-              title="Move Right"
-              aria-label="Move image right"
-            >
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {!hasError && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onPreview(item.previewUrl);
-              }}
-              className="p-1.5 rounded-lg bg-zinc-900/90 hover:bg-zinc-800 text-zinc-300 hover:text-white transition border border-white/10 cursor-pointer flex items-center gap-1 text-[11px] font-semibold"
-              title="Full View"
-            >
-              <Eye className="w-3.5 h-3.5" />
-              <span>View</span>
-            </button>
-          )}
-        </div>
+        )}
+        {item.status === "error" && item.file && (
+          <button type="button" className={button} onClick={() => onRetry(item)} aria-label={`Retry uploading image ${index + 1}`} title="Retry">
+            <RotateCcw className="w-4 h-4" aria-hidden="true" />
+          </button>
+        )}
+        <button
+          type="button"
+          className={cn(button, "ml-auto text-red-300 hover:bg-red-500/20")}
+          onClick={() => onRemove(index)}
+          disabled={item.status === "uploading"}
+          aria-label={`Remove image ${index + 1}`}
+          title="Remove"
+        >
+          <Trash2 className="w-4 h-4" aria-hidden="true" />
+        </button>
       </div>
-    </div>
+    </li>
   );
 }
 
-export function ExerciseImageUploader({
-  images = [],
-  onChange,
-  className,
-  maxImages = 8,
-}: ExerciseImageUploaderProps) {
+export function ExerciseImageUploader({ images, setImages, className }: ExerciseImageUploaderProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewError, setPreviewError] = useState(false);
+  const [preview, setPreview] = useState<ExerciseImageItem | null>(null);
+  const [previewFailed, setPreviewFailed] = useState(false);
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlInputValue, setUrlInputValue] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imagesRef = useRef(images);
+  const unmountedRef = useRef(false);
+  const maxImages = EXERCISE_LIMITS.maxImages;
 
-  // Clean up object URLs on component unmount to prevent memory leaks
   useEffect(() => {
+    imagesRef.current = images;
+  }, [images]);
+
+  // Revoke any blob previews still alive when the editor closes.
+  useEffect(() => {
+    unmountedRef.current = false;
     return () => {
-      images.forEach((item) => {
-        if (item.file && item.previewUrl.startsWith("blob:")) {
-          try {
-            URL.revokeObjectURL(item.previewUrl);
-          } catch {}
-        }
-      });
+      unmountedRef.current = true;
+      imagesRef.current.forEach(revokePreview);
     };
   }, []);
 
-  const handleFiles = useCallback(
-    (files: FileList | File[]) => {
-      setError(null);
-      const fileArray = Array.from(files).filter((file) =>
-        file.type.startsWith("image/")
+  const startUpload = async (id: string, file: File) => {
+    setImages((current) => current.map((item) => (item.id === id ? { ...item, status: "uploading", error: undefined } : item)));
+    try {
+      const url = await uploadOne(file);
+      const target = imagesRef.current.find((item) => item.id === id);
+      if (!target || unmountedRef.current) {
+        // The tile was removed (or the editor closed) while it was uploading.
+        discardUpload(url);
+        return;
+      }
+      revokePreview(target);
+      setImages((current) =>
+        current.map((item) => (item.id === id ? { id, url, previewUrl: url, status: "ready", unsaved: true } : item))
       );
-
-      if (fileArray.length === 0) {
-        setError("Please select valid image files (JPG, PNG, WebP, GIF).");
-        return;
-      }
-
-      // Max size limit: 10MB per image
-      const oversized = fileArray.find((f) => f.size > 10 * 1024 * 1024);
-      if (oversized) {
-        setError(`File "${oversized.name}" exceeds the 10MB limit.`);
-        return;
-      }
-
-      if (images.length + fileArray.length > maxImages) {
-        setError(`Maximum ${maxImages} images allowed per exercise.`);
-        return;
-      }
-
-      const newItems: ExerciseImageItem[] = fileArray.map((file) => ({
-        id: `file-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-        file,
-        previewUrl: URL.createObjectURL(file),
-      }));
-
-      onChange([...images, ...newItems]);
-
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    },
-    [images, maxImages, onChange]
-  );
-
-  // Drag & Drop event handlers
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!isDragging) setIsDragging(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-  };
-
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      handleFiles(e.target.files);
+    } catch (err) {
+      setImages((current) =>
+        current.map((item) => (item.id === id ? { ...item, status: "error", error: errorMessage(err) } : item))
+      );
     }
   };
 
-  const handleRemoveImage = (indexToRemove: number) => {
-    const itemToRemove = images[indexToRemove];
-    if (itemToRemove?.file && itemToRemove.previewUrl.startsWith("blob:")) {
-      try {
-        URL.revokeObjectURL(itemToRemove.previewUrl);
-      } catch {}
+  const addFiles = async (fileList: FileList | File[]) => {
+    setError(null);
+    const files = Array.from(fileList);
+    const accepted = files.filter((file) => ACCEPTED.includes(file.type));
+    if (accepted.length < files.length) {
+      setError("Only JPG, PNG, WebP and GIF images can be added. Other files were skipped.");
     }
-    onChange(images.filter((_, idx) => idx !== indexToRemove));
+    const room = maxImages - imagesRef.current.length;
+    if (room <= 0) {
+      setError(`An exercise can have at most ${maxImages} images.`);
+      return;
+    }
+    if (accepted.length > room) setError(`Only ${room} more image${room === 1 ? "" : "s"} fit (maximum ${maxImages}).`);
+
+    const items: ExerciseImageItem[] = accepted.slice(0, room).map((file) => ({
+      id: newImageId("upload"),
+      previewUrl: URL.createObjectURL(file),
+      status: "uploading",
+      file,
+    }));
+    if (items.length === 0) return;
+    setImages((current) => [...current, ...items]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+
+    // One request per file, one at a time.
+    for (const item of items) {
+      await startUpload(item.id, item.file!);
+    }
   };
 
-  const handleSetPrimary = (index: number) => {
-    if (index === 0) return;
-    const selected = images[index];
-    const remaining = images.filter((_, idx) => idx !== index);
-    onChange([selected, ...remaining]);
+  const removeAt = (index: number) => {
+    const item = images[index];
+    if (!item) return;
+    revokePreview(item);
+    if (item.unsaved && item.url) discardUpload(item.url);
+    setImages((current) => current.filter((candidate) => candidate.id !== item.id));
   };
 
-  const handleMove = (index: number, direction: "left" | "right") => {
-    const targetIndex = direction === "left" ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= images.length) return;
-    const updated = [...images];
-    const [moved] = updated.splice(index, 1);
-    updated.splice(targetIndex, 0, moved);
-    onChange(updated);
+  const move = (index: number, delta: -1 | 1) => {
+    setImages((current) => {
+      const target = index + delta;
+      if (target < 0 || target >= current.length) return current;
+      const next = [...current];
+      const [moved] = next.splice(index, 1);
+      next.splice(target, 0, moved);
+      return next;
+    });
   };
 
-  const handleAddUrl = () => {
+  const makeCover = (index: number) => {
+    setImages((current) => {
+      if (index <= 0 || index >= current.length) return current;
+      const next = [...current];
+      const [moved] = next.splice(index, 1);
+      return [moved, ...next];
+    });
+  };
+
+  const addUrl = () => {
     const trimmed = urlInputValue.trim();
     if (!trimmed) return;
-    if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
-      setError("Please enter a valid URL starting with http:// or https://");
+    const problem = urlProblem(trimmed);
+    if (problem) {
+      setError(problem);
       return;
     }
-    if (images.some((item) => item.url === trimmed || item.previewUrl === trimmed)) {
-      setError("This image URL is already added.");
+    if (images.some((item) => item.url === trimmed)) {
+      setError("This image is already added.");
       return;
     }
-    const newItem: ExerciseImageItem = {
-      id: `url-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-      url: trimmed,
-      previewUrl: trimmed,
-    };
-    onChange([...images, newItem]);
+    if (images.length >= maxImages) {
+      setError(`An exercise can have at most ${maxImages} images.`);
+      return;
+    }
+    setImages((current) => [...current, { id: newImageId("url"), url: trimmed, previewUrl: trimmed, status: "ready" }]);
     setUrlInputValue("");
     setShowUrlInput(false);
     setError(null);
   };
 
+  const full = images.length >= maxImages;
+
   return (
     <div className={cn("space-y-4", className)}>
-      {/* Header Info */}
-      <div className="flex items-center justify-between">
-        <div>
-          <span className="text-xs text-zinc-400 font-medium">
-            Upload demonstration photos or movement diagrams for this exercise ({images.length}/{maxImages})
-          </span>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-zinc-400">
+          Demonstration photos or diagrams ({images.length}/{maxImages}). The first image is the cover.
+        </p>
         <button
           type="button"
-          onClick={() => setShowUrlInput(!showUrlInput)}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-400 hover:text-violet-300 transition cursor-pointer"
+          onClick={() => setShowUrlInput((value) => !value)}
+          aria-expanded={showUrlInput}
+          className="inline-flex items-center gap-1.5 min-h-11 px-2 text-sm font-semibold text-violet-300 hover:text-violet-200 transition cursor-pointer rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
         >
-          <LinkIcon className="w-3.5 h-3.5" />
-          <span>{showUrlInput ? "Hide URL Input" : "Add by Image URL"}</span>
+          <LinkIcon className="w-4 h-4" aria-hidden="true" />
+          <span>{showUrlInput ? "Hide link field" : "Add by link"}</span>
         </button>
       </div>
 
-      {/* Optional URL Add Bar */}
       {showUrlInput && (
-        <div className="flex items-center gap-2 p-3 bg-zinc-950/80 border border-white/10 rounded-2xl animate-in fade-in duration-200">
-          <LinkIcon className="w-4 h-4 text-zinc-500 shrink-0 ml-1" />
-          <input
-            type="url"
-            placeholder="Paste direct image link (https://...)"
-            value={urlInputValue}
-            onChange={(e) => setUrlInputValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleAddUrl();
-              }
-            }}
-            className="flex-1 bg-transparent text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none"
-          />
-          <Button
-            type="button"
-            variant="solid"
-            size="sm"
-            onClick={handleAddUrl}
-            className="bg-violet-600 hover:bg-violet-500 text-white font-bold h-8 px-3 rounded-xl"
-          >
-            Add URL
-          </Button>
+        <div className="space-y-2 p-3 bg-zinc-950/80 border border-white/10 rounded-2xl">
+          <label htmlFor="exercise-image-url" className="block text-xs font-bold uppercase tracking-wider text-zinc-400">
+            Image link
+          </label>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              id="exercise-image-url"
+              type="url"
+              inputMode="url"
+              maxLength={EXERCISE_LIMITS.imageUrlMax}
+              placeholder="https://raw.githubusercontent.com/…/image.jpg"
+              value={urlInputValue}
+              onChange={(e) => setUrlInputValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addUrl();
+                }
+              }}
+              className="flex-1 min-h-11 bg-zinc-900 border border-white/10 rounded-xl px-3 text-sm text-zinc-100 placeholder-zinc-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+            />
+            <Button type="button" variant="solid" size="md" onClick={addUrl} disabled={full} className="min-h-11">
+              Add link
+            </Button>
+          </div>
+          <p className="text-xs text-zinc-400">
+            Only links the app can show to users work: raw.githubusercontent.com image files and this app&apos;s Cloudinary uploads.
+            For anything else, download the image and upload it.
+          </p>
         </div>
       )}
 
-      {/* Error alert */}
       {error && (
-        <div className="flex items-center gap-2.5 p-3.5 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-medium">
-          <AlertCircle className="w-4 h-4 shrink-0" />
+        <div role="alert" className="flex items-center gap-2 p-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-300 text-sm">
+          <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
           <span className="flex-1">{error}</span>
           <button
             type="button"
             onClick={() => setError(null)}
-            className="text-red-400 hover:text-red-300 cursor-pointer"
+            className="min-h-11 min-w-11 flex items-center justify-center rounded-lg hover:text-red-200 cursor-pointer"
+            aria-label="Dismiss message"
           >
-            <X className="w-3.5 h-3.5" />
+            <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
       )}
 
-      {/* Drag & Drop Area */}
       <div
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (!full) setIsDragging(true);
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          setIsDragging(false);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          setIsDragging(false);
+          if (!full && e.dataTransfer.files?.length) void addFiles(e.dataTransfer.files);
+        }}
         className={cn(
-          "relative border-2 border-dashed rounded-3xl p-7 transition-all duration-300 cursor-pointer flex flex-col items-center justify-center gap-3.5 text-center select-none overflow-hidden",
-          isDragging
-            ? "border-violet-500 bg-violet-500/10 shadow-[0_0_30px_rgba(139,92,246,0.25)] scale-[1.01]"
-            : "border-white/15 bg-zinc-950/50 hover:border-violet-500/50 hover:bg-zinc-950/80 shadow-inner",
-          images.length >= maxImages && "pointer-events-none opacity-50 cursor-not-allowed"
+          "border-2 border-dashed rounded-3xl p-6 flex flex-col items-center justify-center gap-3 text-center transition",
+          isDragging ? "border-violet-500 bg-violet-500/10" : "border-white/15 bg-zinc-950/50",
+          full && "opacity-50"
         )}
       >
+        <UploadCloud className="w-8 h-8 text-violet-300" aria-hidden="true" />
+        <p className="text-sm text-zinc-200">
+          {isDragging ? "Drop the images to upload them" : "Drag images here, or"}
+        </p>
         <input
           ref={fileInputRef}
+          id="exercise-image-files"
           type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif"
+          accept={ACCEPTED.join(",")}
           multiple
-          onChange={handleFileInputChange}
-          className="hidden"
-          disabled={images.length >= maxImages}
+          onChange={(e) => {
+            if (e.target.files?.length) void addFiles(e.target.files);
+          }}
+          className="sr-only"
+          disabled={full}
         />
-
-        <div
-          className={cn(
-            "w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-300 shadow-md",
-            isDragging
-              ? "bg-violet-500 text-white scale-110 rotate-3"
-              : "bg-zinc-900 border border-white/10 text-violet-400 hover:text-white hover:bg-violet-600"
-          )}
-        >
-          <UploadCloud className="w-7 h-7" />
-        </div>
-
-        <div className="space-y-1 max-w-sm">
-          <p className="text-sm font-bold text-zinc-100">
-            {isDragging ? (
-              <span className="text-violet-400">Drop your images right here!</span>
-            ) : (
-              <>
-                <span className="text-violet-400 underline underline-offset-4 font-extrabold hover:text-violet-300">
-                  Click to browse
-                </span>{" "}
-                or drag & drop exercise images
-              </>
-            )}
-          </p>
-          <p className="text-xs text-zinc-500">
-            Supports PNG, JPG, WebP, GIF up to 10MB each
-          </p>
-        </div>
+        <Button type="button" variant="bordered" size="md" disabled={full} onClick={() => fileInputRef.current?.click()} className="min-h-11">
+          Choose images
+        </Button>
+        <p className="text-xs text-zinc-400">JPG, PNG, WebP or GIF. Photos are resized before upload; GIFs up to 3.5 MB.</p>
       </div>
 
-      {/* Selected / Uploaded Images Gallery Grid */}
       {images.length > 0 && (
-        <div className="space-y-2 pt-2">
-          <div className="flex items-center justify-between text-xs font-semibold text-zinc-400 px-1">
-            <span>Selected Images ({images.length})</span>
-            <span className="text-[11px] text-zinc-500">First image is used as primary cover</span>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5">
-            {images.map((item, index) => (
-              <ExerciseGridImageItem
-                key={item.id || item.previewUrl || index}
-                item={item}
-                index={index}
-                isPrimary={index === 0}
-                isLocalFile={!!item.file}
-                totalImages={images.length}
-                onSetPrimary={handleSetPrimary}
-                onRemove={handleRemoveImage}
-                onMoveLeft={(idx) => handleMove(idx, "left")}
-                onMoveRight={(idx) => handleMove(idx, "right")}
-                onPreview={(url) => {
-                  setPreviewError(false);
-                  setPreviewUrl(url);
-                }}
-              />
-            ))}
-          </div>
-        </div>
+        <ul className="grid grid-cols-1 min-[420px]:grid-cols-2 md:grid-cols-3 gap-3">
+          {images.map((item, index) => (
+            <Tile
+              key={item.id}
+              item={item}
+              index={index}
+              total={images.length}
+              onMove={move}
+              onCover={makeCover}
+              onRemove={removeAt}
+              onRetry={(failed) => failed.file && void startUpload(failed.id, failed.file)}
+              onPreview={(selected) => {
+                setPreviewFailed(false);
+                setPreview(selected);
+              }}
+            />
+          ))}
+        </ul>
       )}
 
-      {/* Lightbox / Full-size Preview Modal */}
-      {previewUrl && (
-        <Modal
-          isOpen={!!previewUrl}
-          onClose={() => {
-            setPreviewUrl(null);
-            setPreviewError(false);
-          }}
-          size="lg"
-          title={
-            <div className="flex items-center gap-2">
-              <ImageIcon className="w-5 h-5 text-violet-400" />
-              <span className="font-bold text-white">Exercise Image Preview</span>
-            </div>
-          }
-        >
-          <div className="space-y-4">
-            <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-zinc-950 border border-white/10 flex items-center justify-center">
-              {!previewError ? (
+      <Modal
+        isOpen={Boolean(preview)}
+        onClose={() => setPreview(null)}
+        size="lg"
+        title={
+          <span className="flex items-center gap-2">
+            <ImageIcon className="w-5 h-5 text-violet-400" aria-hidden="true" />
+            <span className="font-bold text-white">Image preview (as users see it)</span>
+          </span>
+        }
+      >
+        {preview && (
+          <div className="space-y-3">
+            <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-zinc-950 border border-white/10">
+              {!previewFailed ? (
                 <Image
-                  src={previewUrl}
-                  alt="Exercise preview full"
+                  src={preview.previewUrl}
+                  alt="Exercise image preview"
                   fill
-                  unoptimized
                   sizes="(max-width: 768px) 100vw, 800px"
-                  onError={() => setPreviewError(true)}
-                  className="object-contain rounded-xl"
+                  onError={() => setPreviewFailed(true)}
+                  className="object-contain"
                 />
               ) : (
-                <div className="flex flex-col items-center justify-center text-center p-6 space-y-2 text-zinc-400">
-                  <AlertCircle className="w-8 h-8 text-amber-400" />
-                  <p className="text-sm font-bold text-zinc-200">Unable to load image preview</p>
-                  <p className="text-xs text-zinc-500 max-w-sm">The image file or URL is unavailable or blocked.</p>
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 gap-2 text-zinc-300">
+                  <AlertCircle className="w-8 h-8 text-amber-400" aria-hidden="true" />
+                  <p className="text-sm font-bold">Users cannot load this image either.</p>
                 </div>
               )}
             </div>
-            <div className="flex items-center justify-between text-xs text-zinc-400">
-              <span className="truncate max-w-md font-mono">{previewUrl}</span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setPreviewUrl(null);
-                  setPreviewError(false);
-                }}
-              >
-                Close Preview
-              </Button>
-            </div>
+            <p className="text-xs text-zinc-400 font-mono break-all">{preview.url || "Local file (uploading)"}</p>
           </div>
-        </Modal>
-      )}
+        )}
+      </Modal>
     </div>
   );
 }
 
 export default ExerciseImageUploader;
-
-

@@ -1,16 +1,22 @@
-import { subDays, format, parseISO, differenceInCalendarDays } from "date-fns";
+/**
+ * Logging streaks (pure, isomorphic). A day counts only when the user logged
+ * something themselves; background step syncs alone never count.
+ */
+import { addDays, daysBetween, isValidDateString } from "@/lib/time";
 
 export interface IStreakData {
   currentStreak: number;
   longestStreak: number;
-  consistencyRate30d: number; // 0 - 100 percentage
+  /** 0-100: share of the last 30 days (including today) that were active. */
+  consistencyRate30d: number;
   isLoggedToday: boolean;
-  nextMilestone: number;
+  /** Next milestone in days; null once every milestone is reached. */
+  nextMilestone: number | null;
   badgeTitle: string;
   totalActiveDays: number;
 }
 
-const STREAK_MILESTONES = [
+export const STREAK_MILESTONES = [
   { days: 3, title: "Spark" },
   { days: 7, title: "Warrior" },
   { days: 14, title: "Iron Core" },
@@ -20,77 +26,82 @@ const STREAK_MILESTONES = [
   { days: 90, title: "Mastery" },
   { days: 180, title: "Centurion" },
   { days: 365, title: "Living Legend" },
-];
+] as const;
 
-export function calculateStreak(
-  activeDatesSet: Set<string>, // Set of 'YYYY-MM-DD' strings where user was active
-  todayStr: string
-): IStreakData {
-  const today = parseISO(todayStr);
-  const isLoggedToday = activeDatesSet.has(todayStr);
+/** Fields of a DailyLog that show user activity. */
+export interface StreakLogInput {
+  dateString: string;
+  caloriesIn?: number | null;
+  waterMl?: number | null;
+  completedHabitIds?: readonly unknown[] | null;
+  workoutEntries?: readonly unknown[] | null;
+  workoutIds?: readonly unknown[] | null;
+  steps?: number | null;
+  /** "manual" = typed in by the user; "step_counter" = background sync. */
+  stepsSource?: string | null;
+}
 
-  const yesterdayStr = format(subDays(today, 1), "yyyy-MM-dd");
-  const isLoggedYesterday = activeDatesSet.has(yesterdayStr);
+/** True when the user logged food, water, a habit, a workout, or steps by hand that day. */
+export function isUserLoggedDay(log: StreakLogInput): boolean {
+  return (
+    (log.caloriesIn || 0) > 0 ||
+    (log.waterMl || 0) > 0 ||
+    (log.completedHabitIds?.length || 0) > 0 ||
+    (log.workoutEntries?.length || 0) > 0 ||
+    (log.workoutIds?.length || 0) > 0 ||
+    ((log.steps || 0) > 0 && log.stepsSource === "manual")
+  );
+}
 
-  // 1. Calculate Current Streak
+/**
+ * Streak from daily logs plus any other active dates the caller knows about
+ * (e.g. WorkoutSession.localDate of completed sessions).
+ */
+export function computeStreak(input: {
+  logs: StreakLogInput[];
+  todayDateString: string;
+  extraActiveDates?: Iterable<string>;
+}): IStreakData {
+  const active = new Set<string>();
+  for (const log of input.logs) if (isUserLoggedDay(log)) active.add(log.dateString);
+  for (const date of input.extraActiveDates || []) active.add(date);
+  return calculateStreak(active, input.todayDateString);
+}
+
+/** Streak from a set of active "YYYY-MM-DD" dates. Invalid and future dates are ignored. */
+export function calculateStreak(activeDates: Iterable<string>, todayStr: string): IStreakData {
+  const dates = new Set<string>();
+  for (const date of activeDates) {
+    if (isValidDateString(date) && date <= todayStr) dates.add(date);
+  }
+
+  const isLoggedToday = dates.has(todayStr);
   let currentStreak = 0;
-  let checkDate = isLoggedToday ? today : isLoggedYesterday ? subDays(today, 1) : null;
-
-  if (checkDate) {
-    while (true) {
-      const dateStr = format(checkDate, "yyyy-MM-dd");
-      if (activeDatesSet.has(dateStr)) {
-        currentStreak++;
-        checkDate = subDays(checkDate, 1);
-      } else {
-        break;
-      }
-    }
+  let cursor: string | null = isLoggedToday ? todayStr : dates.has(addDays(todayStr, -1)) ? addDays(todayStr, -1) : null;
+  while (cursor && dates.has(cursor)) {
+    currentStreak += 1;
+    cursor = addDays(cursor, -1);
   }
 
-  // 2. Calculate Longest Streak from sorted dates
-  const sortedDates = Array.from(activeDatesSet).sort();
   let longestStreak = currentStreak;
-  let tempStreak = 0;
-  let prevDate: Date | null = null;
-
-  for (const dateStr of sortedDates) {
-    const d = parseISO(dateStr);
-    if (!prevDate) {
-      tempStreak = 1;
-    } else {
-      const diff = differenceInCalendarDays(d, prevDate);
-      if (diff === 1) {
-        tempStreak++;
-      } else if (diff > 1) {
-        tempStreak = 1;
-      }
-    }
-    prevDate = d;
-    if (tempStreak > longestStreak) {
-      longestStreak = tempStreak;
-    }
+  let run = 0;
+  let previous: string | null = null;
+  for (const date of Array.from(dates).sort()) {
+    run = previous !== null && daysBetween(previous, date) === 1 ? run + 1 : 1;
+    previous = date;
+    if (run > longestStreak) longestStreak = run;
   }
 
-  // 3. 30-Day Consistency Rate
   let activeInLast30 = 0;
-  for (let i = 0; i < 30; i++) {
-    const dStr = format(subDays(today, i), "yyyy-MM-dd");
-    if (activeDatesSet.has(dStr)) {
-      activeInLast30++;
-    }
-  }
-  const consistencyRate30d = Math.round((activeInLast30 / 30) * 100);
+  for (let i = 0; i < 30; i++) if (dates.has(addDays(todayStr, -i))) activeInLast30 += 1;
 
-  // 4. Milestone & Badge
   let badgeTitle = "Novice";
-  let nextMilestone = 3;
-
-  for (const m of STREAK_MILESTONES) {
-    if (currentStreak >= m.days) {
-      badgeTitle = m.title;
+  let nextMilestone: number | null = null;
+  for (const milestone of STREAK_MILESTONES) {
+    if (currentStreak >= milestone.days) {
+      badgeTitle = milestone.title;
     } else {
-      nextMilestone = m.days;
+      nextMilestone = milestone.days;
       break;
     }
   }
@@ -98,10 +109,10 @@ export function calculateStreak(
   return {
     currentStreak,
     longestStreak,
-    consistencyRate30d,
+    consistencyRate30d: Math.round((activeInLast30 / 30) * 100),
     isLoggedToday,
     nextMilestone,
     badgeTitle,
-    totalActiveDays: activeDatesSet.size,
+    totalActiveDays: dates.size,
   };
 }

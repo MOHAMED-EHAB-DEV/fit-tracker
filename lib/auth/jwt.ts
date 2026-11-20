@@ -1,48 +1,49 @@
-// 100% edge-compatible — uses jose only, never jsonwebtoken
-import { SignJWT, jwtVerify, decodeJwt } from "jose";
+// Uses jose only (works in every Next.js runtime).
+import { SignJWT, jwtVerify } from "jose";
 
 export interface JWTPayload {
   userId: string;
   email: string;
   name: string;
   tokenVersion: number;
+  iat?: number;
+  exp?: number;
 }
 
-const getSecret = () =>
-  new TextEncoder().encode(process.env.JWT_SECRET!);
+export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 days
+/** Tokens older than this are re-issued by the proxy (sliding session). */
+export const SESSION_RENEW_AFTER_SECONDS = 60 * 60 * 24 * 7; // 7 days
 
-/**
- * Sign a new 30-day JWT.
- * Never call this from Edge Runtime — only from Node.js API routes.
- */
+function getSecret(): Uint8Array {
+  const secret = process.env.JWT_SECRET;
+  if (!secret || secret.length < 16) {
+    throw new Error("JWT_SECRET is missing or too short");
+  }
+  return new TextEncoder().encode(secret);
+}
+
+/** Sign a new 30-day session token. */
 export async function signToken(payload: JWTPayload): Promise<string> {
-  return new SignJWT({ ...payload })
+  return new SignJWT({
+    userId: payload.userId,
+    email: payload.email,
+    name: payload.name,
+    tokenVersion: payload.tokenVersion,
+  })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("30d")
+    .setExpirationTime(`${SESSION_MAX_AGE_SECONDS}s`)
     .sign(getSecret());
 }
 
-/**
- * Verify and decode a JWT. Returns null if invalid or expired.
- * Safe to call from Edge Runtime (proxy.ts).
- */
+/** Verify and decode a session token. Returns null if invalid or expired. */
 export async function verifyToken(token: string): Promise<JWTPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, getSecret());
+    const { payload } = await jwtVerify(token, getSecret(), { algorithms: ["HS256"] });
+    if (typeof payload.userId !== "string" || typeof payload.tokenVersion !== "number") {
+      return null;
+    }
     return payload as unknown as JWTPayload;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Decode a JWT without verifying (for client-safe reads).
- * Never trust this for auth — only for displaying user info.
- */
-export function decodeToken(token: string): JWTPayload | null {
-  try {
-    return decodeJwt(token) as unknown as JWTPayload;
   } catch {
     return null;
   }

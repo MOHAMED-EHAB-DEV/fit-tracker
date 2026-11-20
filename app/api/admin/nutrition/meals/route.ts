@@ -1,46 +1,35 @@
-import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth/admin";
+import { route, ok } from "@/lib/api/route";
 import { getDb } from "@/lib/db/mongoose";
 import Meal from "@/lib/db/models/Meal";
+import { adminMealListQuery } from "@/lib/validation/admin";
 
-export async function GET(request: NextRequest) {
-  const result = await requireAdmin(request);
-  if (result instanceof NextResponse) return result;
-
-  const { searchParams } = new URL(request.url);
-  const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
-  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "30", 10)));
-  const userId = searchParams.get("userId") || "";
-  const mealType = searchParams.get("mealType") || "";
-  const dateFrom = searchParams.get("dateFrom") || "";
-  const dateTo = searchParams.get("dateTo") || "";
-  const imageSource = searchParams.get("imageSource") || "";
-
+/** Meal moderation list (no UI yet). Image URLs of private photos are not exposed. */
+export const GET = route({ auth: "admin", query: adminMealListQuery }, async ({ query }) => {
   await getDb();
-
-  const filter: any = {};
-  if (userId) filter.userId = userId;
-  if (mealType) filter.mealType = mealType;
-  if (imageSource) filter.imageSource = imageSource;
-  if (dateFrom || dateTo) {
-    filter.dateString = {};
-    if (dateFrom) filter.dateString.$gte = dateFrom;
-    if (dateTo) filter.dateString.$lte = dateTo;
+  const filter: Record<string, unknown> = {};
+  if (query.userId) filter.userId = query.userId;
+  if (query.mealType) filter.mealType = query.mealType;
+  if (query.imageSource) filter.imageSource = query.imageSource;
+  if (query.dateFrom || query.dateTo) {
+    filter.dateString = {
+      ...(query.dateFrom ? { $gte: query.dateFrom } : {}),
+      ...(query.dateTo ? { $lte: query.dateTo } : {}),
+    };
   }
 
   const [meals, total] = await Promise.all([
     Meal.find(filter)
       .sort({ loggedAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit)
+      .skip((query.page - 1) * query.limit)
+      .limit(query.limit)
+      .select("userId mealType description dateString loggedAt imageSource macros isManualOverride createdAt")
       .populate("userId", "name email")
       .lean(),
     Meal.countDocuments(filter),
   ]);
 
-  return NextResponse.json({
-    success: true,
+  return ok({
     meals,
-    pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    pagination: { total, page: query.page, limit: query.limit, totalPages: Math.max(1, Math.ceil(total / query.limit)) },
   });
-}
+});

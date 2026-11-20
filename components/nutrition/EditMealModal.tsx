@@ -1,1075 +1,276 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { Edit3, Info, Sparkles, Undo2, Utensils } from "lucide-react";
+import { useToast } from "@/components/ui/Toast";
+import { MealFormDialog } from "@/components/nutrition/MealFormDialog";
+import { todayInZone, useUserTimeZone } from "@/components/nutrition/useUserTimeZone";
 import {
-  Utensils,
-  Check,
-  Loader2,
-  Edit3,
-  Flame,
-  Target,
-  Wheat,
-  Droplet,
-  Leaf,
-  Sparkles,
-  Info,
-  Clock,
-  Calendar,
-  AlertCircle,
-  Plus,
-  Trash2,
-} from "lucide-react";
-import { MealType } from "@/types/fitness";
-import { Modal } from "@/components/ui/Modal";
-import { MEAL_TYPE_OPTIONS as MEAL_TYPES } from "@/constants/nutrition";
+  applyProposalToDraft,
+  draftFromMeal,
+  draftItemsForPrompt,
+  validateDraft,
+  type MealDraft,
+} from "@/lib/nutrition/draft";
+import { regenerateMealRequest, updateMealRequest } from "@/lib/nutrition/client";
+import { summarizeItemChanges, type MealProposal } from "@/lib/nutrition/analysis";
+import { MEAL_TYPE_LABELS } from "@/constants/nutrition";
+import { formatAmount } from "@/lib/nutrition/totals";
+import type { MealData } from "@/lib/nutrition/types";
 
-export interface MealItem {
-  name: string;
-  quantity?: string;
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
-  fiber?: number;
-}
-
-export interface MealData {
-  _id: string;
-  description: string;
-  mealType: MealType;
-  loggedAt?: string | Date;
-  dateString?: string;
-  imageSource?: "photo" | "text_only";
-  isManualOverride?: boolean;
-  items?: MealItem[];
-  macros: {
-    calories: number;
-    protein: number;
-    carbs: number;
-    fat: number;
-    fiber?: number;
-  };
-  aiMacros?: {
-    calories?: number;
-    protein?: number;
-    carbs?: number;
-    fat?: number;
-    fiber?: number;
-    confidence?: "high" | "medium" | "low";
-    confidenceReason?: string;
-    geminiNotes?: string;
-    modelUsed?: string;
-  } | null;
-  images?: Array<{
-    secureUrl: string;
-    publicId?: string;
-    width?: number;
-    height?: number;
-  }>;
-  createdAt?: string | Date;
-  updatedAt?: string | Date;
-}
+export type { MealData, MealItem } from "@/lib/nutrition/types";
 
 interface EditMealModalProps {
   isOpen: boolean;
   onClose: () => void;
   meal: MealData | null;
-  onUpdated?: () => void;
+  /** Called once after a successful save, with the saved meal. */
+  onSaved?: (meal: MealData) => void;
 }
 
-export function EditMealModal({
-  isOpen,
-  onClose,
-  meal,
-  onUpdated,
-}: EditMealModalProps) {
-  const router = useRouter();
-  const [description, setDescription] = useState("");
-  const [mealType, setMealType] = useState<MealType>("snack");
-  const [calories, setCalories] = useState("");
-  const [protein, setProtein] = useState("");
-  const [carbs, setCarbs] = useState("");
-  const [fat, setFat] = useState("");
-  const [fiber, setFiber] = useState("");
-  const [aiMacros, setAiMacros] = useState<MealData["aiMacros"]>(null);
-  const [items, setItems] = useState<MealItem[]>([]);
-  const [isAddingItem, setIsAddingItem] = useState(false);
-  const [newItemName, setNewItemName] = useState("");
-  const [newItemQty, setNewItemQty] = useState("");
-  const [newItemCalories, setNewItemCalories] = useState("");
-  const [newItemProtein, setNewItemProtein] = useState("");
-  const [newItemCarbs, setNewItemCarbs] = useState("");
-  const [newItemFat, setNewItemFat] = useState("");
-  const [newItemFiber, setNewItemFiber] = useState("");
+interface AiRun {
+  token: string;
+  proposal: MealProposal;
+  previous: MealDraft;
+  summary: string;
+  warnings: string[];
+  newKeys: Set<string>;
+}
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isRegenerating, setIsRegenerating] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+function describeChanges(changes: { added: string[]; removed: string[]; changed: string[] }): string {
+  const parts: string[] = [];
+  if (changes.added.length) parts.push(`added ${changes.added.join(", ")}`);
+  if (changes.removed.length) parts.push(`removed ${changes.removed.join(", ")}`);
+  if (changes.changed.length) parts.push(`updated ${changes.changed.join(", ")}`);
+  return parts.length ? `AI ${parts.join("; ")}.` : "AI kept the same ingredients.";
+}
 
-  useEffect(() => {
-    if (meal) {
-      setDescription(meal.description || "");
-      setMealType(meal.mealType || "snack");
-      setCalories(meal.macros?.calories?.toString() || "0");
-      setProtein(meal.macros?.protein?.toString() || "0");
-      setCarbs(meal.macros?.carbs?.toString() || "0");
-      setFat(meal.macros?.fat?.toString() || "0");
-      setFiber(meal.macros?.fiber?.toString() || "0");
-      setAiMacros(meal.aiMacros || null);
-      setItems(meal.items || []);
-      setIsAddingItem(false);
-      setErrorMsg(null);
-      setSuccessMsg(null);
-    }
-  }, [meal]);
+function confidenceLabel(confidence?: string): string {
+  if (confidence === "high") return "High confidence";
+  if (confidence === "low") return "Low confidence";
+  return "Medium confidence";
+}
 
-  if (!meal) return null;
+export function EditMealModal({ isOpen, onClose, meal, onSaved }: EditMealModalProps) {
+  const tz = useUserTimeZone();
+  const { toast } = useToast();
+  const [initial, setInitial] = useState<MealDraft | null>(() => (meal ? draftFromMeal(meal, tz) : null));
+  const [draft, setDraft] = useState<MealDraft | null>(initial);
+  const [today] = useState(() => todayInZone(tz));
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [aiRun, setAiRun] = useState<AiRun | null>(null);
+  const busyRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
 
-  const numCalories = Math.max(0, parseInt(calories, 10) || 0);
-  const numProtein = Math.max(0, parseFloat(protein) || 0);
-  const numCarbs = Math.max(0, parseFloat(carbs) || 0);
-  const numFat = Math.max(0, parseFloat(fat) || 0);
-  const numFiber = Math.max(0, parseFloat(fiber) || 0);
+  // A different meal opened in the same instance: start over from it.
+  const [mealId, setMealId] = useState(meal?._id);
+  if (meal && meal._id !== mealId) {
+    const fresh = draftFromMeal(meal, tz);
+    setMealId(meal._id);
+    setInitial(fresh);
+    setDraft(fresh);
+    setAiRun(null);
+    setError(null);
+  }
 
-  const proteinKcal = Math.round(numProtein * 4);
-  const carbsKcal = Math.round(numCarbs * 4);
-  const fatKcal = Math.round(numFat * 9);
-  const calculatedMacroKcal = proteinKcal + carbsKcal + fatKcal;
+  useEffect(() => () => abortRef.current?.abort(), []);
 
-  const proteinPct = Math.round((proteinKcal / (calculatedMacroKcal || 1)) * 100);
-  const carbsPct = Math.round((carbsKcal / (calculatedMacroKcal || 1)) * 100);
-  const fatPct = Math.max(0, 100 - proteinPct - carbsPct);
+  if (!meal || !draft || !initial) return null;
 
-  const adjustValue = (
-    setter: React.Dispatch<React.SetStateAction<string>>,
-    currentVal: string,
-    delta: number,
-    isFloat = false
-  ) => {
-    const parsed = isFloat ? parseFloat(currentVal) || 0 : parseInt(currentVal, 10) || 0;
-    const nextVal = Math.max(0, parsed + delta);
-    setter(isFloat ? (Number.isInteger(nextVal) ? nextVal.toString() : nextVal.toFixed(1)) : nextVal.toString());
-  };
-
-  const handleRegenerateWithAi = async () => {
-    const primaryImageUrl = meal.images?.[0]?.secureUrl;
-    if (!description.trim() && !primaryImageUrl) {
-      setErrorMsg("Please enter a meal description first to regenerate with AI.");
+  const regenerate = async () => {
+    if (busyRef.current) return;
+    const currentItems = draftItemsForPrompt(draft);
+    const hasPhoto = (meal.images?.length || 0) > 0;
+    if (!hasPhoto && !draft.description.trim() && currentItems.length === 0) {
+      setError("Describe the meal first so the AI has something to work with.");
       return;
     }
-
-    setIsRegenerating(true);
-    setErrorMsg(null);
-    setSuccessMsg(null);
-
+    busyRef.current = true;
+    setRegenerating(true);
+    setError(null);
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
-      const formData = new FormData();
-      formData.append("description", description.trim() || meal.description || "Logged Meal");
-      formData.append("mealType", mealType);
-      formData.append("save", "false");
-      if (primaryImageUrl) {
-        formData.append("imageUrl", primaryImageUrl);
-      }
-      if (meal.dateString) {
-        formData.append("dateString", meal.dateString);
-      }
-
-      const itemsToPass = items.length > 0 ? items : (meal.items || []);
-      if (itemsToPass.length > 0) {
-        formData.append("previousItems", JSON.stringify(itemsToPass));
-      }
-      formData.append(
-        "previousMacros",
-        JSON.stringify({
-          calories: numCalories,
-          protein: numProtein,
-          carbs: numCarbs,
-          fat: numFat,
-          fiber: numFiber,
-        })
+      const result = await regenerateMealRequest(
+        {
+          mealId: meal._id,
+          description: draft.description.trim(),
+          mealType: draft.mealType,
+          currentItems,
+        },
+        controller.signal
       );
-
-      const res = await fetch("/api/meals/analyze", {
-        method: "POST",
-        body: formData,
+      const next = applyProposalToDraft(draft, result.proposal);
+      const newKeys = new Set(
+        next.items.filter((_, index) => result.proposal.items[index]?.fromCurrent === null).map((item) => item.key)
+      );
+      setAiRun({
+        token: result.proposalToken,
+        proposal: result.proposal,
+        previous: draft,
+        summary: describeChanges(summarizeItemChanges(currentItems, result.proposal.items)),
+        warnings: result.warnings,
+        newKeys,
       });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to regenerate meal analysis with AI.");
-      }
-
-      const analysis = data.analysis;
-      if (analysis.mealDescription) {
-        setDescription(analysis.mealDescription);
-      }
-      setCalories(String(analysis.totals?.calories ?? 0));
-      setProtein(String(analysis.totals?.protein ?? 0));
-      setCarbs(String(analysis.totals?.carbs ?? 0));
-      setFat(String(analysis.totals?.fat ?? 0));
-      setFiber(String(analysis.totals?.fiber ?? 0));
-
-      const prevNames = (items.length > 0 ? items : (meal.items || [])).map((it) =>
-        String(it.name || "").toLowerCase().trim()
-      );
-
-      if (analysis.items && Array.isArray(analysis.items)) {
-        setItems(analysis.items);
-        const newCount = analysis.items.filter((it: any) => {
-          const cur = String(it.name || "").toLowerCase().trim();
-          return !prevNames.some((p) => p.includes(cur) || cur.includes(p));
-        }).length;
-
-        if (newCount > 0) {
-          setSuccessMsg(`Regenerated! Added ${newCount} new item(s) to the ingredients breakdown below.`);
-        } else {
-          setSuccessMsg("Macronutrients & ingredients successfully updated with AI!");
-        }
-      } else {
-        setSuccessMsg("Macronutrients successfully regenerated with AI!");
-      }
-
-      const updatedAi = {
-        calories: analysis.totals?.calories,
-        protein: analysis.totals?.protein,
-        carbs: analysis.totals?.carbs,
-        fat: analysis.totals?.fat,
-        fiber: analysis.totals?.fiber,
-        confidence: analysis.confidence,
-        confidenceReason: analysis.confidenceReason,
-        geminiNotes: analysis.geminiNotes,
-        modelUsed: analysis.modelUsed,
-      };
-      setAiMacros(updatedAi);
-
-      setTimeout(() => {
-        setSuccessMsg(null);
-      }, 4500);
-    } catch (err: any) {
-      setErrorMsg(err.message || "Failed to regenerate with AI.");
+      setDraft(next);
+    } catch (err) {
+      if ((err as { name?: string })?.name === "AbortError") return;
+      setError(err instanceof Error ? err.message : "The AI could not update this meal. Please try again.");
     } finally {
-      setIsRegenerating(false);
+      busyRef.current = false;
+      setRegenerating(false);
     }
   };
 
-  const handleRemoveItem = (idxToRemove: number) => {
-    setItems((prev) => prev.filter((_, i) => i !== idxToRemove));
+  const undoAi = () => {
+    if (!aiRun) return;
+    setDraft(aiRun.previous);
+    setAiRun(null);
   };
 
-  const handleAddItem = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newItemName.trim()) return;
-    const p = parseFloat(newItemProtein) || 0;
-    const c = parseFloat(newItemCarbs) || 0;
-    const f = parseFloat(newItemFat) || 0;
-    const fib = parseFloat(newItemFiber) || 0;
-    const cal = newItemCalories ? parseInt(newItemCalories, 10) : Math.round(p * 4 + c * 4 + f * 9);
-
-    const itemToAdd: MealItem = {
-      name: newItemName.trim(),
-      quantity: newItemQty.trim(),
-      calories: cal,
-      protein: p,
-      carbs: c,
-      fat: f,
-      fiber: fib,
-    };
-
-    setItems((prev) => [...prev, itemToAdd]);
-    setNewItemName("");
-    setNewItemQty("");
-    setNewItemCalories("");
-    setNewItemProtein("");
-    setNewItemCarbs("");
-    setNewItemFat("");
-    setNewItemFiber("");
-    setIsAddingItem(false);
-  };
-
-  const handleSyncTotalsFromItems = () => {
-    if (items.length === 0) return;
-    const totalCal = items.reduce((acc, it) => acc + (Number(it.calories) || 0), 0);
-    const totalP = items.reduce((acc, it) => acc + (Number(it.protein) || 0), 0);
-    const totalC = items.reduce((acc, it) => acc + (Number(it.carbs) || 0), 0);
-    const totalF = items.reduce((acc, it) => acc + (Number(it.fat) || 0), 0);
-    const totalFib = items.reduce((acc, it) => acc + (Number(it.fiber) || 0), 0);
-    setCalories(String(Math.round(totalCal)));
-    setProtein(totalP.toFixed(1));
-    setCarbs(totalC.toFixed(1));
-    setFat(totalF.toFixed(1));
-    setFiber(totalFib.toFixed(1));
-  };
-
-  const isItemNew = (itemName: string) => {
-    const initialNames = (meal.items || []).map((it) => String(it.name || "").toLowerCase().trim());
-    if (initialNames.length === 0) return false;
-    const current = String(itemName || "").toLowerCase().trim();
-    return !initialNames.some((init) => init.includes(current) || current.includes(init));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!description.trim()) {
-      setErrorMsg("Please enter a meal description");
+  const save = async () => {
+    if (busyRef.current) return;
+    const checked = validateDraft(draft, todayInZone(tz));
+    if (!checked.ok) {
+      setError(checked.error);
       return;
     }
-    if (!calories || isNaN(Number(calories))) {
-      setErrorMsg("Please enter a valid calorie amount");
-      return;
-    }
-
-    setIsSubmitting(true);
-    setErrorMsg(null);
-
+    busyRef.current = true;
+    setSaving(true);
+    setError(null);
     try {
-      const res = await fetch(`/api/meals/${meal._id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          description: description.trim(),
-          mealType,
-          items,
-          macros: {
-            calories: numCalories,
-            protein: numProtein,
-            carbs: numCarbs,
-            fat: numFat,
-            fiber: numFiber,
-          },
-          aiMacros: aiMacros || undefined,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to update meal");
-      }
-
-      setSuccessMsg("Meal updated successfully!");
-      if (onUpdated) {
-        onUpdated();
-      }
-      router.refresh();
-
-      setTimeout(() => {
-        onClose();
-        setSuccessMsg(null);
-      }, 700);
-    } catch (err: any) {
-      setErrorMsg(err.message || "Failed to update meal");
+      const saved = await updateMealRequest(meal._id, checked.payload, { aiProposal: aiRun?.token });
+      toast("Meal updated", "success");
+      onSaved?.(saved);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The meal could not be saved. Please try again.");
     } finally {
-      setIsSubmitting(false);
+      busyRef.current = false;
+      setSaving(false);
     }
   };
 
-  const formattedDate = meal.loggedAt
-    ? new Date(meal.loggedAt).toLocaleDateString([], {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      })
-    : meal.dateString || "Today";
+  const shownAi = aiRun
+    ? { ...aiRun.proposal.totals, confidence: aiRun.proposal.confidence, geminiNotes: aiRun.proposal.geminiNotes, confidenceReason: aiRun.proposal.confidenceReason }
+    : meal.aiMacros;
+  const photo = meal.images?.[0]?.secureUrl;
 
-  const formattedTime = meal.loggedAt
-    ? new Date(meal.loggedAt).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : "";
-
-  return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      size="2xl"
-      title={
-        <div className="flex items-center gap-2 text-white">
-          <div className="p-1.5 rounded-xl bg-emerald-500/10 text-emerald-400">
-            <Edit3 className="w-4 h-4" />
+  const header = (
+    <div className="space-y-3">
+      <div className="flex items-center gap-3">
+        {photo ? (
+          <div className="relative w-16 h-16 rounded-2xl overflow-hidden border border-white/10 shrink-0 bg-zinc-900">
+            <Image src={photo} alt={meal.description || "Meal photo"} fill sizes="64px" className="object-cover" />
           </div>
-          <span>Edit Meal Entry & Macros</span>
-        </div>
-      }
-      description="Update meal description, category timing, or regenerate accurate nutritional breakdown with AI."
-    >
-      <form onSubmit={handleSubmit} className="space-y-5 text-start">
-        {/* Status Alerts */}
-        {successMsg && (
-          <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2">
-            <Check className="w-4 h-4 shrink-0" />
-            <span>{successMsg}</span>
+        ) : (
+          <div className="w-16 h-16 rounded-2xl bg-zinc-900 border border-white/10 flex items-center justify-center shrink-0">
+            <Utensils className="w-6 h-6 text-zinc-400" aria-hidden="true" />
           </div>
         )}
-
-        {errorMsg && (
-          <div className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-semibold flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{errorMsg}</span>
-          </div>
-        )}
-
-        {/* Meal Context Card & Photo Header */}
-        <div className="p-4 rounded-2xl bg-zinc-950/70 border border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5 flex-1 min-w-0">
-            {meal.images?.[0]?.secureUrl ? (
-              <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border border-white/10 shrink-0 bg-zinc-900 shadow-md">
-                <Image
-                  src={meal.images[0].secureUrl}
-                  alt={meal.description || "Meal photo"}
-                  fill
-                  sizes="80px"
-                  className="object-cover"
-                />
-              </div>
-            ) : (
-              <div className="w-16 h-16 rounded-2xl bg-zinc-900 border border-white/10 flex items-center justify-center text-zinc-500 shrink-0">
-                <Utensils className="w-6 h-6 text-zinc-600" />
-              </div>
-            )}
-
-            <div className="space-y-1.5 min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-md border border-emerald-500/20">
-                  {meal.mealType.replace("_", " ")}
-                </span>
-
-                {meal.imageSource === "photo" || aiMacros ? (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-teal-300 bg-teal-500/10 px-2 py-0.5 rounded-md border border-teal-500/20">
-                    <Sparkles className="w-3 h-3 text-teal-400" />
-                    AI Vision
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded-md border border-white/5">
-                    <Utensils className="w-3 h-3 text-zinc-400" />
-                    Manual Log
-                  </span>
-                )}
-
-                {meal.isManualOverride && (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
-                    <Edit3 className="w-3 h-3 text-amber-400" />
-                    Adjusted
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-3 text-xs text-zinc-400 font-medium">
-                <div className="flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 text-zinc-500" />
-                  <span>{formattedDate}</span>
-                </div>
-                {formattedTime && (
-                  <div className="flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-zinc-500" />
-                    <span>{formattedTime}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Macro Summary Tag */}
-          <div className="flex sm:flex-col items-baseline sm:items-end justify-between w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-white/5">
-            <span className="text-lg sm:text-xl font-black text-white tabular-nums">
-              {numCalories} <span className="text-xs text-zinc-400 font-medium">kcal</span>
+        <div className="flex items-center gap-2 flex-wrap text-xs font-semibold">
+          <span className="px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+            {MEAL_TYPE_LABELS[meal.mealType]}
+          </span>
+          {meal.aiMacros || aiRun ? (
+            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-teal-500/10 text-teal-300 border border-teal-500/20">
+              <Sparkles className="w-3.5 h-3.5" aria-hidden="true" /> AI estimate
             </span>
-            <span className="text-[11px] text-zinc-400 font-medium">
-              Calculated sum: {calculatedMacroKcal} kcal
-            </span>
-          </div>
-        </div>
-
-        {/* AI Dietitian Notes if Available */}
-        {aiMacros && (aiMacros.geminiNotes || aiMacros.confidenceReason) && (
-          <div className="p-3.5 rounded-2xl bg-teal-950/20 border border-teal-500/20 space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-teal-400 flex items-center gap-1">
-                <Info className="w-3 h-3" />
-                <span>AI Dietitian Assessment</span>
-              </span>
-              {aiMacros.confidence && (
-                <span className="text-[10px] font-extrabold px-2 py-0.2 rounded-md bg-teal-500/15 text-teal-300 border border-teal-500/20 uppercase">
-                  {aiMacros.confidence} Confidence
-                </span>
-              )}
-            </div>
-            {aiMacros.geminiNotes && (
-              <p className="text-xs text-zinc-300 italic">
-                &ldquo;{aiMacros.geminiNotes}&rdquo;
-              </p>
-            )}
-            {aiMacros.confidenceReason && (
-              <p className="text-[11px] text-zinc-400">
-                {aiMacros.confidenceReason}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Live Macronutrient Energy Ratio Bar & Percentage Cards */}
-        <div className="p-4 rounded-2xl bg-zinc-950/60 border border-white/8 space-y-3">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-bold text-zinc-300 uppercase tracking-wider text-[10px]">
-              Live Caloric Macro Distribution
-            </span>
-            <span className="text-zinc-400 font-medium text-[11px]">
-              {numCalories} kcal total ({calculatedMacroKcal} kcal from macros)
-            </span>
-          </div>
-
-          <div className="w-full h-2.5 bg-zinc-900 rounded-full overflow-hidden flex border border-white/5">
-            <div
-              style={{ width: `${proteinPct}%` }}
-              className="h-full bg-emerald-500 transition-all duration-300"
-              title={`Protein: ${proteinPct}%`}
-            />
-            <div
-              style={{ width: `${carbsPct}%` }}
-              className="h-full bg-amber-400 transition-all duration-300"
-              title={`Carbs: ${carbsPct}%`}
-            />
-            <div
-              style={{ width: `${fatPct}%` }}
-              className="h-full bg-orange-500 transition-all duration-300"
-              title={`Fat: ${fatPct}%`}
-            />
-          </div>
-
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 pt-1">
-            <div className="p-2 rounded-xl bg-zinc-900/80 border border-emerald-500/20 text-center">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">
-                Protein
-              </span>
-              <span className="text-sm font-extrabold text-white block tabular-nums mt-0.5">
-                {numProtein.toFixed(1)}g
-              </span>
-              <span className="text-[10px] text-zinc-400 block tabular-nums">
-                {proteinKcal} kcal ({proteinPct}%)
-              </span>
-            </div>
-
-            <div className="p-2 rounded-xl bg-zinc-900/80 border border-amber-500/20 text-center">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block">
-                Carbs
-              </span>
-              <span className="text-sm font-extrabold text-white block tabular-nums mt-0.5">
-                {numCarbs.toFixed(1)}g
-              </span>
-              <span className="text-[10px] text-zinc-400 block tabular-nums">
-                {carbsKcal} kcal ({carbsPct}%)
-              </span>
-            </div>
-
-            <div className="p-2 rounded-xl bg-zinc-900/80 border border-orange-500/20 text-center">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-orange-400 block">
-                Fat
-              </span>
-              <span className="text-sm font-extrabold text-white block tabular-nums mt-0.5">
-                {numFat.toFixed(1)}g
-              </span>
-              <span className="text-[10px] text-zinc-400 block tabular-nums">
-                {fatKcal} kcal ({fatPct}%)
-              </span>
-            </div>
-
-            <div className="p-2 rounded-xl bg-zinc-900/80 border border-teal-500/20 text-center col-span-3 sm:col-span-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-teal-400 block">
-                Fiber
-              </span>
-              <span className="text-sm font-extrabold text-white block tabular-nums mt-0.5">
-                {numFiber.toFixed(1)}g
-              </span>
-              <span className="text-[10px] text-zinc-400 block">
-                Digestive
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Editable Main Inputs */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-          <div>
-            <label className="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5 flex items-center justify-between">
-              <span>Meal Description / Items</span>
-              <span className="text-[10px] text-zinc-500 font-normal normal-case">
-                (type new items here, then click Regenerate)
-              </span>
-            </label>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="e.g. 200g Grilled Chicken Breast + Basmati Rice"
-              className="w-full px-4 py-2.5 bg-zinc-950/80 border border-white/10 rounded-2xl text-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
-              Meal Timing / Category
-            </label>
-            <select
-              value={mealType}
-              onChange={(e) => setMealType(e.target.value as MealType)}
-              className="w-full px-4 py-2.5 bg-zinc-950/80 border border-white/10 rounded-2xl text-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/50 cursor-pointer"
-            >
-              {MEAL_TYPES.map((t) => (
-                <option key={t.value} value={t.value} className="bg-zinc-900 text-white">
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Macro Inputs with Quick Increment Buttons & AI Regenerate Button */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400">
-              Macronutrient Breakdown (Grams & Energy)
-            </label>
-
-            <button
-              type="button"
-              onClick={handleRegenerateWithAi}
-              disabled={isRegenerating || isSubmitting}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-500/15 hover:bg-teal-500/25 border border-teal-500/30 text-teal-300 hover:text-white text-xs font-bold transition active:scale-95 cursor-pointer disabled:opacity-50"
-              title="Recalculate calories and macronutrient breakdown with AI"
-            >
-              {isRegenerating ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-300" />
-              ) : (
-                <Sparkles className="w-3.5 h-3.5 text-teal-400" />
-              )}
-              <span>{isRegenerating ? "Regenerating with AI..." : "Regenerate with AI"}</span>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-            {/* Calories */}
-            <div className="p-3 rounded-2xl bg-zinc-950/60 border border-white/8 space-y-1.5 col-span-2 sm:col-span-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-orange-400 flex items-center gap-1">
-                  <Flame className="w-3 h-3" />
-                  <span>Calories</span>
-                </span>
-                <span className="text-[9px] text-zinc-500 font-bold">kcal</span>
-              </div>
-              <input
-                type="number"
-                min="0"
-                value={calories}
-                onChange={(e) => setCalories(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-zinc-900 border border-white/10 rounded-xl text-white font-black text-base focus:outline-none focus:ring-1 focus:ring-orange-400 tabular-nums"
-              />
-              <div className="flex items-center gap-1 pt-0.5">
-                <button
-                  type="button"
-                  onClick={() => adjustValue(setCalories, calories, -25)}
-                  className="flex-1 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-[10px] font-bold transition flex items-center justify-center cursor-pointer"
-                >
-                  -25
-                </button>
-                <button
-                  type="button"
-                  onClick={() => adjustValue(setCalories, calories, 25)}
-                  className="flex-1 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-[10px] font-bold transition flex items-center justify-center cursor-pointer"
-                >
-                  +25
-                </button>
-              </div>
-            </div>
-
-            {/* Protein */}
-            <div className="p-3 rounded-2xl bg-zinc-950/60 border border-white/8 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1">
-                  <Target className="w-3 h-3" />
-                  <span>Protein</span>
-                </span>
-                <span className="text-[9px] text-zinc-500 font-bold">g</span>
-              </div>
-              <input
-                type="number"
-                step="0.1"
-                min="0"
-                value={protein}
-                onChange={(e) => setProtein(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-zinc-900 border border-white/10 rounded-xl text-white font-black text-base focus:outline-none focus:ring-1 focus:ring-emerald-400 tabular-nums"
-              />
-              <div className="flex items-center gap-1 pt-0.5">
-                <button
-                  type="button"
-                  onClick={() => adjustValue(setProtein, protein, -5, true)}
-                  className="flex-1 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-[10px] font-bold transition flex items-center justify-center cursor-pointer"
-                >
-                  -5g
-                </button>
-                <button
-                  type="button"
-                  onClick={() => adjustValue(setProtein, protein, 5, true)}
-                  className="flex-1 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-[10px] font-bold transition flex items-center justify-center cursor-pointer"
-                >
-                  +5g
-                </button>
-              </div>
-            </div>
-
-            {/* Carbs */}
-            <div className="p-3 rounded-2xl bg-zinc-950/60 border border-white/8 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
-                  <Wheat className="w-3 h-3" />
-                  <span>Carbs</span>
-                </span>
-                <span className="text-[9px] text-zinc-500 font-bold">g</span>
-              </div>
-              <input
-                type="number"
-                step="0.1"
-                min="0"
-                value={carbs}
-                onChange={(e) => setCarbs(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-zinc-900 border border-white/10 rounded-xl text-white font-black text-base focus:outline-none focus:ring-1 focus:ring-amber-400 tabular-nums"
-              />
-              <div className="flex items-center gap-1 pt-0.5">
-                <button
-                  type="button"
-                  onClick={() => adjustValue(setCarbs, carbs, -5, true)}
-                  className="flex-1 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-[10px] font-bold transition flex items-center justify-center cursor-pointer"
-                >
-                  -5g
-                </button>
-                <button
-                  type="button"
-                  onClick={() => adjustValue(setCarbs, carbs, 5, true)}
-                  className="flex-1 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-[10px] font-bold transition flex items-center justify-center cursor-pointer"
-                >
-                  +5g
-                </button>
-              </div>
-            </div>
-
-            {/* Fat */}
-            <div className="p-3 rounded-2xl bg-zinc-950/60 border border-white/8 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-orange-300 flex items-center gap-1">
-                  <Droplet className="w-3 h-3" />
-                  <span>Fat</span>
-                </span>
-                <span className="text-[9px] text-zinc-500 font-bold">g</span>
-              </div>
-              <input
-                type="number"
-                step="0.1"
-                min="0"
-                value={fat}
-                onChange={(e) => setFat(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-zinc-900 border border-white/10 rounded-xl text-white font-black text-base focus:outline-none focus:ring-1 focus:ring-orange-300 tabular-nums"
-              />
-              <div className="flex items-center gap-1 pt-0.5">
-                <button
-                  type="button"
-                  onClick={() => adjustValue(setFat, fat, -2, true)}
-                  className="flex-1 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-[10px] font-bold transition flex items-center justify-center cursor-pointer"
-                >
-                  -2g
-                </button>
-                <button
-                  type="button"
-                  onClick={() => adjustValue(setFat, fat, 2, true)}
-                  className="flex-1 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-[10px] font-bold transition flex items-center justify-center cursor-pointer"
-                >
-                  +2g
-                </button>
-              </div>
-            </div>
-
-            {/* Fiber */}
-            <div className="p-3 rounded-2xl bg-zinc-950/60 border border-white/8 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-teal-400 flex items-center gap-1">
-                  <Leaf className="w-3 h-3" />
-                  <span>Fiber</span>
-                </span>
-                <span className="text-[9px] text-zinc-500 font-bold">g</span>
-              </div>
-              <input
-                type="number"
-                step="0.1"
-                min="0"
-                value={fiber}
-                onChange={(e) => setFiber(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-zinc-900 border border-white/10 rounded-xl text-white font-black text-base focus:outline-none focus:ring-1 focus:ring-teal-400 tabular-nums"
-              />
-              <div className="flex items-center gap-1 pt-0.5">
-                <button
-                  type="button"
-                  onClick={() => adjustValue(setFiber, fiber, -1, true)}
-                  className="flex-1 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-[10px] font-bold transition flex items-center justify-center cursor-pointer"
-                >
-                  -1g
-                </button>
-                <button
-                  type="button"
-                  onClick={() => adjustValue(setFiber, fiber, 1, true)}
-                  className="flex-1 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-[10px] font-bold transition flex items-center justify-center cursor-pointer"
-                >
-                  +1g
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Ingredients Breakdown Section */}
-        <div className="space-y-3 p-4 rounded-2xl bg-zinc-950/60 border border-white/8">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <span className="text-xs font-bold uppercase tracking-wider text-zinc-300 select-none">
-              Ingredients & Portions ({items.length})
-            </span>
-
-            <div className="flex items-center gap-2 flex-wrap">
-              {items.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleSyncTotalsFromItems}
-                  className="px-2.5 py-1 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 text-[11px] font-bold transition cursor-pointer"
-                  title="Sum all ingredient macros and apply to meal totals above"
-                >
-                  Sync Totals
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={handleRegenerateWithAi}
-                disabled={isRegenerating || isSubmitting}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-teal-500/15 hover:bg-teal-500/25 border border-teal-500/30 text-teal-300 hover:text-white text-[11px] font-bold transition active:scale-95 cursor-pointer disabled:opacity-50"
-                title="Regenerate all ingredients and totals using AI"
-              >
-                {isRegenerating ? (
-                  <Loader2 className="w-3 h-3 animate-spin text-teal-300" />
-                ) : (
-                  <Sparkles className="w-3 h-3 text-teal-400" />
-                )}
-                <span>Regenerate with AI</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsAddingItem((prev) => !prev)}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] font-bold transition cursor-pointer"
-              >
-                <Plus className="w-3 h-3" />
-                <span>{isAddingItem ? "Cancel" : "Add Ingredient"}</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Inline Add Ingredient Form */}
-          {isAddingItem && (
-            <div className="p-3.5 rounded-xl bg-zinc-900/90 border border-emerald-500/30 space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">
-                    Ingredient Name *
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Rolled Oats"
-                    value={newItemName}
-                    onChange={(e) => setNewItemName(e.target.value)}
-                    className="w-full px-3 py-1.5 bg-zinc-950 border border-white/10 rounded-xl text-white text-xs font-medium focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">
-                    Portion / Quantity
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 50g (1/2 cup)"
-                    value={newItemQty}
-                    onChange={(e) => setNewItemQty(e.target.value)}
-                    className="w-full px-3 py-1.5 bg-zinc-950 border border-white/10 rounded-xl text-white text-xs font-medium focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                <div>
-                  <label className="block text-[10px] font-bold text-orange-400 mb-0.5">
-                    Calories (kcal)
-                  </label>
-                  <input
-                    type="number"
-                    placeholder="190"
-                    value={newItemCalories}
-                    onChange={(e) => setNewItemCalories(e.target.value)}
-                    className="w-full px-2.5 py-1 bg-zinc-950 border border-white/10 rounded-lg text-white text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-orange-400"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-emerald-400 mb-0.5">
-                    Protein (g)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    placeholder="6"
-                    value={newItemProtein}
-                    onChange={(e) => setNewItemProtein(e.target.value)}
-                    className="w-full px-2.5 py-1 bg-zinc-950 border border-white/10 rounded-lg text-white text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-amber-400 mb-0.5">
-                    Carbs (g)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    placeholder="34"
-                    value={newItemCarbs}
-                    onChange={(e) => setNewItemCarbs(e.target.value)}
-                    className="w-full px-2.5 py-1 bg-zinc-950 border border-white/10 rounded-lg text-white text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-amber-400"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-orange-300 mb-0.5">
-                    Fat (g)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    placeholder="3"
-                    value={newItemFat}
-                    onChange={(e) => setNewItemFat(e.target.value)}
-                    className="w-full px-2.5 py-1 bg-zinc-950 border border-white/10 rounded-lg text-white text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-orange-300"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-teal-400 mb-0.5">
-                    Fiber (g)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    placeholder="4"
-                    value={newItemFiber}
-                    onChange={(e) => setNewItemFiber(e.target.value)}
-                    className="w-full px-2.5 py-1 bg-zinc-950 border border-white/10 rounded-lg text-white text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-teal-400"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setIsAddingItem(false)}
-                  className="px-3 py-1 rounded-lg text-zinc-400 hover:text-white text-xs font-semibold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleAddItem}
-                  disabled={!newItemName.trim()}
-                  className="px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs transition cursor-pointer disabled:opacity-50"
-                >
-                  Add Ingredient
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* List of Ingredients */}
-          {items.length === 0 ? (
-            <p className="text-xs text-zinc-500 italic py-2 text-center">
-              No ingredients recorded for this meal yet. Add them above or regenerate with AI.
-            </p>
           ) : (
-            <div className="max-h-56 overflow-y-auto space-y-2 pe-1">
-              {items.map((it, idx) => (
-                <div
-                  key={idx}
-                  className="flex flex-col gap-1.5 p-3 rounded-xl bg-zinc-950/70 border border-white/6 hover:border-white/12 transition text-start"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="truncate me-2">
-                      <span className="text-zinc-200 font-bold text-xs">{it.name}</span>
-                      {it.quantity && (
-                        <span className="text-zinc-400 text-[11px] font-medium ms-1.5">
-                          ({it.quantity})
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-amber-400 font-extrabold text-xs tabular-nums bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
-                        {Math.round(Number(it.calories) || 0)} kcal
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveItem(idx)}
-                        className="p-1 rounded-md text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition cursor-pointer"
-                        title="Remove ingredient"
-                        aria-label={`Remove ${it.name}`}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 flex-wrap text-[10px] font-bold pt-0.5">
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 tabular-nums">
-                      P: {Number(it.protein || 0).toFixed(1)}g
-                    </span>
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 tabular-nums">
-                      C: {Number(it.carbs || 0).toFixed(1)}g
-                    </span>
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-500/10 text-orange-400 border border-orange-500/20 tabular-nums">
-                      F: {Number(it.fat || 0).toFixed(1)}g
-                    </span>
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-500/10 text-teal-400 border border-teal-500/20 tabular-nums">
-                      Fib: {Number(it.fiber || 0).toFixed(1)}g
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <span className="px-2 py-1 rounded-md bg-zinc-800 text-zinc-300 border border-white/10">Entered by you</span>
+          )}
+          {meal.isManualOverride && !aiRun && (
+            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20">
+              <Edit3 className="w-3.5 h-3.5" aria-hidden="true" /> Adjusted by you
+            </span>
+          )}
+          {(meal.images?.length || 0) > 1 && (
+            <span className="px-2 py-1 rounded-md bg-zinc-800 text-zinc-300 border border-white/10">
+              {meal.images?.length} photos
+            </span>
           )}
         </div>
+      </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/6">
+      {aiRun && (
+        <div role="status" className="p-3.5 rounded-2xl bg-teal-500/10 border border-teal-500/30 space-y-2">
+          <p className="text-sm text-teal-100">{aiRun.summary} Review the numbers, then save.</p>
+          {aiRun.warnings.map((warning) => (
+            <p key={warning} className="text-xs text-amber-300">
+              {warning}
+            </p>
+          ))}
           <button
             type="button"
-            onClick={onClose}
-            disabled={isSubmitting || isRegenerating}
-            className="px-4 py-2.5 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold transition cursor-pointer"
+            onClick={undoAi}
+            className="inline-flex items-center gap-1.5 min-h-11 px-3 rounded-xl bg-zinc-900 border border-white/10 text-sm font-semibold text-zinc-100 hover:bg-zinc-800 transition cursor-pointer"
           >
-            Cancel
-          </button>
-
-          <button
-            type="submit"
-            disabled={isSubmitting || isRegenerating}
-            className="px-6 py-2.5 rounded-2xl bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-extrabold text-xs shadow-lg shadow-emerald-500/20 transition active:scale-95 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-          >
-            {isSubmitting ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Check className="w-3.5 h-3.5" />
-            )}
-            <span>Save Changes</span>
+            <Undo2 className="w-4 h-4" aria-hidden="true" /> Undo AI changes
           </button>
         </div>
-      </form>
-    </Modal>
+      )}
+
+      {shownAi && (shownAi.geminiNotes || shownAi.confidenceReason || typeof shownAi.calories === "number") && (
+        <div className="p-3.5 rounded-2xl bg-zinc-950/70 border border-white/10 space-y-1.5">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-xs font-semibold text-teal-300 flex items-center gap-1">
+              <Info className="w-3.5 h-3.5" aria-hidden="true" /> AI assessment
+            </span>
+            {shownAi.confidence && <span className="text-xs text-zinc-300">{confidenceLabel(shownAi.confidence)}</span>}
+          </div>
+          {typeof shownAi.calories === "number" && (
+            <p className="text-xs text-zinc-400 tabular-nums">
+              AI estimate: {formatAmount(shownAi.calories)} kcal, P {formatAmount(shownAi.protein || 0)} g, C{" "}
+              {formatAmount(shownAi.carbs || 0)} g, F {formatAmount(shownAi.fat || 0)} g
+            </p>
+          )}
+          {shownAi.geminiNotes && <p className="text-sm text-zinc-300">{shownAi.geminiNotes}</p>}
+          {shownAi.confidenceReason && <p className="text-xs text-zinc-400">{shownAi.confidenceReason}</p>}
+        </div>
+      )}
+    </div>
+  );
+
+  const regenerateButton = (
+    <button
+      type="button"
+      onClick={regenerate}
+      disabled={regenerating || saving}
+      aria-busy={regenerating}
+      className="inline-flex items-center gap-1.5 min-h-11 px-3.5 rounded-xl bg-teal-500/15 hover:bg-teal-500/25 border border-teal-500/30 text-teal-200 text-sm font-semibold transition cursor-pointer disabled:opacity-50"
+    >
+      <Sparkles className={regenerating ? "w-4 h-4 animate-pulse" : "w-4 h-4"} aria-hidden="true" />
+      {regenerating ? "Asking AI..." : "Regenerate with AI"}
+    </button>
+  );
+
+  return (
+    <MealFormDialog
+      isOpen={isOpen}
+      idPrefix={`edit-meal-${meal._id}`}
+      title="Edit meal"
+      description="Change what you ate, when, and the numbers. Regenerate asks the AI to re-check it using your text and photo."
+      initialDraft={initial}
+      draft={draft}
+      onChange={setDraft}
+      maxDate={today}
+      error={error}
+      submitLabel="Save changes"
+      isSaving={saving}
+      isBusy={regenerating}
+      forceDirty={Boolean(aiRun)}
+      headerSlot={header}
+      itemsToolbarSlot={regenerateButton}
+      newItemKeys={aiRun?.newKeys}
+      onSubmit={save}
+      onClose={() => {
+        abortRef.current?.abort();
+        onClose();
+      }}
+    />
   );
 }
 

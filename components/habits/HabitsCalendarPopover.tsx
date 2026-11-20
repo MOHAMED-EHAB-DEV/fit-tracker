@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Calendar } from "@/components/ui/Calendar";
 import { useFloatingPosition } from "@/hooks/useFloatingPosition";
@@ -14,6 +14,8 @@ export interface HabitsCalendarPopoverProps {
   todayStr: string;
   onSelectDate: (dateStr: string) => void;
   logsMap?: Record<string, string[]>;
+  /** First day of the week in the grid (JS weekday: 0 = Sunday, 1 = Monday, 6 = Saturday). */
+  weekStartsOn?: 0 | 1 | 6;
 }
 
 export function HabitsCalendarPopover({
@@ -24,14 +26,9 @@ export function HabitsCalendarPopover({
   todayStr,
   onSelectDate,
   logsMap = {},
+  weekStartsOn = 6,
 }: HabitsCalendarPopoverProps) {
   const popoverRef = useRef<HTMLDivElement>(null);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
   const { style: floatingStyle, actualSide } = useFloatingPosition({
     triggerRef,
     floatingRef: popoverRef,
@@ -73,7 +70,8 @@ export function HabitsCalendarPopover({
     };
   }, [isOpen, onClose, triggerRef]);
 
-  if (!isOpen || !mounted || typeof document === "undefined") {
+  // Only opened by a click, so this never renders during SSR or hydration.
+  if (!isOpen || typeof document === "undefined") {
     return null;
   }
 
@@ -81,8 +79,7 @@ export function HabitsCalendarPopover({
     <div
       ref={popoverRef}
       role="dialog"
-      aria-modal="true"
-      aria-label="Habits Calendar"
+      aria-label="Pick a day"
       style={floatingStyle}
       className={cn(
         "focus:outline-none select-none transition duration-150 ease-out animate-in fade-in zoom-in-95",
@@ -96,7 +93,8 @@ export function HabitsCalendarPopover({
           onClose();
         }}
         maxDate={todayStr}
-        weekStartsOn={6}
+        today={todayStr}
+        weekStartsOn={weekStartsOn}
         indicatorDates={logsMap}
         indicatorLabel="Days with habits"
         onClose={onClose}

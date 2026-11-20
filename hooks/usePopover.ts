@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, RefObject } from "react";
+import { registerOverlay } from "@/lib/ui/overlay-stack";
 
 export interface UsePopoverOptions<F extends HTMLElement = HTMLElement> {
   initialOpen?: boolean;
@@ -36,7 +37,7 @@ export function usePopover<T extends HTMLElement = HTMLDivElement, F extends HTM
   closeOnClickOutside = true,
   onOpenChange,
   floatingRef: externalFloatingRef,
-  additionalRefs = [],
+  additionalRefs,
 }: UsePopoverOptions<F> = {}): UsePopoverReturn<T, F> {
   const [isOpen, setIsOpenState] = useState(initialOpen);
   const containerRef = useRef<T>(null);
@@ -60,38 +61,35 @@ export function usePopover<T extends HTMLElement = HTMLDivElement, F extends HTM
   const close = useCallback(() => setIsOpen(false), [setIsOpen]);
   const toggle = useCallback(() => setIsOpen((prev) => !prev), [setIsOpen]);
 
-  // 1. Presence & Two-Phase Enter/Exit Animation Timing
+  // 1. Presence and enter/exit animation timing
   const [shouldRender, setShouldRender] = useState(isOpen);
-  const [isAnimatingIn, setIsAnimatingIn] = useState(false);
-  const [isAnimatingOut, setIsAnimatingOut] = useState(false);
+  const [hasEntered, setHasEntered] = useState(false);
+
+  // Opening mounts the element in the same render (no extra effect pass).
+  if (isOpen && !shouldRender) setShouldRender(true);
 
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-    let rafId: number;
-
     if (isOpen) {
-      setShouldRender(true);
-      setIsAnimatingOut(false);
-      // Double-RAF micro-delay to let the browser mount and position the element at exact viewport coordinates before starting the enter transition
-      rafId = requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setIsAnimatingIn(true);
-        });
+      // Two frames: the element is mounted and positioned before the enter transition starts.
+      let second = 0;
+      const first = requestAnimationFrame(() => {
+        second = requestAnimationFrame(() => setHasEntered(true));
       });
-    } else if (shouldRender) {
-      setIsAnimatingIn(false);
-      setIsAnimatingOut(true);
-      timeoutId = setTimeout(() => {
-        setShouldRender(false);
-        setIsAnimatingOut(false);
-      }, durationMs);
+      return () => {
+        cancelAnimationFrame(first);
+        cancelAnimationFrame(second);
+      };
     }
-
-    return () => {
-      cancelAnimationFrame(rafId);
-      clearTimeout(timeoutId);
-    };
+    if (!shouldRender) return;
+    const timeoutId = setTimeout(() => {
+      setShouldRender(false);
+      setHasEntered(false);
+    }, durationMs);
+    return () => clearTimeout(timeoutId);
   }, [isOpen, durationMs, shouldRender]);
+
+  const isAnimatingIn = isOpen && hasEntered;
+  const isAnimatingOut = !isOpen && shouldRender;
 
   // 2. Click Outside Detection (Mouse & Touch, checking both trigger and portaled floating element)
   useEffect(() => {
@@ -112,7 +110,7 @@ export function usePopover<T extends HTMLElement = HTMLDivElement, F extends HTM
       }
 
       // Check additional refs if provided
-      for (const ref of additionalRefs) {
+      for (const ref of additionalRefs || []) {
         if (ref.current?.contains(target)) {
           return;
         }
@@ -134,14 +132,9 @@ export function usePopover<T extends HTMLElement = HTMLDivElement, F extends HTM
   useEffect(() => {
     if (!closeOnEscape || !isOpen) return;
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" || e.key === "Esc") {
-        close();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    // Joins the shared overlay stack so Escape closes only the top layer
+    // (a select inside a dialog closes first, then the dialog).
+    return registerOverlay(close);
   }, [isOpen, closeOnEscape, close]);
 
   return {

@@ -1,86 +1,43 @@
 import React, { Suspense } from "react";
 import { Loader2 } from "lucide-react";
-import { getFullUser } from "@/lib/auth/session";
+import { requirePageSession } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/mongoose";
-import PlannedEvent from "@/lib/db/models/PlannedEvent";
 import Habit from "@/lib/db/models/Habit";
 import { getTodayDateString } from "@/lib/fitness/timezone";
+import { listEventsForDate } from "@/lib/planner/service";
 import PlannerPage from "@/components/planner/PlannerPage";
-import { redirect } from "next/navigation";
-import { parseISO, getDay, getDate } from "date-fns";
-import { sortEventsByPlannerTime } from "@/lib/planner/time-sort";
 
 export const metadata = {
-  title: "Day Planner | FitTracker AI",
-  description: "Schedule your days by time with custom events, active habit links, and notification reminders.",
+  title: "Planner",
+  description: "Schedule your day in time blocks and link events to your daily habits.",
 };
 
 async function PlannerContent() {
-  const user = await getFullUser();
-  if (!user) {
-    redirect("/login");
-  }
-
+  const session = await requirePageSession();
   await getDb();
-  const todayStr = getTodayDateString();
 
-  const [oneTimeEvents, recurringEvents, habits] = await Promise.all([
-    PlannedEvent.find({
-      userId: user._id,
-      date: todayStr,
-      recurrence: { $in: ["once", null] },
-    })
-      .populate("linkedHabitIds", "name emoji color")
-      .lean(),
-    PlannedEvent.find({
-      userId: user._id,
-      date: { $lte: todayStr },
-      recurrence: { $in: ["daily", "weekly", "monthly"] },
-    })
-      .populate("linkedHabitIds", "name emoji color")
-      .lean(),
-    Habit.find({ userId: user._id, isActive: true })
+  const todayStr = getTodayDateString(new Date(), session.timezone);
+  const [events, habits] = await Promise.all([
+    listEventsForDate(session.userId, todayStr),
+    Habit.find({ userId: session.userId, isActive: true })
       .select("_id name emoji color")
       .sort({ order: 1, createdAt: 1 })
       .lean(),
   ]);
 
-  const targetParsed = parseISO(todayStr);
-  const targetDayOfWeek = getDay(targetParsed);
-  const targetDayOfMonth = getDate(targetParsed);
-
-  const matchingRecurring = recurringEvents.filter((event: any) => {
-    if (event.excludedDates && event.excludedDates.includes(todayStr)) return false;
-    if (event.recurrence === "daily") return true;
-
-    const eventParsed = parseISO(event.date);
-    if (event.recurrence === "weekly") return getDay(eventParsed) === targetDayOfWeek;
-    if (event.recurrence === "monthly") return getDate(eventParsed) === targetDayOfMonth;
-    return false;
-  });
-
-  const formattedOneTime = oneTimeEvents.map((e: any) => ({
-    ...e,
-    _id: e._id.toString(),
-    isCompleted: Boolean(e.isCompleted),
+  const availableHabits = habits.map((habit) => ({
+    _id: String(habit._id),
+    name: habit.name,
+    emoji: habit.emoji || "⚡",
+    color: habit.color || "#10b981",
   }));
-
-  const formattedRecurring = matchingRecurring.map((e: any) => ({
-    ...e,
-    _id: e._id.toString(),
-    isCompleted: Array.isArray(e.completedDates) && e.completedDates.includes(todayStr),
-  }));
-
-  const initialEvents = sortEventsByPlannerTime([...formattedOneTime, ...formattedRecurring]);
-
-  const serializedEvents = JSON.parse(JSON.stringify(initialEvents));
-  const serializedHabits = JSON.parse(JSON.stringify(habits));
 
   return (
     <PlannerPage
       initialDate={todayStr}
-      initialEvents={serializedEvents}
-      availableHabits={serializedHabits}
+      initialEvents={events}
+      availableHabits={availableHabits}
+      timeZone={session.timezone}
     />
   );
 }
@@ -89,8 +46,8 @@ export default function Page() {
   return (
     <Suspense
       fallback={
-        <div className="flex items-center justify-center min-h-[60vh] text-zinc-500 gap-2">
-          <Loader2 className="w-6 h-6 animate-spin text-emerald-400" />
+        <div className="flex items-center justify-center min-h-[60vh] text-zinc-400 gap-2" role="status">
+          <Loader2 className="w-6 h-6 animate-spin text-emerald-400" aria-hidden="true" />
           <span className="font-semibold text-sm">Loading Day Planner...</span>
         </div>
       }

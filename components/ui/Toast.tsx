@@ -8,9 +8,12 @@ import React, {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
 import { AlertCircle, CheckCircle2, Info, TriangleAlert, X } from "lucide-react";
+
+const subscribeNoop = () => () => undefined;
 
 // ─────────────────────────────────────────────
 // Types
@@ -115,24 +118,25 @@ const dismissBtnStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  width: "22px",
-  height: "22px",
-  borderRadius: "8px",
+  width: "36px",
+  height: "36px",
+  margin: "-6px -8px -6px 0",
+  borderRadius: "10px",
   border: "none",
   background: "transparent",
-  color: "#71717a",
+  color: "#a1a1aa",
   cursor: "pointer",
   transition: "color 0.15s, background 0.15s",
 };
 
-const dismissIconStyle: React.CSSProperties = { width: "13px", height: "13px" };
+const dismissIconStyle: React.CSSProperties = { width: "16px", height: "16px" };
 
 const containerStyle: React.CSSProperties = {
   position: "fixed",
   top: "max(1rem, env(safe-area-inset-top))",
   left: "50%",
   transform: "translateX(-50%)",
-  zIndex: 9999,
+  zIndex: 80,
   display: "flex",
   flexDirection: "column",
   gap: "8px",
@@ -186,6 +190,10 @@ const ToastCard = memo(function ToastCard({
       className={item.exiting ? "toast-exit" : "toast-enter"}
       onMouseEnter={() => onPause(item.id)}
       onMouseLeave={() => onResume(item.id)}
+      onFocus={() => onPause(item.id)}
+      onBlur={() => onResume(item.id)}
+      onTouchStart={() => onPause(item.id)}
+      onTouchEnd={() => onResume(item.id)}
       style={cardStyle}
     >
       {/* Decorative icon — hidden from screen readers */}
@@ -235,15 +243,17 @@ function ToastContainer({
   onPause: (id: string) => void;
   onResume: (id: string) => void;
 }) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  // False on the server and during hydration, true afterwards.
+  const mounted = useSyncExternalStore(
+    subscribeNoop,
+    () => true,
+    () => false
+  );
 
   if (!mounted || items.length === 0) return null;
 
   return createPortal(
-    <div aria-label="Notifications" style={containerStyle}>
+    <div aria-label="Notifications" data-overlay-root="" style={containerStyle}>
       {items.map((item) => (
         <ToastCard
           key={item.id}
@@ -334,7 +344,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   );
 
   const toast = useCallback(
-    (message: string, variant: ToastVariant = "info", duration = 3000) => {
+    (message: string, variant: ToastVariant = "info", requestedDuration?: number) => {
+      // Errors stay long enough to be read; everything else is brief.
+      const duration = requestedDuration ?? (variant === "error" ? 7000 : variant === "warning" ? 5000 : 3500);
       const id = genId();
       const now = Date.now();
 

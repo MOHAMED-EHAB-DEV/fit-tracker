@@ -1,36 +1,203 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# FitTracker
 
-## Getting Started
+A personal fitness tracker: workouts (routines, live logging, history, personal
+records), nutrition (meals, macros, AI photo estimates), habits, a day planner,
+an AI coach, body composition check-ins, and an admin panel. It runs as a web
+app (installable as a PWA) and inside an Android WebView wrapper
+(`FitTrackerAndroid/`) that adds a step counter, home-screen widgets and planner
+reminders.
 
-First, run the development server:
+## Stack
+
+- **Next.js 16** (App Router, Turbopack). This version differs from older ones:
+  `proxy.ts` replaces middleware, `params`/`searchParams` are Promises, error
+  boundaries receive `retry`. The bundled docs are in `node_modules/next/dist/docs/`.
+- **React 19**, **Tailwind CSS 4**, lucide icons, visx charts
+- **MongoDB** with **Mongoose 9**; **zod 4** for every input
+- **jose** (JWT session cookie), **bcryptjs** (passwords)
+- **Google Gemini** (`@google/genai`) for AI features
+- **Cloudinary** (photos), **Supabase Storage** (optional exercise-image cache),
+  **Resend** (optional password-reset email)
+- **Bun 1.4** as package manager; **Vitest 5** + `mongodb-memory-server-core`
+  for tests (dev dependencies only)
+- Android: Kotlin, minSdk 24, targetSdk 34
+
+## Local setup
+
+Requirements: Bun 1.4+, Node.js 20.9+ (22 recommended).
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+bun install
+bun run dev:local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`dev:local` (`scripts/dev-local.mjs`) is the safe way to run the app on your
+machine: it starts a throwaway **in-memory MongoDB**, seeds a small exercise
+library and one demo admin account (email and password are constants at the
+top of the script), replaces every secret with a local placeholder (AI calls
+and photo uploads fail on purpose, with a clear message), and serves
+http://localhost:3100. It writes its build output to `.next-local`, so it can
+run next to a normal `next dev`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+bun run start:local                              # production build + next start, same safe setup
+node scripts/dev-local.mjs --prod --no-build     # next start on the last local production build
+node scripts/dev-local.mjs --port=3101           # another port
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+To run against your own services instead, copy `.env.example` to `.env`, fill
+it in, and run `bun run dev` (http://localhost:3000). **Never point a
+development server at the production database.**
 
-## Learn More
+## Scripts
 
-To learn more about Next.js, take a look at the following resources:
+| Script | What it does |
+| --- | --- |
+| `bun run dev` | `next dev` with your `.env` |
+| `bun run dev:local` | Development server with an in-memory database and placeholder keys |
+| `bun run start:local` | Production build + `next start`, same safe setup |
+| `bun run build` | Production build |
+| `bun run start` | Serve a production build |
+| `bun run lint` | ESLint |
+| `bun run typecheck` | TypeScript (`tsc --noEmit`) |
+| `bun run test` / `test:watch` | Vitest (unit and integration tests on an in-memory MongoDB) |
+| `bun run bump[:patch\|:minor\|:major]` | Bump `version.json` (Android `versionName`/`versionCode`) |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The same checks run in CI (`.github/workflows/ci.yml`) on every push and pull
+request: install with the frozen lockfile, `next typegen` + type-check, lint,
+tests, and a build with dummy environment values.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Environment variables
 
-## Deploy on Vercel
+All names are listed, with comments, in `.env.example`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `MONGODB_URI` | yes | MongoDB connection string |
+| `JWT_SECRET` | yes | Signs the session cookie (32+ random characters; changing it signs everyone out) |
+| `APP_URL` | yes in production (unless on Vercel) | Public base URL for links in emails; never taken from request headers in production |
+| `DATA_ENCRYPTION_KEY` | no | Encrypts users' saved Gemini keys; falls back to `JWT_SECRET` |
+| `GEMINI_API_KEY` | no | Shared Gemini key; without it AI works only for users with their own key |
+| `AI_POWER_MODE` | no | `full` (default), `balanced` or `low` output size |
+| `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | for photos | Meal photos, private progress photos, admin exercise images |
+| `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_BUCKET` | no | Second-level cache for the public exercise-image proxy |
+| `IMAGE_PROXY_ALLOWED_HOSTS` | no | Extra exact host names the image proxy may fetch |
+| `RESEND_API_KEY`, `EMAIL_FROM` | no | Password-reset email. Without them no email is sent; an admin can create a one-time reset link instead |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Folder overview
+
+```
+app/
+  (app)/          signed-in screens: Today, Train (workouts/**), Eat (nutrition), planner,
+                  habits, body-comp, coach, settings, widgets
+  (auth)/         login, signup, forgot-password, reset-password
+  (admin)/admin/  admin panel (dashboard, users, exercises, nutrition plans)
+  api/            route handlers (all through lib/api/route.ts)
+  fit-tracker/images/[...src]/   public, cached proxy for exercise images
+components/       UI by area (workout/, nutrition/, dashboard/, admin/, ui/ shared parts, ...)
+lib/
+  api/            route() / publicRoute() wrapper, errors
+  auth/           session (verified against the database), cookies, JWT, admin checks
+  workouts/       routines, sessions, records, exercises, migration, calculations
+  nutrition/      meals, photo upload/analysis, AI proposal tokens
+  planner/, planner-reminders/, assistant/, habits/, body-comp/, dashboard/, admin/
+  fitness/        units (kg canonical), daily-log recompute, steps
+  time.ts         time-zone helpers ("today" and week boundaries in the user's zone)
+  security/       rate limits, secrets encryption, file validation
+  db/models/      Mongoose models
+services/webview-bridge.ts   web side of the Android bridge
+proxy.ts          request pre-filter (sign-in redirects, Origin check)
+instrumentation.ts  server error logging (onRequestError)
+FitTrackerAndroid/  Android wrapper app
+scripts/          dev-local.mjs, bump-version.mjs
+tests/            Vitest suites
+```
+
+## Workout data model
+
+- **ExerciseCatalog**: the exercise library, plus users' custom exercises
+  (`isCustom`, `createdBy`). Archived exercises disappear from the picker but
+  stay in routines and history.
+- **Routine**: a plan ("Push day"): exercises with target sets (type, rep
+  range, weight, rest). Editing a routine never changes past workouts.
+  `lastPerformedAt` / `timesPerformed` are rebuilt from finished workouts.
+- **WorkoutSession**: one document per performed workout, never reused.
+  `in_progress` (at most one per user) or `completed`. Past workouts can be
+  logged with a date and duration, edited, or deleted.
+- **PersonalRecord**: best weight, estimated 1-rep max, set volume, reps and
+  duration per exercise, always rebuilt from history (so deleting or editing a
+  workout corrects them).
+- **DailyLog**: per user and calendar day (in the user's time zone): food,
+  water, steps, habits, calories burned. Day totals are recomputed from the
+  source documents (`recomputeDay`), never incremented.
+- Weights are stored in kilograms and converted only for input and display.
+- The weekly plan lives on the user (`weeklyRoutine`: day -> routine / rest / not planned).
+
+## Security notes
+
+- Sessions: a JWT in an `httpOnly`, `SameSite=Lax`, `Secure` (in production)
+  cookie, verified against the database on every request (`lib/auth/session.ts`):
+  banned users and old tokens (`tokenVersion`, bumped by "sign out everywhere
+  else", password reset, ban or demotion) are refused. `proxy.ts` is only a
+  pre-filter; it also rejects cross-site writes by checking `Origin`.
+- Every API route goes through `route()` / `publicRoute()`: session check,
+  zod validation (keys starting with `$` are rejected), MongoDB-backed rate
+  limits, and errors mapped to safe messages (no stack traces or provider
+  internals reach the browser). Server errors are logged as JSON lines by
+  `instrumentation.ts`, without headers or query strings.
+- Passwords: bcrypt. Reset tokens are random, stored hashed, single use and
+  valid 30 minutes; forgot-password answers the same way whether or not the
+  account exists.
+- Admin: every admin route requires the admin role from the database. Admins
+  cannot demote, ban or delete themselves, and the last admin who can sign in
+  cannot be removed. Deleting a user removes all of their data and photos.
+- Photos: progress photos are private Cloudinary assets, delivered only through
+  15-minute signed URLs. Meal and progress photos never pass through the public
+  image proxy; the proxy serves only allow-listed public images, follows no
+  redirects, checks size and file type, and is rate limited.
+- Users' own Gemini keys are encrypted at rest (AES-256-GCM) and never sent
+  back to the browser. AI output is validated before anything is saved, and the
+  coach's Markdown is rendered as text (no HTML).
+- Headers (`next.config.ts`): CSP `frame-ancestors 'none'; frame-src 'self';
+  object-src 'none'`, `X-Frame-Options: DENY`, `nosniff`, HSTS,
+  `Referrer-Policy`, `Permissions-Policy`.
+
+## Android wrapper
+
+`FitTrackerAndroid/` is a WebView app around the web app. It adds a step
+counter (synced to `/api/steps/sync`), home-screen widgets, planner reminders
+(from `/api/planner/upcoming`), photo capture, file saving and in-app updates
+(the downloaded APK is verified against the installed app's signing key before
+installing). The JavaScript bridge only answers pages from the app's own
+origin. The Back button first asks the page to close an open dialog
+(`window.__ftHandleBack`) before going back.
+
+Releases are built and published by `.github/workflows/build-apk.yml` when
+`version.json` is bumped. Signing needs the owner's private release key and
+repository secrets: see `FitTrackerAndroid/RELEASE_SIGNING.md`.
+
+## Owner details (to be filled in by the owner)
+
+- Owner / maintainer: **Mohammed Ehab**
+- Support contact: [mohammedehab.vercel.app/contact](https://mohammedehab.vercel.app/contact)
+- Licence: **All rights reserved.** See [`LICENSE`](LICENSE). No permission is granted to use, copy, modify or distribute this code.
+
+## Deployment
+
+The app is deployed on Vercel (`vercel.json` pins Bun 1.4).
+
+1. Create a MongoDB Atlas cluster (a replica set, so user deletion runs in a transaction).
+2. Set the environment variables above in the Vercel project. Set `APP_URL`
+   (or keep Vercel's automatic system variables enabled).
+3. In Cloudinary, enable **Settings -> Security -> Strict transformations**.
+4. Optional: Resend (`RESEND_API_KEY`, `EMAIL_FROM`) for reset emails; Supabase for the image cache.
+5. Deploy. CI must be green first.
+
+### First deploy of this version
+
+- Old workouts are converted **per user, on that user's first visit** after the
+  deploy (`ensureWorkoutsMigrated` in `lib/workouts/migrate.ts`): routines and
+  workout history are created from the old `workouts` collection, records are
+  rebuilt. The conversion is non-destructive: the old documents are kept.
+- Workouts that the old app overwrote when a routine was logged again cannot be
+  recovered; only what was still stored is converted.

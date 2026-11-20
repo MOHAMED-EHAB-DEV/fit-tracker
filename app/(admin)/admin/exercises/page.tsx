@@ -1,12 +1,14 @@
 import React from "react";
 import { Metadata } from "next";
+import { requireAdminPage } from "@/lib/auth/admin";
 import { AdminExercisesClient } from "@/components/admin/AdminExercisesClient";
 
 export const metadata: Metadata = {
-  title: "Exercise Catalog — Control Panel",
-  description: "Manage global and custom exercises, muscle groups, equipment, and MET values.",
+  title: "Exercise catalog",
+  description: "Manage the exercises users can pick: muscles, equipment, tracking, MET values and media.",
 };
 
-export default function AdminExercisesPage() {
+export default async function AdminExercisesPage() {
+  await requireAdminPage();
   return <AdminExercisesClient />;
 }

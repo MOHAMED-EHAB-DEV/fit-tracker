@@ -5,6 +5,8 @@ export interface IWeeklyRoutineDay {
   workoutName: string;
   isRestDay: boolean;
   targetMuscleGroups?: string[];
+  /** The routine performed on this day (null = unassigned or rest day). */
+  routineId?: mongoose.Types.ObjectId | null;
 }
 
 export interface IUser extends Document {
@@ -37,8 +39,17 @@ export interface IUser extends Document {
     timezone: string;
     weightUnit: "kg" | "lbs";
     restTimerDefaultSec: number | null;
+    /** Encrypted at rest and never selected by default. Read via lib/users/profile. */
     customGeminiApiKey?: string | null;
+    /** Client-side flag only (never stored): whether a personal key is saved. */
+    hasCustomGeminiKey?: boolean;
   };
+  /** One-time data migrations already applied to this account. */
+  migrations?: {
+    workoutsV3At?: Date | null;
+  };
+  passwordResetTokenHash?: string | null;
+  passwordResetExpiresAt?: Date | null;
   weeklyRoutine: IWeeklyRoutineDay[];
   computed: {
     bmr: number | null;
@@ -53,16 +64,6 @@ export interface IUser extends Document {
   createdAt: Date;
   updatedAt: Date;
 }
-
-const DEFAULT_WEEKLY_ROUTINE: IWeeklyRoutineDay[] = [
-  { dayOfWeek: "saturday", workoutName: "Push Day (Chest, Shoulders, Triceps)", isRestDay: false, targetMuscleGroups: ["Chest", "Shoulders", "Arms"] },
-  { dayOfWeek: "sunday", workoutName: "Pull Day (Back & Biceps)", isRestDay: false, targetMuscleGroups: ["Back", "Arms"] },
-  { dayOfWeek: "monday", workoutName: "Leg Day (Quads, Hams, Calves)", isRestDay: false, targetMuscleGroups: ["Legs", "Core"] },
-  { dayOfWeek: "tuesday", workoutName: "Rest & Active Recovery", isRestDay: true, targetMuscleGroups: [] },
-  { dayOfWeek: "wednesday", workoutName: "Upper Body Power", isRestDay: false, targetMuscleGroups: ["Chest", "Back", "Shoulders"] },
-  { dayOfWeek: "thursday", workoutName: "Lower Body & Core", isRestDay: false, targetMuscleGroups: ["Legs", "Core"] },
-  { dayOfWeek: "friday", workoutName: "Rest / Active Recovery", isRestDay: true, targetMuscleGroups: [] },
-];
 
 const UserSchema = new Schema<IUser>(
   {
@@ -99,8 +100,13 @@ const UserSchema = new Schema<IUser>(
       timezone: { type: String, default: "Africa/Cairo" },
       weightUnit: { type: String, enum: ["kg", "lbs"], default: "kg" },
       restTimerDefaultSec: { type: Number, default: null },
-      customGeminiApiKey: { type: String, default: null },
+      customGeminiApiKey: { type: String, default: null, select: false },
     },
+    migrations: {
+      workoutsV3At: { type: Date, default: null },
+    },
+    passwordResetTokenHash: { type: String, default: null, select: false },
+    passwordResetExpiresAt: { type: Date, default: null, select: false },
     weeklyRoutine: {
       type: [
         {
@@ -112,10 +118,12 @@ const UserSchema = new Schema<IUser>(
           workoutName: { type: String, required: true },
           isRestDay: { type: Boolean, default: false },
           targetMuscleGroups: [{ type: String }],
+          routineId: { type: Schema.Types.ObjectId, ref: "Routine", default: null },
           _id: false,
         },
       ],
-      default: DEFAULT_WEEKLY_ROUTINE,
+      // New accounts start with nothing planned; the Train tab fills this in.
+      default: () => [],
     },
     computed: {
       bmr: { type: Number, default: null },

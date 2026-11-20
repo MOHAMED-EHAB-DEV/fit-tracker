@@ -1,0 +1,64 @@
+name: CI
+
+# Type-check, lint and a production build on every push and pull request.
+# Nothing here deploys or touches a real database: the build gets dummy values.
+# The test suite is kept local (tests/ is not in the repository).
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Type-check, lint, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Type-check
+        run: |
+          node_modules/.bin/next typegen
+          node_modules/.bin/tsc --noEmit --incremental false -p .
+
+      - name: Lint
+        run: node_modules/.bin/eslint .
+
+      - name: Build
+        run: node_modules/.bin/next build
+        env:
+          # Dummy values only: the build connects to nothing.
+          MONGODB_URI: mongodb://127.0.0.1:27017/ci-build
+          JWT_SECRET: ci-build-only-secret-not-used-anywhere-else
+          DATA_ENCRYPTION_KEY: ci-build-only-data-key
+          APP_URL: http://localhost:3000
+          GEMINI_API_KEY: ci-placeholder
+          CLOUDINARY_CLOUD_NAME: ci-placeholder
+          CLOUDINARY_API_KEY: ci-placeholder
+          CLOUDINARY_API_SECRET: ci-placeholder
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:9
+          SUPABASE_SERVICE_ROLE_KEY: ci-placeholder

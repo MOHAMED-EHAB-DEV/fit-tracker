@@ -1,250 +1,225 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { useRef, useState } from "react";
+import Link from "next/link";
 import { UtensilsCrossed, Plus, Pencil, Trash2, Users, BookOpen } from "lucide-react";
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { ConfirmModal } from "@/components/admin/ConfirmModal";
-import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { Chip } from "@/components/ui/Chip";
-import { formatDistanceToNow } from "date-fns";
+import { useToast } from "@/components/ui/Toast";
+import { useAdminList } from "@/components/admin/useAdminList";
+import { apiRequest, errorMessage } from "@/components/admin/api";
+import { formatAdminDate, useAdminZone } from "@/components/admin/AdminZone";
+import type { AdminPlanRow } from "@/lib/admin/nutrition-plans";
 
-export interface PlanRow {
-  _id: string;
-  name: string;
-  description: string;
-  targetCalories: number;
-  targetProteinG: number;
-  isPublic: boolean;
-  assignedTo: any[];
-  meals: any[];
-  createdAt: string;
-  createdBy?: { name: string; email: string } | null;
-}
+const PAGE_SIZE = 20;
 
-export interface Pagination {
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-}
+const actionClass =
+  "min-h-11 min-w-11 flex items-center justify-center rounded-xl text-zinc-300 transition cursor-pointer focus:outline-none focus-visible:ring-2";
 
 export function AdminNutritionClient() {
-  const router = useRouter();
-  const [plans, setPlans] = useState<PlanRow[]>([]);
-  const [pagination, setPagination] = useState<Pagination>({
-    total: 0,
-    page: 1,
-    limit: 20,
-    totalPages: 1,
-  });
-  const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
+  const timeZone = useAdminZone();
   const [search, setSearch] = useState("");
   const [filterPublic, setFilterPublic] = useState("");
-  const [deleteModal, setDeleteModal] = useState<{
-    open: boolean;
-    plan: PlanRow | null;
-    isLoading: boolean;
-  }>({ open: false, plan: null, isLoading: false });
+  const [sortField, setSortField] = useState("createdAt");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
-  const fetchPlans = useCallback(
-    async (page = 1) => {
-      setIsLoading(true);
-      try {
-        const params = new URLSearchParams({
-          page: String(page),
-          limit: "20",
-          search,
-          ...(filterPublic !== "" && { isPublic: filterPublic }),
-        });
-        const res = await fetch(`/api/admin/nutrition/plans?${params}`);
-        const data = await res.json();
-        if (data.success) {
-          setPlans(data.plans);
-          setPagination(data.pagination);
-        }
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [search, filterPublic]
+  const list = useAdminList<AdminPlanRow>(
+    "/api/admin/nutrition/plans",
+    "plans",
+    { search: search.trim(), isPublic: filterPublic, sortField, sortDir },
+    PAGE_SIZE
   );
 
-  useEffect(() => {
-    const t = setTimeout(() => fetchPlans(1), 300);
-    return () => clearTimeout(t);
-  }, [fetchPlans]);
+  const [toDelete, setToDelete] = useState<AdminPlanRow | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const busy = useRef(false);
 
   const handleDelete = async () => {
-    if (!deleteModal.plan) return;
-    setDeleteModal((m) => ({ ...m, isLoading: true }));
-    await fetch(`/api/admin/nutrition/plans/${deleteModal.plan._id}`, {
-      method: "DELETE",
-    });
-    setDeleteModal({ open: false, plan: null, isLoading: false });
-    fetchPlans(pagination.page);
+    if (!toDelete || busy.current) return;
+    busy.current = true;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await apiRequest(`/api/admin/nutrition/plans/${toDelete.id}`, { method: "DELETE" });
+      toast(`"${toDelete.name}" was deleted`, "success");
+      setToDelete(null);
+      list.reload();
+    } catch (err) {
+      setDeleteError(errorMessage(err));
+    } finally {
+      busy.current = false;
+      setDeleteBusy(false);
+    }
   };
 
-  const columns: Column<PlanRow>[] = [
+  const columns: Column<AdminPlanRow>[] = [
     {
       key: "name",
       label: "Plan",
       sortable: true,
       render: (row) => (
-        <div>
-          <p className="font-semibold text-zinc-200 text-sm">{row.name}</p>
-          {row.description && (
-            <p className="text-[11px] text-zinc-500 truncate max-w-xs">{row.description}</p>
-          )}
-        </div>
+        <Link
+          href={`/admin/nutrition/${row.id}`}
+          className="block min-h-11 py-1 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+        >
+          <span className="block font-semibold text-zinc-200 text-sm">{row.name}</span>
+          {row.description && <span className="block text-xs text-zinc-400 truncate max-w-xs">{row.description}</span>}
+        </Link>
       ),
     },
     {
       key: "targetCalories",
-      label: "Target Calories",
+      label: "Calories",
       sortable: true,
-      render: (row) => (
-        <span className="text-sm font-semibold text-zinc-300 tabular-nums">
-          {row.targetCalories.toLocaleString()} kcal
-        </span>
-      ),
+      render: (row) => <span className="text-sm font-semibold text-zinc-300 tabular-nums">{row.targetCalories.toLocaleString()} kcal</span>,
     },
     {
       key: "targetProteinG",
       label: "Protein",
-      render: (row) => <span className="text-xs text-zinc-400 font-medium tabular-nums">{row.targetProteinG}g</span>,
+      render: (row) => <span className="text-xs text-zinc-300 tabular-nums">{row.targetProteinG} g</span>,
     },
     {
       key: "meals",
       label: "Meals",
       render: (row) => (
-        <div className="flex items-center gap-1.5 text-xs text-zinc-400">
-          <BookOpen className="w-3.5 h-3.5 text-zinc-500" aria-hidden="true" /> <span className="tabular-nums">{row.meals?.length ?? 0}</span>
-        </div>
+        <span className="flex items-center gap-1.5 text-xs text-zinc-300">
+          <BookOpen className="w-3.5 h-3.5 text-zinc-400" aria-hidden="true" />
+          <span className="tabular-nums">{row.mealCount}</span>
+        </span>
       ),
     },
     {
-      key: "assignedTo",
+      key: "assigned",
       label: "Assigned",
       render: (row) => (
-        <div className="flex items-center gap-1.5 text-xs text-zinc-400">
-          <Users className="w-3.5 h-3.5 text-zinc-500" aria-hidden="true" /> <span className="tabular-nums">{row.assignedTo?.length ?? 0}</span> users
-        </div>
+        <span className="flex items-center gap-1.5 text-xs text-zinc-300">
+          <Users className="w-3.5 h-3.5 text-zinc-400" aria-hidden="true" />
+          <span className="tabular-nums">
+            {row.assignedCount} user{row.assignedCount === 1 ? "" : "s"}
+          </span>
+        </span>
       ),
     },
     {
       key: "isPublic",
       label: "Visibility",
-      render: (row) =>
-        row.isPublic ? (
-          <Chip size="sm" variant="flat" color="success">
-            Public
-          </Chip>
-        ) : (
-          <Chip size="sm" variant="flat" color="default">
-            Private
-          </Chip>
-        ),
+      render: (row) => (
+        <Chip size="sm" variant="flat" color={row.isPublic ? "success" : "default"} className="text-xs">
+          {row.isPublic ? "Public" : "Private"}
+        </Chip>
+      ),
     },
     {
       key: "createdAt",
       label: "Created",
       sortable: true,
-      render: (row) => (
-        <span className="text-xs text-zinc-500 tabular-nums">
-          {row.createdAt
-            ? formatDistanceToNow(new Date(row.createdAt), { addSuffix: true })
-            : "—"}
-        </span>
-      ),
+      render: (row) => <span className="text-xs text-zinc-400 tabular-nums">{formatAdminDate(row.createdAt, timeZone)}</span>,
     },
   ];
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <UtensilsCrossed className="w-5 h-5 text-violet-400" aria-hidden="true" />
-            <span className="text-xs font-bold uppercase tracking-widest text-violet-400">
-              Nutrition
-            </span>
+            <span className="text-xs font-bold uppercase tracking-widest text-violet-300">Nutrition</span>
           </div>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight">Nutrition Plans</h1>
-          <p className="text-zinc-400 text-sm mt-1 tabular-nums">{pagination.total} plans created</p>
+          <h1 className="text-3xl font-extrabold text-white tracking-tight">Nutrition plans</h1>
+          <p className="text-zinc-400 text-sm mt-1 tabular-nums">
+            {list.pagination.total.toLocaleString()} plan{list.pagination.total === 1 ? "" : "s"} match these filters
+          </p>
         </div>
-        <Button
-          onClick={() => router.push("/admin/nutrition/new")}
-          startContent={<Plus className="w-4 h-4" aria-hidden="true" />}
-          className="bg-violet-600 hover:bg-violet-500 text-white font-bold shadow-lg shadow-violet-600/25 self-start sm:self-auto"
+        <Link
+          href="/admin/nutrition/new"
+          className="inline-flex items-center justify-center gap-2 min-h-11 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-bold self-start sm:self-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
         >
-          New Plan
-        </Button>
+          <Plus className="w-4 h-4" aria-hidden="true" /> New plan
+        </Link>
       </div>
 
-      {/* Filter */}
-      <div className="w-full sm:w-48">
+      <div className="w-full sm:w-56">
         <Select
+          label="Visibility"
           options={[
-            { value: "", label: "All Plans" },
+            { value: "", label: "All plans" },
             { value: "true", label: "Public" },
             { value: "false", label: "Private" },
           ]}
           value={filterPublic}
-          onChange={(val) => setFilterPublic(val || "")}
-          placeholder="All Plans"
-          ariaLabel="Filter by visibility"
+          onChange={(value) => setFilterPublic(value || "")}
         />
       </div>
 
-      <DataTable
+      <DataTable<AdminPlanRow>
         columns={columns}
-        data={plans}
-        keyField="_id"
-        total={pagination.total}
-        page={pagination.page}
-        pageSize={pagination.limit}
-        onPageChange={(p) => fetchPlans(p)}
+        data={list.rows}
+        keyField="id"
+        total={list.pagination.total}
+        page={list.page}
+        pageSize={PAGE_SIZE}
+        onPageChange={list.setPage}
         searchValue={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Search nutrition plans…"
-        isLoading={isLoading}
-        emptyMessage="No nutrition plans yet. Create one!"
+        searchLabel="Search nutrition plans by name"
+        searchPlaceholder="Search plans by name…"
+        sortField={sortField}
+        sortDir={sortDir}
+        onSort={(field, dir) => {
+          setSortField(field);
+          setSortDir(dir);
+        }}
+        isLoading={list.isLoading}
+        error={list.error}
+        onRetry={list.reload}
+        caption="Nutrition plans"
+        emptyMessage="No nutrition plans match. Create one with New plan."
         actions={(row) => (
-          <div className="flex items-center gap-1.5 justify-end">
-            <Button
-              variant="ghost"
-              size="sm"
+          <div className="flex items-center gap-1 justify-end">
+            <Link
+              href={`/admin/nutrition/${row.id}`}
               aria-label={`Edit ${row.name}`}
-              onClick={() => router.push(`/admin/nutrition/${row._id}`)}
-              className="p-2 h-8 w-8 text-zinc-400 hover:text-violet-400 hover:bg-violet-500/10 rounded-xl cursor-pointer"
+              title="Edit"
+              className={`${actionClass} hover:text-violet-300 hover:bg-violet-500/10 focus-visible:ring-violet-400`}
             >
-              <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
+              <Pencil className="w-4 h-4" aria-hidden="true" />
+            </Link>
+            <button
+              type="button"
               aria-label={`Delete ${row.name}`}
-              onClick={() => setDeleteModal({ open: true, plan: row, isLoading: false })}
-              className="p-2 h-8 w-8 text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl cursor-pointer"
+              title="Delete"
+              onClick={() => {
+                setDeleteError(null);
+                setToDelete(row);
+              }}
+              className={`${actionClass} hover:text-red-300 hover:bg-red-500/10 focus-visible:ring-red-400`}
             >
-              <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-            </Button>
+              <Trash2 className="w-4 h-4" aria-hidden="true" />
+            </button>
           </div>
         )}
       />
 
       <ConfirmModal
-        isOpen={deleteModal.open}
-        onClose={() => setDeleteModal({ open: false, plan: null, isLoading: false })}
+        isOpen={Boolean(toDelete)}
+        onClose={() => {
+          if (!deleteBusy) setToDelete(null);
+        }}
         onConfirm={handleDelete}
-        title="Delete Plan"
-        message={`Delete "${deleteModal.plan?.name}"? This cannot be undone.`}
-        confirmLabel="Delete"
+        title="Delete plan"
+        message={
+          toDelete
+            ? `Delete "${toDelete.name}"?${toDelete.assignedCount ? ` It is assigned to ${toDelete.assignedCount} user${toDelete.assignedCount === 1 ? "" : "s"}, who will no longer have it.` : ""} This cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete plan"
         confirmVariant="danger"
-        isLoading={deleteModal.isLoading}
+        isLoading={deleteBusy}
+        error={deleteError}
       />
     </div>
   );

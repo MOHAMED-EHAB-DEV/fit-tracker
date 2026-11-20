@@ -18,6 +18,7 @@ export const ALLOWED_MIME_TYPES = new Set([
   "image/webp",
   "image/gif",
   "image/heic",
+  "image/heif",
   "application/pdf",
   "text/plain",
   "text/csv",
@@ -33,6 +34,7 @@ export const ALLOWED_EXTENSIONS = new Set([
   "webp",
   "gif",
   "heic",
+  "heif",
   "pdf",
   "txt",
   "csv",
@@ -67,6 +69,50 @@ export const DANGEROUS_EXTENSIONS = new Set([
   "com",
   "msi",
 ]);
+
+const HEIC_BRANDS = new Set(["heic", "heix", "hevc", "hevx", "heim", "heis", "hevm", "hevs"]);
+const HEIF_BRANDS = new Set(["mif1", "msf1", "heif"]);
+
+/** "image/heic" / "image/heif" when the buffer is an HEIF container, else null. */
+function detectHeif(buffer: Buffer): "image/heic" | "image/heif" | null {
+  if (buffer.length < 12) return null;
+  if (buffer.toString("ascii", 4, 8) !== "ftyp") return null;
+  const major = buffer.toString("ascii", 8, 12);
+  if (HEIC_BRANDS.has(major)) return "image/heic";
+  if (HEIF_BRANDS.has(major)) {
+    // Compatible brands follow the minor version (bytes 12-15) in 4-byte steps.
+    const boxSize = Math.min(buffer.readUInt32BE(0), buffer.length, 64);
+    for (let offset = 16; offset + 4 <= boxSize; offset += 4) {
+      if (HEIC_BRANDS.has(buffer.toString("ascii", offset, offset + 4))) return "image/heic";
+    }
+    return "image/heif";
+  }
+  return null;
+}
+
+/** Raster photo types accepted for meal analysis (all supported by Gemini). */
+export const MEAL_PHOTO_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]);
+
+/**
+ * Identifies an uploaded photo from its bytes (the declared type and file name
+ * are ignored). Returns the real MIME type, or an error message.
+ */
+export function validateImageBuffer(
+  buffer: Buffer,
+  options: { maxBytes?: number; allowed?: Set<string> } = {}
+): { valid: true; mimeType: string } | { valid: false; error: string } {
+  const maxBytes = options.maxBytes ?? MAX_FILE_SIZE_BYTES;
+  const allowed = options.allowed ?? MEAL_PHOTO_MIME_TYPES;
+  if (buffer.length === 0) return { valid: false, error: "The photo is empty." };
+  if (buffer.length > maxBytes) {
+    return { valid: false, error: `The photo is larger than ${(maxBytes / (1024 * 1024)).toFixed(0)} MB.` };
+  }
+  const { valid, detectedType } = validateMagicBytes(buffer, "application/octet-stream");
+  if (!valid || !allowed.has(detectedType)) {
+    return { valid: false, error: "Only JPEG, PNG, WebP or HEIC photos are supported." };
+  }
+  return { valid: true, mimeType: detectedType };
+}
 
 /**
  * Validates magic bytes for binary files to prevent MIME spoofing.
@@ -119,6 +165,12 @@ function validateMagicBytes(buffer: Buffer, declaredType: string): { valid: bool
     buffer[11] === 0x50 // P
   ) {
     return { valid: true, detectedType: "image/webp" };
+  }
+
+  // HEIC / HEIF: ISO-BMFF box "ftyp" at bytes 4-7 followed by a HEIF brand.
+  const heif = detectHeif(buffer);
+  if (heif) {
+    return { valid: true, detectedType: heif };
   }
 
   // PDF: %PDF- (25 50 44 46 2D)

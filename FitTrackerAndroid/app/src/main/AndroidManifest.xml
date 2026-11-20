@@ -1,36 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.fittracker">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- Network -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- Step Counter (Pedometer DSP sensor) -->
+    <!-- Step counter (asked for in context, when step tracking is used) -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <!-- Short foreground service that reads the step counter when a widget's Sync is tapped -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
+
+    <!-- Reschedule reminders and refresh widgets after a reboot -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <!-- Features -->
+    <!-- Planner reminders -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <!-- Camera for meal and progress photos (asked for when the camera is chosen) -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- In-app updates from GitHub Releases -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <uses-feature
         android:name="android.hardware.sensor.stepcounter"
         android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
 
-    <!-- Camera & Storage for food and physique check-ins -->
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <!-- Android 14+ (API 34+) Selected Photos Access -->
-    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
-    <!-- Android 13+ (API 33+) Notifications -->
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <uses-permission
-        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-
-    <!-- Package visibility for Android 11+ / 13+ / 14+ -->
+    <!-- Package visibility for Android 11+ -->
     <queries>
         <intent>
             <action android:name="android.media.action.IMAGE_CAPTURE" />
@@ -43,21 +44,29 @@
             <action android:name="android.intent.action.GET_CONTENT" />
             <data android:mimeType="*/*" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
     </queries>
 
     <application
-        android:allowBackup="true"
+        android:name=".FitTrackerApp"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="FitTracker"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat.NoActionBar"
-        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:enableOnBackInvokedCallback="true">
 
         <activity
             android:name=".MainActivity"
-            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|locale|layoutDirection"
             android:exported="true"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
@@ -67,7 +76,7 @@
             </intent-filter>
         </activity>
 
-        <!-- FileProvider for capturing camera photos securely -->
+        <!-- Shares camera captures and downloaded updates from the app cache -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -78,56 +87,67 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <!-- Home Screen Widgets -->
-        <!-- 1. Activity & Steps (Medium 4x2) -->
+        <!-- Home screen widgets: only the system's widget broadcasts; Sync uses an explicit PendingIntent -->
         <receiver
             android:name=".widget.FitTrackerStepWidget"
             android:label="@string/widget_step_medium_name"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.fittracker.widget.ACTION_SYNC_WIDGET" />
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.DATE_CHANGED" />
-                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_step_medium_info" />
         </receiver>
 
-        <!-- 2. Quick Counter (Small 2x2) -->
         <receiver
             android:name=".widget.FitTrackerQuickWidget"
             android:label="@string/widget_step_small_name"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.DATE_CHANGED" />
-                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_step_small_info" />
         </receiver>
 
-        <!-- 3. Daily Fitness Overview (Large 4x3) -->
         <receiver
             android:name=".widget.FitTrackerFitnessWidget"
             android:label="@string/widget_fitness_large_name"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.fittracker.widget.ACTION_SYNC_WIDGET" />
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.DATE_CHANGED" />
-                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_fitness_large_info" />
         </receiver>
+
+        <!-- System events (not exported: only the system and this app can send them) -->
+        <receiver
+            android:name=".SystemEventsReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.ACTION_SHUTDOWN" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Planner reminder alarms (explicit intents only) -->
+        <receiver
+            android:name=".reminders.ReminderReceiver"
+            android:exported="false" />
+
+        <!-- Reads the step counter for a few seconds after a widget Sync tap -->
+        <service
+            android:name=".steps.StepReadService"
+            android:exported="false"
+            android:foregroundServiceType="health|shortService" />
     </application>
 
 </manifest>

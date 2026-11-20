@@ -1,144 +1,125 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { Download, X, Share2, PlusSquare, Sparkles } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import { Download, Share, X } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import { isAndroidNativeApp } from "@/services/webview-bridge";
 
+/** The install event Chromium browsers fire; not in the standard DOM types. */
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+}
+
+const DISMISSED_KEY = "fit_tracker_pwa_dismissed_at";
+const SNOOZE_DAYS = 30;
+
+function recentlyDismissed(): boolean {
+  try {
+    const dismissedAt = Number(window.localStorage.getItem(DISMISSED_KEY) || 0);
+    return dismissedAt > 0 && Date.now() - dismissedAt < SNOOZE_DAYS * 86_400_000;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Offers to add the site to the home screen. It only says what installing
+ * actually does (opens full screen from the home screen); the app still needs
+ * a connection.
+ */
 export function InstallPwaBanner() {
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [isIOS, setIsIOS] = useState(false);
-  const [showBanner, setShowBanner] = useState(false);
+  const pathname = usePathname();
+  const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
+  const [showIosHint, setShowIosHint] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(false);
 
   useEffect(() => {
-    // 1. Don't show in native Android app wrapper
     if (isAndroidNativeApp()) return;
-
-    // 2. Don't show if already installed in standalone mode
-    const isStandalone =
+    const standalone =
       window.matchMedia("(display-mode: standalone)").matches ||
-      (navigator as any).standalone === true;
-    if (isStandalone) return;
+      (navigator as Navigator & { standalone?: boolean }).standalone === true;
+    if (standalone || recentlyDismissed()) return;
 
-    // 3. Don't show if previously dismissed within 7 days
-    const dismissedAt = localStorage.getItem("fit_tracker_pwa_dismissed_at");
-    if (dismissedAt) {
-      const daysSince = (Date.now() - parseInt(dismissedAt, 10)) / (1000 * 60 * 60 * 24);
-      if (daysSince < 7) return;
-    }
-
-    // 4. Detect iOS Safari
     const userAgent = window.navigator.userAgent.toLowerCase();
-    const isAppleDevice = /iphone|ipad|ipod/.test(userAgent);
-    const isSafari =
-      isAppleDevice &&
-      !userAgent.includes("crios") &&
-      !userAgent.includes("fxios") &&
-      !userAgent.includes("chrome");
+    const isIosSafari =
+      /iphone|ipad|ipod/.test(userAgent) && !/crios|fxios|edgios|chrome/.test(userAgent);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- browser capability is only known after mount
+    if (isIosSafari) setShowIosHint(true);
 
-    if (isAppleDevice && isSafari) {
-      setIsIOS(true);
-      setShowBanner(true);
-      return;
-    }
-
-    // 5. Chromium beforeinstallprompt handler
-    const handleBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      setShowBanner(true);
+    const onBeforeInstall = (event: Event) => {
+      event.preventDefault();
+      setInstallEvent(event as BeforeInstallPromptEvent);
     };
-
-    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
-
+    const onInstalled = () => {
+      setInstallEvent(null);
+      setShowIosHint(false);
+    };
+    window.addEventListener("beforeinstallprompt", onBeforeInstall);
+    window.addEventListener("appinstalled", onInstalled);
     return () => {
-      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+      window.removeEventListener("appinstalled", onInstalled);
     };
   }, []);
 
-  const handleInstallClick = async () => {
-    if (!deferredPrompt) return;
-
-    deferredPrompt.prompt();
-    const choiceResult = await deferredPrompt.userChoice;
-    if (choiceResult.outcome === "accepted") {
-      setShowBanner(false);
+  const dismiss = () => {
+    try {
+      window.localStorage.setItem(DISMISSED_KEY, String(Date.now()));
+    } catch {
+      // Storage unavailable: the banner is hidden for this visit only.
     }
-    setDeferredPrompt(null);
+    setIsDismissed(true);
   };
 
-  const handleDismiss = () => {
-    localStorage.setItem("fit_tracker_pwa_dismissed_at", Date.now().toString());
-    setShowBanner(false);
+  const install = async () => {
+    if (!installEvent) return;
+    await installEvent.prompt();
+    const choice = await installEvent.userChoice;
+    setInstallEvent(null);
+    if (choice.outcome === "dismissed") dismiss();
   };
 
-  if (!showBanner) return null;
+  // Never on top of a workout in progress.
+  const hiddenHere = pathname.startsWith("/workouts/session/");
+  if (isDismissed || hiddenHere || (!installEvent && !showIosHint)) return null;
 
   return (
     <aside
-      aria-label="Install FitTracker App"
-      className="fixed bottom-20 md:bottom-6 inset-s-4 inset-e-4 md:inset-s-auto md:inset-e-6 z-50 max-w-md p-4 rounded-2xl bg-zinc-900/95 border border-emerald-500/30 shadow-2xl shadow-emerald-950/40 backdrop-blur-xl animate-in fade-in slide-in-from-bottom-5 duration-300"
+      aria-label="Add FitTracker to your home screen"
+      className="fixed inset-x-0 bottom-above-nav z-30 px-3 pointer-events-none md:inset-x-auto md:end-6 md:px-0"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-xl bg-linear-to-br from-emerald-500 to-teal-500 text-zinc-950 flex items-center justify-center shrink-0 shadow-md shadow-emerald-500/20">
-            <Sparkles className="w-5 h-5" aria-hidden="true" />
-          </div>
-          <div className="space-y-1">
-            <div className="flex items-center gap-1.5">
-              <h3 className="font-extrabold text-white text-xs tracking-tight">
-                Install FitTracker App
-              </h3>
-              <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
-                Fast & Offline
-              </span>
-            </div>
-            <p className="text-[11px] text-zinc-400 leading-snug">
-              {isIOS ? (
-                <span>
-                  Tap <Share2 className="w-3 h-3 inline mx-0.5 text-zinc-300" /> Share then select{" "}
-                  <strong className="text-zinc-200">
-                    &apos;Add to Home Screen&apos; <PlusSquare className="w-3 h-3 inline mx-0.5" />
-                  </strong>{" "}
-                  for fullscreen access.
-                </span>
-              ) : (
-                <span>
-                  Install to your home screen for instant fullscreen logging and live widgets. Zero app store fees.
-                </span>
-              )}
-            </p>
-          </div>
+      <div className="pointer-events-auto mx-auto flex max-w-md items-center gap-3 rounded-2xl border border-line bg-zinc-900 px-4 py-3 shadow-xl shadow-black/50">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-white">Add FitTracker to your home screen</p>
+          <p className="text-sm text-zinc-400">
+            {installEvent ? (
+              "It opens full screen, like an app."
+            ) : (
+              <>
+                Tap <Share className="mx-0.5 inline h-4 w-4 text-zinc-200" aria-label="Share" />, then &ldquo;Add to
+                Home Screen&rdquo;.
+              </>
+            )}
+          </p>
         </div>
-
+        {installEvent && (
+          <Button size="sm" startContent={<Download className="h-4 w-4" />} onClick={() => void install()}>
+            Install
+          </Button>
+        )}
         <button
           type="button"
-          onClick={handleDismiss}
-          className="text-zinc-400 hover:text-zinc-200 transition p-1 rounded-lg hover:bg-zinc-800"
-          aria-label="Dismiss install banner"
+          onClick={dismiss}
+          aria-label="Dismiss"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-zinc-400 active:bg-white/10 cursor-pointer"
         >
-          <X className="w-4 h-4" />
+          <X className="h-5 w-5" aria-hidden="true" />
         </button>
       </div>
-
-      {!isIOS && deferredPrompt && (
-        <div className="mt-3 flex items-center justify-end gap-2 pt-2 border-t border-zinc-800/80">
-          <button
-            type="button"
-            onClick={handleDismiss}
-            className="px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition"
-          >
-            Later
-          </button>
-          <button
-            type="button"
-            onClick={handleInstallClick}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 text-xs font-bold shadow-md shadow-emerald-500/20 transition active:scale-95"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Install Now</span>
-          </button>
-        </div>
-      )}
     </aside>
   );
 }
+
+export default InstallPwaBanner;

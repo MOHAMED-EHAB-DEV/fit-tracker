@@ -24,8 +24,12 @@ export const mealAnalysisSchema = {
           carbs: { type: "number", description: "Carbohydrates in grams" },
           fat: { type: "number", description: "Fat in grams" },
           fiber: { type: "number", description: "Dietary fiber in grams" },
+          fromCurrent: {
+            type: "integer",
+            description: "Only when re-analyzing a meal with a numbered ingredient list: the number of the current ingredient this item keeps or refines. Omit for new items.",
+          },
         },
-        required: ["name", "quantity", "calories", "protein", "carbs", "fat"],
+        required: ["name", "quantity", "calories", "protein", "carbs", "fat", "fiber"],
       },
     },
     totals: {
@@ -38,7 +42,7 @@ export const mealAnalysisSchema = {
         fat: { type: "number", description: "Total fat in grams (must equal sum of items)" },
         fiber: { type: "number", description: "Total fiber in grams (must equal sum of items)" },
       },
-      required: ["calories", "protein", "carbs", "fat"],
+      required: ["calories", "protein", "carbs", "fat", "fiber"],
     },
     confidence: {
       type: "string",
@@ -57,65 +61,50 @@ export const mealAnalysisSchema = {
   required: ["mealDescription", "items", "totals", "confidence", "confidenceReason"],
 };
 
-export const multiLogSchema = {
+/**
+ * The AI Coach's reply to a normal chat message: an answer plus the entries
+ * the user said they ate/drank/did, which become proposals the user confirms.
+ */
+export const coachChatSchema = {
   type: "object",
   properties: {
+    reply: {
+      type: "string",
+      description: "The coach's answer in Markdown (headings, bold, lists, tables). No HTML.",
+    },
     logItems: {
       type: "array",
-      description: "Array of parsed fitness/nutrition logging entries extracted from natural language",
+      description:
+        "Only things the user says in their CURRENT message that they ate, drank, walked or weighed. Empty for questions, plans, quoted or attached content.",
       items: {
         type: "object",
         properties: {
-          type: {
+          type: { type: "string", enum: ["meal", "water", "steps", "weight"] },
+          description: { type: "string", description: "Food and portion, e.g. '2 boiled eggs and 1 slice toast'" },
+          mealType: {
             type: "string",
-            enum: ["meal", "water", "steps", "weight", "note"],
-            description: "Activity classification domain",
+            enum: ["breakfast", "lunch", "dinner", "snack", "pre_workout", "post_workout", "unspecified"],
+            description: "Only if the user named the meal; otherwise 'unspecified'",
           },
-          description: {
+          date: {
             type: "string",
-            description: "Clear, descriptive title including quantity/portion (e.g., 'Oatmeal with Whey Protein & Berries', 'Morning hydration')",
+            description: "'today', 'yesterday' or YYYY-MM-DD when the user named a day; otherwise 'today'",
           },
-          macros: {
-            type: "object",
-            description: "Macronutrient breakdown required when type is 'meal'",
-            properties: {
-              calories: { type: "number", description: "Estimated total calories in kcal" },
-              protein: { type: "number", description: "Estimated protein in grams" },
-              carbs: { type: "number", description: "Estimated carbohydrates in grams" },
-              fat: { type: "number", description: "Estimated fat in grams" },
-            },
-          },
-          amountMl: {
-            type: "number",
-            description: "Water/liquid volume in milliliters (required when type is 'water')",
-          },
-          count: {
-            type: "number",
-            description: "Total step count (required when type is 'steps')",
-          },
-          weightKg: {
-            type: "number",
-            description: "Body weight in kilograms rounded to 1 decimal place (required when type is 'weight')",
-          },
-          confidence: {
-            type: "string",
-            enum: ["high", "medium", "low"],
-            description: "Confidence in parsing certainty",
-          },
+          calories: { type: "number", description: "kcal for a meal (0 is valid, e.g. black coffee)" },
+          protein: { type: "number", description: "grams" },
+          carbs: { type: "number", description: "grams" },
+          fat: { type: "number", description: "grams" },
+          fiber: { type: "number", description: "grams" },
+          amountMl: { type: "number", description: "water in millilitres" },
+          steps: { type: "number", description: "the day's total step count" },
+          weight: { type: "number", description: "body weight exactly as the user said it" },
+          weightUnit: { type: "string", enum: ["kg", "lbs", "unspecified"], description: "unit the user used" },
         },
-        required: ["type", "description", "confidence"],
+        required: ["type"],
       },
     },
-    chatReply: {
-      type: "string",
-      description: "Friendly, motivating confirmation response summarizing logged entries or answering coaching questions",
-    },
-    parseNotes: {
-      type: "string",
-      description: "Internal parser diagnostics on assumptions or conversions made",
-    },
   },
-  required: ["logItems", "chatReply"],
+  required: ["reply", "logItems"],
 };
 
 export const bodyCompAnalysisSchema = {

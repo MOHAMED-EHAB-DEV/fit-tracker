@@ -1,15 +1,12 @@
-import { getFullUser } from "@/lib/auth/session";
-import { type Metadata } from "next";
+import type { Metadata } from "next";
 import { SettingsClient } from "@/components/settings/SettingsClient";
 
 export const metadata: Metadata = {
-  title: "Account & Fitness Settings — AI Fit Tracker",
-  description: "Configure your personal metrics, metabolic targets, and application preferences.",
+  title: "Settings",
+  description: "Your profile, daily targets, units and account.",
 };
 
-export default async function SettingsPage() {
-  const user = await getFullUser();
-  const sanitizedUser = user ? JSON.parse(JSON.stringify(user)) : null;
-
-  return <SettingsClient initialUser={sanitizedUser} />;
+/** The signed-in user comes from the app layout's provider; nothing is fetched here. */
+export default function SettingsPage() {
+  return <SettingsClient />;
 }

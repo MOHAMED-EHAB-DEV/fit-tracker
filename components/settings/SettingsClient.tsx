@@ -1,766 +1,869 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useMemo, useState } from "react";
 import Link from "next/link";
-import { useUser } from "@/context/UserContext";
-import {
-  User,
-  Target,
-  Shield,
-  Check,
-  Smartphone,
-  RefreshCw,
-  Flame,
-  Zap,
-  Dumbbell,
-  Key,
-  Download,
-  ExternalLink,
-  Eye,
-  EyeOff,
-  Calculator,
-} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Download, ExternalLink, LogOut, RefreshCw, ShieldCheck } from "lucide-react";
 import versionData from "@/version.json";
-import { ActivityLevel, FitnessGoal, Sex } from "@/types/fitness";
-import { SEX_OPTIONS, ACTIVITY_LEVELS, FITNESS_GOALS } from "@/constants/user";
-import { isAndroidNativeApp, triggerAppUpdateCheck } from "@/services/webview-bridge";
-import { updateProfileSettingsAction } from "@/lib/fitness/actions";
-import { calculateAllMacroTargets } from "@/lib/fitness/bmr";
-import { cn } from "@/lib/utils";
-import { Card, CardHeader, CardBody } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
-import { Select, SelectOption } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
-import { Chip } from "@/components/ui/Chip";
-import { ConfirmModal } from "@/components/admin/ConfirmModal";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { NumberField } from "@/components/ui/NumberField";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { useToast } from "@/components/ui/Toast";
+import { useUnsavedChanges } from "@/components/admin/useUnsavedChanges";
+import { useUser, type ClientUser } from "@/context/UserContext";
+import { useIsNativeApp } from "@/hooks/useIsNativeApp";
+import { api, errorMessage } from "@/lib/client/api";
+import { logout } from "@/lib/client/logout";
+import { automaticTargets } from "@/lib/fitness/targets";
+import { cmToInches, fromKg, inchesToCm, normalizeWeightUnit, toKg, type WeightUnit } from "@/lib/fitness/units";
+import {
+  detectDeviceTimeZone,
+  isValidDateString,
+  localDateString,
+  normalizeWeekStart,
+  resolveTimeZone,
+  type WeekdayKey,
+} from "@/lib/time";
+import { updateProfileSettingsAction, type SettingsPayload } from "@/lib/users/actions";
+import {
+  ANDROID_RELEASES_URL,
+  getNativeAppVersion,
+  openExternalLink,
+  saveFile,
+  triggerAppUpdateCheck,
+} from "@/services/webview-bridge";
+import type { ActivityLevel, FitnessGoal, Sex } from "@/types/fitness";
 
-interface SettingsClientProps {
-  initialUser?: any;
+interface FormState {
+  name: string;
+  sex: Sex | null;
+  birthDate: string;
+  age: number | null;
+  weightKg: number | null;
+  heightCm: number | null;
+  activityLevel: ActivityLevel | null;
+  goal: FitnessGoal | null;
+  calorieAdjustment: number | null;
+  targetCalories: number | null;
+  targetProteinG: number | null;
+  targetCarbsG: number | null;
+  targetFatG: number | null;
+  targetFiberG: number | null;
+  stepGoal: number | null;
+  waterGoalMl: number | null;
+  restTimerDefaultSec: number;
+  weightUnit: WeightUnit;
+  timezone: string;
+  weekStartDay: WeekdayKey;
 }
 
-const sexOptions: SelectOption<Sex>[] = SEX_OPTIONS.map((s) => ({
-  value: s.value,
-  label: s.label,
-}));
+const ACTIVITY_OPTIONS: Array<{ value: ActivityLevel; label: string }> = [
+  { value: "sedentary", label: "Mostly sitting (desk job, little exercise)" },
+  { value: "light", label: "Lightly active (exercise 1 to 3 days a week)" },
+  { value: "moderate", label: "Moderately active (exercise 3 to 5 days a week)" },
+  { value: "active", label: "Very active (hard exercise 6 to 7 days a week)" },
+  { value: "very_active", label: "Extremely active (physical job or two sessions a day)" },
+];
 
-const activityOptions: SelectOption<ActivityLevel>[] = ACTIVITY_LEVELS.map((act) => ({
-  value: act.key,
-  label: act.label,
-  description: act.desc,
-}));
+const GOAL_OPTIONS: Array<{ value: FitnessGoal; label: string }> = [
+  { value: "cut", label: "Lose fat" },
+  { value: "maintain", label: "Maintain" },
+  { value: "bulk", label: "Build muscle" },
+];
 
-const goalOptions: SelectOption<FitnessGoal>[] = FITNESS_GOALS.map((g) => ({
-  value: g.key,
-  label: g.label,
-  description: g.badge,
-}));
+const WEEK_START_OPTIONS: Array<{ value: WeekdayKey; label: string }> = [
+  { value: "saturday", label: "Saturday" },
+  { value: "sunday", label: "Sunday" },
+  { value: "monday", label: "Monday" },
+];
 
-export function SettingsClient({ initialUser }: SettingsClientProps = {}) {
-  const { user: contextUser, refreshUser } = useUser();
-  const user = contextUser || initialUser;
+const REST_OPTIONS = [0, 30, 45, 60, 90, 120, 150, 180, 240, 300];
 
-  const [name, setName] = useState(user?.name || "");
-  const [sex, setSex] = useState<Sex>(user?.fitnessProfile?.sex || "male");
-  const [weightKg, setWeightKg] = useState(user?.fitnessProfile?.weightKg ? String(user.fitnessProfile.weightKg) : "75");
-  const [heightCm, setHeightCm] = useState(user?.fitnessProfile?.heightCm ? String(user.fitnessProfile.heightCm) : "178");
-  const [activityLevel, setActivityLevel] = useState<ActivityLevel>(user?.fitnessProfile?.activityLevel || "moderate");
-  const [goal, setGoal] = useState<FitnessGoal>(user?.fitnessProfile?.goal || "maintain");
-  const [calorieAdjustment, setCalorieAdjustment] = useState<string>(
-    user?.fitnessProfile?.calorieAdjustment != null
-      ? String(user.fitnessProfile.calorieAdjustment)
-      : user?.fitnessProfile?.goal === "bulk"
-      ? "300"
-      : user?.fitnessProfile?.goal === "cut"
-      ? "500"
-      : ""
-  );
-  const [stepGoal, setStepGoal] = useState(user?.preferences?.stepGoal ? String(user.preferences.stepGoal) : "10000");
-  const [waterGoalMl, setWaterGoalMl] = useState(user?.preferences?.waterGoalMl ? String(user.preferences.waterGoalMl) : "3000");
-  const [restTimerDefaultSec, setRestTimerDefaultSec] = useState(user?.preferences?.restTimerDefaultSec ? String(user.preferences.restTimerDefaultSec) : "90");
-  const [customGeminiApiKey, setCustomGeminiApiKey] = useState(user?.preferences?.customGeminiApiKey || "");
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
+const FIELD_CLASS = "w-full min-h-12 rounded-xl border border-line bg-surface-2 px-3.5 text-base text-white";
+const LABEL_CLASS = "block text-sm font-medium text-zinc-200";
+const HELP_CLASS = "text-sm text-zinc-400";
 
-  // Macro Targets State
-  const [targetCalories, setTargetCalories] = useState(user?.fitnessProfile?.targetCalories ? String(user.fitnessProfile.targetCalories) : "");
-  const [targetProteinG, setTargetProteinG] = useState(user?.fitnessProfile?.targetProteinG ? String(user.fitnessProfile.targetProteinG) : "");
-  const [targetCarbsG, setTargetCarbsG] = useState(user?.fitnessProfile?.targetCarbsG ? String(user.fitnessProfile.targetCarbsG) : "");
-  const [targetFatG, setTargetFatG] = useState(user?.fitnessProfile?.targetFatG ? String(user.fitnessProfile.targetFatG) : "");
-  const [targetFiberG, setTargetFiberG] = useState(user?.fitnessProfile?.targetFiberG ? String(user.fitnessProfile.targetFiberG) : "");
+function toDateInput(value: unknown): string {
+  if (!value) return "";
+  const date = new Date(value as string);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+}
 
+function fromUser(user: ClientUser | null): FormState {
+  const profile = user?.fitnessProfile;
+  const preferences = user?.preferences;
+  return {
+    name: user?.name || "",
+    sex: profile?.sex ?? null,
+    birthDate: toDateInput(profile?.birthDate),
+    age: profile?.age ?? null,
+    weightKg: profile?.weightKg ?? null,
+    heightCm: profile?.heightCm ?? null,
+    activityLevel: profile?.activityLevel ?? null,
+    goal: profile?.goal ?? null,
+    calorieAdjustment: profile?.calorieAdjustment ?? null,
+    targetCalories: profile?.targetCalories ?? null,
+    targetProteinG: profile?.targetProteinG ?? null,
+    targetCarbsG: profile?.targetCarbsG ?? null,
+    targetFatG: profile?.targetFatG ?? null,
+    targetFiberG: profile?.targetFiberG ?? null,
+    stepGoal: preferences?.stepGoal ?? null,
+    waterGoalMl: preferences?.waterGoalMl ?? null,
+    restTimerDefaultSec: preferences?.restTimerDefaultSec ?? 90,
+    weightUnit: normalizeWeightUnit(preferences?.weightUnit),
+    timezone: resolveTimeZone(preferences?.timezone),
+    weekStartDay: normalizeWeekStart(preferences?.weekStartDay),
+  };
+}
+
+function listTimeZones(current: string, device: string): string[] {
+  let zones: string[] = [];
+  try {
+    zones = (Intl as unknown as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf?.("timeZone") || [];
+  } catch {
+    zones = [];
+  }
+  return Array.from(new Set([current, device, "UTC", ...zones])).sort((a, b) => a.localeCompare(b));
+}
+
+/** The first problem that would make the server reject the form, in plain words. */
+function findProblem(form: FormState, today: string): string | null {
+  if (!form.name.trim()) return "Enter your name.";
+  if (form.birthDate && (!isValidDateString(form.birthDate) || form.birthDate >= today)) {
+    return "Check your date of birth.";
+  }
+  // Same range as the server (and as body check-ins, which can set this weight).
+  if (form.weightKg != null && (form.weightKg < 20 || form.weightKg > 400)) {
+    return form.weightUnit === "lbs" ? "Weight must be between 44 and 881 lbs." : "Weight must be between 20 and 400 kg.";
+  }
+  if (form.heightCm != null && (form.heightCm < 100 || form.heightCm > 250)) {
+    return form.weightUnit === "lbs"
+      ? "Height must be between 3 ft 4 in and 8 ft 2 in."
+      : "Height must be between 100 and 250 cm.";
+  }
+  if (form.age != null && !form.birthDate && (form.age < 10 || form.age > 100)) return "Age must be between 10 and 100.";
+  if (form.targetCalories != null && (form.targetCalories < 800 || form.targetCalories > 10_000)) {
+    return "The calorie target must be between 800 and 10,000 kcal.";
+  }
+  if (form.targetProteinG != null && form.targetProteinG > 600) return "The protein target must be at most 600 g.";
+  if (form.targetCarbsG != null && form.targetCarbsG > 1500) return "The carbs target must be at most 1,500 g.";
+  if (form.targetFatG != null && form.targetFatG > 500) return "The fat target must be at most 500 g.";
+  if (form.targetFiberG != null && form.targetFiberG > 150) return "The fibre target must be at most 150 g.";
+  if (form.calorieAdjustment != null && form.calorieAdjustment > 1500) {
+    return "The daily calorie change must be at most 1,500 kcal.";
+  }
+  if (form.stepGoal != null && (form.stepGoal < 500 || form.stepGoal > 100_000)) {
+    return "The step goal must be between 500 and 100,000.";
+  }
+  if (form.waterGoalMl != null && (form.waterGoalMl < 250 || form.waterGoalMl > 10_000)) {
+    return "The water goal must be between 250 and 10,000 ml.";
+  }
+  return null;
+}
+
+export function SettingsClient() {
+  const router = useRouter();
+  const { toast } = useToast();
+  const { user, refreshUser } = useUser();
+  const isNative = useIsNativeApp();
+
+  const [baseline, setBaseline] = useState<FormState>(() => fromUser(user));
+  const [form, setForm] = useState<FormState>(baseline);
+  const [newKey, setNewKey] = useState("");
+  const [removeKey, setRemoveKey] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isSaved, setIsSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isSignOutAllOpen, setIsSignOutAllOpen] = useState(false);
+  const [isSigningOutAll, setIsSigningOutAll] = useState(false);
+  const [signOutAllError, setSignOutAllError] = useState<string | null>(null);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
-  // Logout modal state
-  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const hasSavedKey = Boolean(user?.preferences?.hasCustomGeminiKey) && !removeKey;
+  const isDirty = JSON.stringify(form) !== JSON.stringify(baseline) || newKey.trim().length > 0 || removeKey;
+  useUnsavedChanges(isDirty && !isSaving);
 
-  useEffect(() => {
-    if (user) {
-      if (user.name) setName(user.name);
-      if (user.fitnessProfile?.sex) setSex(user.fitnessProfile.sex);
-      if (user.fitnessProfile?.weightKg) setWeightKg(String(user.fitnessProfile.weightKg));
-      if (user.fitnessProfile?.heightCm) setHeightCm(String(user.fitnessProfile.heightCm));
-      if (user.fitnessProfile?.activityLevel) setActivityLevel(user.fitnessProfile.activityLevel);
-      if (user.fitnessProfile?.goal) setGoal(user.fitnessProfile.goal);
-      if (user.fitnessProfile?.calorieAdjustment != null) {
-        setCalorieAdjustment(String(user.fitnessProfile.calorieAdjustment));
-      } else if (user.fitnessProfile?.goal === "bulk") {
-        setCalorieAdjustment("300");
-      } else if (user.fitnessProfile?.goal === "cut") {
-        setCalorieAdjustment("500");
-      } else {
-        setCalorieAdjustment("");
-      }
-      if (user.preferences?.stepGoal) setStepGoal(String(user.preferences.stepGoal));
-      if (user.preferences?.waterGoalMl) setWaterGoalMl(String(user.preferences.waterGoalMl));
-      if (user.preferences?.restTimerDefaultSec) setRestTimerDefaultSec(String(user.preferences.restTimerDefaultSec));
-      if (user.preferences?.customGeminiApiKey) setCustomGeminiApiKey(user.preferences.customGeminiApiKey);
+  const deviceZone = useMemo(() => detectDeviceTimeZone(), []);
+  const timeZones = useMemo(() => listTimeZones(form.timezone, deviceZone), [form.timezone, deviceZone]);
+  const today = localDateString(new Date(), form.timezone);
+  const nativeVersion = isNative ? getNativeAppVersion() : null;
 
-      if (user.fitnessProfile?.targetCalories) setTargetCalories(String(user.fitnessProfile.targetCalories));
-      else if (user.computed?.tdee) setTargetCalories(String(user.computed.tdee));
+  const auto = useMemo(
+    () =>
+      automaticTargets({
+        sex: form.sex,
+        birthDate: form.birthDate || null,
+        age: form.age,
+        weightKg: form.weightKg,
+        heightCm: form.heightCm,
+        activityLevel: form.activityLevel,
+        goal: form.goal,
+        calorieAdjustment: form.calorieAdjustment,
+      }),
+    [form.sex, form.birthDate, form.age, form.weightKg, form.heightCm, form.activityLevel, form.goal, form.calorieAdjustment]
+  );
 
-      if (user.fitnessProfile?.targetProteinG) setTargetProteinG(String(user.fitnessProfile.targetProteinG));
-      else if (user.computed?.proteinTargetG) setTargetProteinG(String(user.computed.proteinTargetG));
-
-      if (user.fitnessProfile?.targetCarbsG) setTargetCarbsG(String(user.fitnessProfile.targetCarbsG));
-      else if (user.computed?.carbsTargetG) setTargetCarbsG(String(user.computed.carbsTargetG));
-
-      if (user.fitnessProfile?.targetFatG) setTargetFatG(String(user.fitnessProfile.targetFatG));
-      else if (user.computed?.fatTargetG) setTargetFatG(String(user.computed.fatTargetG));
-
-      if (user.fitnessProfile?.targetFiberG) setTargetFiberG(String(user.fitnessProfile.targetFiberG));
-      else if (user.computed?.fiberTargetG) setTargetFiberG(String(user.computed.fiberTargetG));
-    }
-  }, [user]);
-
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSaving(true);
-    setIsSaved(false);
+  const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setError(null);
+    setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const heightInches = form.heightCm == null ? null : cmToInches(form.heightCm, 1);
+  const feet = heightInches == null ? null : Math.floor(heightInches / 12);
+  const inches = heightInches == null || feet == null ? null : Math.round((heightInches - feet * 12) * 10) / 10;
+
+  const hasCustomTargets =
+    form.targetCalories != null ||
+    form.targetProteinG != null ||
+    form.targetCarbsG != null ||
+    form.targetFatG != null ||
+    form.targetFiberG != null;
+
+  const save = async (event?: React.FormEvent) => {
+    event?.preventDefault();
+    if (isSaving) return;
+    const problem = findProblem(form, today);
+    if (problem) {
+      setError(problem);
+      return;
+    }
+    const key = newKey.trim();
+    if (key && key.length < 10) {
+      setError("That API key looks too short. Paste the whole key.");
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+    const payload: SettingsPayload = {
+      name: form.name.trim(),
+      fitnessProfile: {
+        ...(form.sex ? { sex: form.sex } : {}),
+        birthDate: form.birthDate || null,
+        // The age is only used when there is no date of birth.
+        ...(form.birthDate ? {} : { age: form.age }),
+        weightKg: form.weightKg,
+        heightCm: form.heightCm,
+        ...(form.activityLevel ? { activityLevel: form.activityLevel } : {}),
+        ...(form.goal ? { goal: form.goal } : {}),
+        calorieAdjustment: form.goal === "maintain" ? null : form.calorieAdjustment,
+        targetCalories: form.targetCalories,
+        targetProteinG: form.targetProteinG,
+        targetCarbsG: form.targetCarbsG,
+        targetFatG: form.targetFatG,
+        targetFiberG: form.targetFiberG,
+      },
+      preferences: {
+        stepGoal: form.stepGoal,
+        waterGoalMl: form.waterGoalMl,
+        restTimerDefaultSec: form.restTimerDefaultSec,
+        weightUnit: form.weightUnit,
+        timezone: form.timezone,
+        weekStartDay: form.weekStartDay,
+      },
+      ...(key ? { customGeminiApiKey: key } : {}),
+      ...(removeKey && !key ? { removeCustomGeminiApiKey: true } : {}),
+    };
 
     try {
-      const res = await updateProfileSettingsAction({
-        name: name.trim(),
-        fitnessProfile: {
-          sex,
-          weightKg: parseFloat(weightKg) || null,
-          heightCm: parseFloat(heightCm) || null,
-          activityLevel,
-          goal,
-          calorieAdjustment: calorieAdjustment ? parseInt(calorieAdjustment, 10) : null,
-          targetCalories: targetCalories ? parseInt(targetCalories, 10) : null,
-          targetProteinG: targetProteinG ? parseInt(targetProteinG, 10) : null,
-          targetCarbsG: targetCarbsG ? parseInt(targetCarbsG, 10) : null,
-          targetFatG: targetFatG ? parseInt(targetFatG, 10) : null,
-          targetFiberG: targetFiberG ? parseInt(targetFiberG, 10) : null,
-        },
-        preferences: {
-          stepGoal: parseInt(stepGoal, 10) || 10000,
-          waterGoalMl: parseInt(waterGoalMl, 10) || 3000,
-          restTimerDefaultSec: parseInt(restTimerDefaultSec, 10) || 90,
-          customGeminiApiKey: customGeminiApiKey.trim() || null,
-        },
-      });
-
-      if (!res.success) {
-        throw new Error(res.error || "Failed to update settings");
+      const result = await updateProfileSettingsAction(payload);
+      if (!result.success) {
+        setError(result.error || "Your settings could not be saved. Please try again.");
+        return;
       }
-
+      setBaseline(form);
+      setNewKey("");
+      setRemoveKey(false);
       await refreshUser();
-      setIsSaved(true);
-      setTimeout(() => setIsSaved(false), 3000);
-    } catch (err: any) {
-      setError(err.message || "Failed to update profile");
+      router.refresh();
+      toast("Settings saved", "success");
+    } catch {
+      setError("Your settings could not be saved. Check your connection and try again.");
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleExportData = async () => {
+  const discard = () => {
+    setForm(baseline);
+    setNewKey("");
+    setRemoveKey(false);
+    setError(null);
+  };
+
+  const exportData = async () => {
+    if (isExporting) return;
     setIsExporting(true);
     try {
-      const res = await fetch("/api/user/export");
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error || "Failed to export data");
+      const response = await fetch("/api/user/export", { credentials: "same-origin" });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(
+          body?.error ||
+            (response.status === 429
+              ? "You have exported several times recently. Try again in an hour."
+              : "The export could not be created.")
+        );
       }
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `fit-tracker-export-${new Date().toISOString().split("T")[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (err: any) {
-      setError(err.message || "Export failed");
+      const blob = await response.blob();
+      const saved = await saveFile(blob, `fit-tracker-export-${localDateString(new Date(), form.timezone)}.json`);
+      if (saved) toast("Your data was exported", "success");
+      else toast("The export could not be saved on this device.", "error");
+    } catch (err) {
+      toast(err instanceof Error && err.message ? err.message : "The export could not be created.", "error");
     } finally {
       setIsExporting(false);
     }
   };
 
-  const handleInvalidateAll = async () => {
-    setIsLoggingOut(true);
+  const signOutEverywhere = async () => {
+    setIsSigningOutAll(true);
+    setSignOutAllError(null);
     try {
-      await fetch("/api/profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ invalidateAllSessions: true }),
-      });
-      setIsLogoutModalOpen(false);
-      await refreshUser();
+      await api("/api/profile", { method: "PATCH", body: { invalidateAllSessions: true } });
+      setIsSignOutAllOpen(false);
+      toast("Signed out on every other device. This one stays signed in.", "success");
     } catch (err) {
-      console.error("Failed to invalidate sessions:", err);
+      setSignOutAllError(errorMessage(err));
     } finally {
-      setIsLoggingOut(false);
+      setIsSigningOutAll(false);
     }
   };
 
+  const targetField = (
+    key: "targetCalories" | "targetProteinG" | "targetCarbsG" | "targetFatG" | "targetFiberG",
+    label: string,
+    unit: string,
+    automatic: number | null,
+    max: number
+  ) => (
+    <div className="space-y-1.5">
+      <p className={LABEL_CLASS}>{label}</p>
+      <NumberField
+        label={`${label} target in ${unit}`}
+        value={form[key]}
+        onChange={(value) => set(key, value)}
+        max={max}
+        suffix={unit}
+        placeholder={automatic != null ? String(automatic) : "–"}
+      />
+      <p className={HELP_CLASS}>
+        {form[key] != null
+          ? automatic != null
+            ? `Your own value. Automatic would be ${automatic.toLocaleString("en-US")} ${unit}.`
+            : "Your own value."
+          : automatic != null
+            ? "Automatic."
+            : "Add your weight and height to calculate it."}
+      </p>
+    </div>
+  );
+
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-          Account & Fitness Settings
-        </h1>
-        <p className="text-sm text-zinc-400 mt-0.5">
-          Configure your personal metrics, targets, and preferences
-        </p>
-      </div>
+    <div className="mx-auto max-w-2xl space-y-6 pb-24">
+      <h1 className="text-2xl font-bold text-white">Settings</h1>
 
-      <form onSubmit={handleSave} className="space-y-6">
-        {/* Profile Card */}
-        <Card variant="default">
-          <CardHeader>
-            <div className="flex items-center gap-2 text-white font-bold text-base">
-              <User className="w-5 h-5 text-emerald-400" aria-hidden="true" />
-              <span>Profile & Biometrics</span>
-            </div>
-          </CardHeader>
+      <form onSubmit={save} className="space-y-6" noValidate>
+        <Section title="About you" description="Used to estimate how many calories you burn.">
+          <div className="space-y-1.5">
+            <label htmlFor="settings-name" className={LABEL_CLASS}>
+              Name
+            </label>
+            <input
+              id="settings-name"
+              value={form.name}
+              onChange={(event) => set("name", event.target.value.slice(0, 80))}
+              autoComplete="name"
+              className={FIELD_CLASS}
+            />
+          </div>
 
-          <CardBody className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input
-                label="Name"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Your display name"
-              />
+          <div className="space-y-1.5">
+            <p className={LABEL_CLASS}>Sex</p>
+            <SegmentedControl
+              label="Sex"
+              value={form.sex ?? ("" as Sex)}
+              onChange={(value) => set("sex", value)}
+              options={[
+                { value: "male", label: "Male" },
+                { value: "female", label: "Female" },
+              ]}
+              className="w-full"
+            />
+          </div>
 
-              <Select<Sex>
-                label="Biological Sex"
-                options={sexOptions}
-                value={sex}
-                onChange={(val) => setSex(val)}
-                placeholder="Select biological sex"
-              />
-
-              <Input
-                label="Weight (kg)"
-                type="number"
-                step="0.1"
-                value={weightKg}
-                onChange={(e) => setWeightKg(e.target.value)}
-                placeholder="e.g. 75"
-              />
-
-              <Input
-                label="Height (cm)"
-                type="number"
-                value={heightCm}
-                onChange={(e) => setHeightCm(e.target.value)}
-                placeholder="e.g. 178"
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label htmlFor="settings-birth-date" className={LABEL_CLASS}>
+                Date of birth
+              </label>
+              <input
+                id="settings-birth-date"
+                type="date"
+                value={form.birthDate}
+                max={today}
+                autoComplete="bday"
+                onChange={(event) => set("birthDate", event.target.value)}
+                className={FIELD_CLASS}
               />
             </div>
-          </CardBody>
-        </Card>
-
-        {/* Targets & Activity Card */}
-        <Card variant="default">
-          <CardHeader>
-            <div className="flex items-center gap-2 text-white font-bold text-base">
-              <Target className="w-5 h-5 text-emerald-400" aria-hidden="true" />
-              <span>Goals & Preferences</span>
-            </div>
-          </CardHeader>
-
-          <CardBody className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Select<ActivityLevel>
-                label="Activity Level"
-                options={activityOptions}
-                value={activityLevel}
-                onChange={(val) => setActivityLevel(val)}
-                placeholder="Select activity level"
-              />
-
-              <Select<FitnessGoal>
-                label="Fitness Goal"
-                options={goalOptions}
-                value={goal}
-                onChange={(val) => {
-                  setGoal(val);
-                  if (val === "bulk" && (!calorieAdjustment || calorieAdjustment === "500")) {
-                    setCalorieAdjustment("300");
-                  } else if (val === "cut" && (!calorieAdjustment || calorieAdjustment === "300")) {
-                    setCalorieAdjustment("500");
-                  } else if (val === "maintain") {
-                    setCalorieAdjustment("");
-                  }
-                }}
-                placeholder="Select fitness goal"
-              />
-
-              {goal === "bulk" && (
-                <Input
-                  label="Bulking Calorie Surplus (+kcal)"
-                  type="number"
-                  value={calorieAdjustment}
-                  onChange={(e) => setCalorieAdjustment(e.target.value)}
-                  placeholder="300"
-                  description="Adjust your bulk surplus calories (e.g. +300 kcal above TDEE)"
+            {!form.birthDate && (
+              <div className="space-y-1.5">
+                <p className={LABEL_CLASS}>Age</p>
+                <NumberField
+                  label="Age in years"
+                  value={form.age}
+                  onChange={(value) => set("age", value)}
+                  max={100}
+                  suffix="years"
                 />
-              )}
+                <p className={HELP_CLASS}>Only used until you add a date of birth.</p>
+              </div>
+            )}
+          </div>
 
-              {goal === "cut" && (
-                <Input
-                  label="Cutting Calorie Deficit (-kcal)"
-                  type="number"
-                  value={calorieAdjustment}
-                  onChange={(e) => setCalorieAdjustment(e.target.value)}
-                  placeholder="500"
-                  description="Adjust your cut deficit calories (e.g. -500 kcal below TDEE)"
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <p className={LABEL_CLASS}>Weight</p>
+              <NumberField
+                label={`Weight in ${form.weightUnit}`}
+                value={form.weightKg == null ? null : fromKg(form.weightKg, form.weightUnit, 1)}
+                onChange={(value) => set("weightKg", value == null ? null : toKg(value, form.weightUnit))}
+                decimals={1}
+                max={form.weightUnit === "lbs" ? 700 : 320}
+                suffix={form.weightUnit}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <p className={LABEL_CLASS}>Height</p>
+              {form.weightUnit === "kg" ? (
+                <NumberField
+                  label="Height in centimetres"
+                  value={form.heightCm}
+                  onChange={(value) => set("heightCm", value)}
+                  decimals={1}
+                  max={260}
+                  suffix="cm"
                 />
-              )}
-
-              {goal === "maintain" && (
-                <div className="p-3 rounded-2xl bg-zinc-950/60 border border-white/5 flex items-center justify-between text-xs text-zinc-400">
-                  <span className="font-semibold text-zinc-300">Maintenance Target</span>
-                  <span>0 kcal surplus/deficit (Matches TDEE)</span>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <NumberField
+                    label="Height, feet"
+                    value={feet}
+                    onChange={(value) =>
+                      set("heightCm", value == null ? null : inchesToCm(value * 12 + (inches || 0), 1))
+                    }
+                    max={8}
+                    suffix="ft"
+                  />
+                  <NumberField
+                    label="Height, inches"
+                    value={inches}
+                    onChange={(value) => set("heightCm", inchesToCm((feet || 0) * 12 + (value || 0), 1))}
+                    decimals={1}
+                    max={11.9}
+                    suffix="in"
+                  />
                 </div>
               )}
-
-              <Input
-                label="Daily Step Goal"
-                type="number"
-                value={stepGoal}
-                onChange={(e) => setStepGoal(e.target.value)}
-                placeholder="e.g. 10000"
-              />
-
-              <Input
-                label="Daily Hydration Goal (ml)"
-                type="number"
-                value={waterGoalMl}
-                onChange={(e) => setWaterGoalMl(e.target.value)}
-                placeholder="e.g. 3000"
-              />
-
-              <div className="sm:col-span-2">
-                <Input
-                  label="Default Rest Timer (seconds)"
-                  type="number"
-                  value={restTimerDefaultSec}
-                  onChange={(e) => setRestTimerDefaultSec(e.target.value)}
-                  placeholder="e.g. 90"
-                />
-              </div>
             </div>
-          </CardBody>
-        </Card>
+          </div>
 
-        {/* Gemini AI BYOK Card */}
-        <Card variant="default">
-          <CardHeader>
-            <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-2 text-white font-bold text-base">
-                <Key className="w-5 h-5 text-emerald-400" aria-hidden="true" />
-                <span>AI Intelligence & Custom Gemini Key</span>
-              </div>
-              <Chip
-                variant="flat"
-                color={customGeminiApiKey.trim() ? "primary" : "default"}
-                size="sm"
+          <div className="space-y-1.5">
+            <label htmlFor="settings-activity" className={LABEL_CLASS}>
+              Activity level
+            </label>
+            <select
+              id="settings-activity"
+              value={form.activityLevel ?? ""}
+              onChange={(event) => set("activityLevel", (event.target.value || null) as ActivityLevel | null)}
+              className={FIELD_CLASS}
+            >
+              {!form.activityLevel && <option value="">Choose…</option>}
+              {ACTIVITY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <p className={LABEL_CLASS}>Goal</p>
+            <SegmentedControl
+              label="Goal"
+              value={form.goal ?? ("" as FitnessGoal)}
+              onChange={(value) => set("goal", value)}
+              options={GOAL_OPTIONS}
+              className="w-full"
+            />
+          </div>
+
+          {form.goal && form.goal !== "maintain" && (
+            <div className="space-y-1.5">
+              <p className={LABEL_CLASS}>
+                {form.goal === "cut" ? "Calories below what you burn" : "Calories above what you burn"}
+              </p>
+              <NumberField
+                label="Daily calorie change for your goal"
+                value={form.calorieAdjustment}
+                onChange={(value) => set("calorieAdjustment", value)}
+                max={1500}
+                suffix="kcal"
+                placeholder={form.goal === "cut" ? "500" : "300"}
+              />
+              <p className={HELP_CLASS}>Leave empty for the standard amount.</p>
+            </div>
+          )}
+        </Section>
+
+        <Section
+          title="Daily targets"
+          description={
+            auto.tdee != null
+              ? `You burn about ${auto.tdee.toLocaleString("en-US")} kcal a day (an estimate from the answers above). Leave a field empty to use the automatic value.`
+              : "Leave a field empty to use the automatic value."
+          }
+        >
+          {targetField("targetCalories", "Calories", "kcal", auto.calories, 10_000)}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {targetField("targetProteinG", "Protein", "g", auto.protein, 600)}
+            {targetField("targetCarbsG", "Carbs", "g", auto.carbs, 1500)}
+            {targetField("targetFatG", "Fat", "g", auto.fat, 500)}
+            {targetField("targetFiberG", "Fibre", "g", auto.fiber, 150)}
+          </div>
+          {hasCustomTargets && (
+            <Button
+              type="button"
+              variant="bordered"
+              onClick={() =>
+                setForm((current) => ({
+                  ...current,
+                  targetCalories: null,
+                  targetProteinG: null,
+                  targetCarbsG: null,
+                  targetFatG: null,
+                  targetFiberG: null,
+                }))
+              }
+            >
+              Use automatic values for all
+            </Button>
+          )}
+        </Section>
+
+        <Section title="Daily goals">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <p className={LABEL_CLASS}>Steps per day</p>
+              <NumberField
+                label="Steps per day"
+                value={form.stepGoal}
+                onChange={(value) => set("stepGoal", value)}
+                max={100_000}
+                suffix="steps"
+                placeholder="No goal"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <p className={LABEL_CLASS}>Water per day</p>
+              <NumberField
+                label="Water per day in millilitres"
+                value={form.waterGoalMl}
+                onChange={(value) => set("waterGoalMl", value)}
+                max={10_000}
+                suffix="ml"
+                placeholder="No goal"
+              />
+            </div>
+          </div>
+        </Section>
+
+        <Section title="Units and time">
+          <div className="space-y-1.5">
+            <p className={LABEL_CLASS}>Weight unit</p>
+            <SegmentedControl
+              label="Weight unit"
+              value={form.weightUnit}
+              onChange={(value) => set("weightUnit", value)}
+              options={[
+                { value: "kg", label: "Kilograms (kg)" },
+                { value: "lbs", label: "Pounds (lbs)" },
+              ]}
+              className="w-full"
+            />
+            <p className={HELP_CLASS}>Changes how weights are shown. Nothing you logged is altered.</p>
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="settings-timezone" className={LABEL_CLASS}>
+              Time zone
+            </label>
+            <select
+              id="settings-timezone"
+              value={form.timezone}
+              onChange={(event) => set("timezone", event.target.value)}
+              className={FIELD_CLASS}
+            >
+              {timeZones.map((zone) => (
+                <option key={zone} value={zone}>
+                  {zone.replace(/_/g, " ")}
+                </option>
+              ))}
+            </select>
+            <p className={HELP_CLASS}>Decides when your day starts and ends.</p>
+            {form.timezone !== deviceZone && (
+              <Button type="button" variant="bordered" size="sm" onClick={() => set("timezone", deviceZone)}>
+                Use this device&apos;s zone ({deviceZone.replace(/_/g, " ")})
+              </Button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label htmlFor="settings-week-start" className={LABEL_CLASS}>
+                Week starts on
+              </label>
+              <select
+                id="settings-week-start"
+                value={form.weekStartDay}
+                onChange={(event) => set("weekStartDay", event.target.value as WeekdayKey)}
+                className={FIELD_CLASS}
               >
-                {customGeminiApiKey.trim() ? "Custom Key Active" : "Server Default"}
-              </Chip>
+                {WEEK_START_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </div>
-          </CardHeader>
-          <CardBody className="space-y-4">
-            <p className="text-xs text-zinc-400 leading-relaxed">
-              FitTracker uses Google Gemini for food recognition, coaching, and body composition estimation. Provide your own free API key from Google AI Studio to run unlimited personal inferences with zero cost and maximum privacy.
+            <div className="space-y-1.5">
+              <label htmlFor="settings-rest" className={LABEL_CLASS}>
+                Rest timer after a set
+              </label>
+              <select
+                id="settings-rest"
+                value={form.restTimerDefaultSec}
+                onChange={(event) => set("restTimerDefaultSec", Number(event.target.value))}
+                className={FIELD_CLASS}
+              >
+                {Array.from(new Set([...REST_OPTIONS, form.restTimerDefaultSec]))
+                  .sort((a, b) => a - b)
+                  .map((seconds) => (
+                    <option key={seconds} value={seconds}>
+                      {seconds === 0
+                        ? "Off"
+                        : seconds < 60
+                          ? `${seconds} seconds`
+                          : `${Math.floor(seconds / 60)} min${seconds % 60 ? ` ${seconds % 60} s` : ""}`}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          </div>
+        </Section>
+
+        <Section
+          title="AI features"
+          description="The coach, photo meal estimates and the AI day plan use Google Gemini. With your own key they do not count against the shared daily limit."
+        >
+          <p className="text-base text-zinc-300">
+            {hasSavedKey ? "Your own key is saved and in use." : "Using the shared key, with a daily limit."}
+          </p>
+          <div className="space-y-1.5">
+            <label htmlFor="settings-gemini-key" className={LABEL_CLASS}>
+              {hasSavedKey ? "Replace your key" : "Your Gemini API key (optional)"}
+            </label>
+            <input
+              id="settings-gemini-key"
+              type="password"
+              value={newKey}
+              onChange={(event) => {
+                setError(null);
+                setNewKey(event.target.value.slice(0, 200));
+              }}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={hasSavedKey ? "Paste a new key to replace it" : "Paste your key"}
+              className={FIELD_CLASS}
+            />
+            <p className={HELP_CLASS}>
+              The key is stored encrypted and is never shown again or sent back to your browser.
             </p>
-
-            <div className="space-y-2">
-              <div className="relative">
-                <Input
-                  label="Google Gemini API Key (Optional)"
-                  type={showApiKey ? "text" : "password"}
-                  value={customGeminiApiKey}
-                  onChange={(e) => setCustomGeminiApiKey(e.target.value)}
-                  placeholder="AIzaSy..."
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowApiKey(!showApiKey)}
-                  className="absolute inset-e-3 top-9 text-zinc-400 hover:text-zinc-200 transition"
-                  aria-label={showApiKey ? "Hide API key" : "Show API key"}
-                >
-                  {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-              <div className="flex items-center justify-between text-[11px] text-zinc-500 pt-1">
-                <span>Stored securely in your profile preferences</span>
-                <a
-                  href="https://aistudio.google.com/app/apikey"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-emerald-400 hover:text-emerald-300 font-medium transition"
-                >
-                  <span>Get Free Key at Google AI Studio</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              </div>
-            </div>
-          </CardBody>
-        </Card>
-
-        {/* Customized Macro Targets Card */}
-        <Card variant="default">
-          <CardHeader>
-            <div className="flex items-center justify-between w-full flex-wrap gap-2">
-              <div className="flex items-center gap-2 text-white font-bold text-base">
-                <Flame className="w-5 h-5 text-orange-400" aria-hidden="true" />
-                <span>Nutrition & Macro Targets</span>
-              </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="bordered"
+              size="sm"
+              endContent={<ExternalLink className="h-4 w-4" />}
+              onClick={() => openExternalLink("https://aistudio.google.com/app/apikey")}
+            >
+              Get a free key
+            </Button>
+            {user?.preferences?.hasCustomGeminiKey && !removeKey && (
               <Button
                 type="button"
                 variant="bordered"
                 size="sm"
+                className="text-red-300 border-red-500/30"
                 onClick={() => {
-                  const w = parseFloat(weightKg) || 75;
-                  const h = parseFloat(heightCm) || 178;
-                  const adj = calorieAdjustment ? parseInt(calorieAdjustment, 10) : null;
-                  let userAge = 25;
-                  if (user?.fitnessProfile?.birthDate) {
-                    const diffMs = Date.now() - new Date(user.fitnessProfile.birthDate).getTime();
-                    userAge = Math.floor(diffMs / (365.25 * 24 * 60 * 60 * 1000));
-                  } else if (user?.fitnessProfile?.age) {
-                    userAge = user.fitnessProfile.age;
-                  }
-
-                  const result = calculateAllMacroTargets({
-                    weightKg: w,
-                    heightCm: h,
-                    age: userAge,
-                    sex,
-                    activityLevel,
-                    goal,
-                    calorieAdjustment: adj,
-                  });
-
-                  setTargetCalories(String(result.calories));
-                  setTargetProteinG(String(result.protein));
-                  setTargetCarbsG(String(result.carbs));
-                  setTargetFatG(String(result.fat));
-                  setTargetFiberG(String(result.fiber));
+                  setRemoveKey(true);
+                  setNewKey("");
                 }}
-                startContent={<Calculator className="w-4 h-4 text-emerald-400" />}
-                className="text-xs font-bold text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
               >
-                Auto-Calculate from Metrics & Goal
+                Remove my key
               </Button>
-            </div>
-          </CardHeader>
-
-          <CardBody className="space-y-4">
-            <p className="text-xs text-zinc-400">
-              Customize your exact daily nutrition goals. These settings directly power your daily logs and remaining-macro trackers.
+            )}
+          </div>
+          {removeKey && (
+            <p role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-sm text-amber-200">
+              Your key will be removed when you save.{" "}
+              <button type="button" onClick={() => setRemoveKey(false)} className="font-semibold underline cursor-pointer">
+                Keep it
+              </button>
             </p>
+          )}
+        </Section>
 
-            {/* Live Macro Distribution & Calorie Integrity Verification */}
-            {(() => {
-              const cal = parseInt(targetCalories, 10) || 0;
-              const p = parseFloat(targetProteinG) || 0;
-              const c = parseFloat(targetCarbsG) || 0;
-              const f = parseFloat(targetFatG) || 0;
-              const macroSum = Math.round(p * 4 + c * 4 + f * 9);
-              const diff = cal - macroSum;
-              const isBalanced = cal > 0 && Math.abs(diff) <= 10;
-              const pPct = cal > 0 ? Math.round(((p * 4) / (macroSum || 1)) * 100) : 0;
-              const cPct = cal > 0 ? Math.round(((c * 4) / (macroSum || 1)) * 100) : 0;
-              const fPct = cal > 0 ? Math.max(0, 100 - pPct - cPct) : 0;
-
-              return (
-                <div className="p-4 rounded-2xl bg-zinc-950/80 border border-white/8 space-y-3">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-zinc-300">Macro Energy Balance</span>
-                    <span
-                      className={cn(
-                        "px-2 py-0.5 rounded-md font-semibold text-[10px]",
-                        isBalanced
-                          ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                          : "bg-amber-500/15 text-amber-400 border border-amber-500/30"
-                      )}
-                    >
-                      {isBalanced ? "✓ 100% Mathematically Balanced" : `${diff > 0 ? `+${diff}` : diff} kcal offset`}
-                    </span>
-                  </div>
-
-                  {/* Ratio bar */}
-                  <div className="h-2 rounded-full overflow-hidden flex bg-zinc-800">
-                    <div style={{ width: `${pPct}%` }} className="bg-emerald-500 transition-all duration-300" title={`Protein: ${pPct}%`} />
-                    <div style={{ width: `${cPct}%` }} className="bg-sky-500 transition-all duration-300" title={`Carbs: ${cPct}%`} />
-                    <div style={{ width: `${fPct}%` }} className="bg-amber-500 transition-all duration-300" title={`Fat: ${fPct}%`} />
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 text-center text-[11px] pt-1">
-                    <div className="p-2 rounded-xl bg-zinc-900 border border-white/5">
-                      <span className="text-zinc-500 block text-[10px] uppercase font-bold">Protein</span>
-                      <span className="font-bold text-emerald-400 tabular-nums">{pPct}%</span>
-                      <span className="text-[10px] text-zinc-400 block tabular-nums">{Math.round(p * 4)} kcal</span>
-                    </div>
-                    <div className="p-2 rounded-xl bg-zinc-900 border border-white/5">
-                      <span className="text-zinc-500 block text-[10px] uppercase font-bold">Carbs</span>
-                      <span className="font-bold text-sky-400 tabular-nums">{cPct}%</span>
-                      <span className="text-[10px] text-zinc-400 block tabular-nums">{Math.round(c * 4)} kcal</span>
-                    </div>
-                    <div className="p-2 rounded-xl bg-zinc-900 border border-white/5">
-                      <span className="text-zinc-500 block text-[10px] uppercase font-bold">Fat</span>
-                      <span className="font-bold text-amber-400 tabular-nums">{fPct}%</span>
-                      <span className="text-[10px] text-zinc-400 block tabular-nums">{Math.round(f * 9)} kcal</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input
-                label="Target Calories (kcal)"
-                type="number"
-                value={targetCalories}
-                onChange={(e) => setTargetCalories(e.target.value)}
-                placeholder="e.g. 2400"
-              />
-
-              <Input
-                label="Target Protein (g)"
-                type="number"
-                value={targetProteinG}
-                onChange={(e) => setTargetProteinG(e.target.value)}
-                placeholder="e.g. 160"
-              />
-
-              <Input
-                label="Target Carbohydrates (g)"
-                type="number"
-                value={targetCarbsG}
-                onChange={(e) => setTargetCarbsG(e.target.value)}
-                placeholder="e.g. 270"
-              />
-
-              <Input
-                label="Target Fats (g)"
-                type="number"
-                value={targetFatG}
-                onChange={(e) => setTargetFatG(e.target.value)}
-                placeholder="e.g. 65"
-              />
-
-              <div className="sm:col-span-2">
-                <Input
-                  label="Target Dietary Fiber (g)"
-                  type="number"
-                  value={targetFiberG}
-                  onChange={(e) => setTargetFiberG(e.target.value)}
-                  placeholder="e.g. 35"
-                />
+        {isDirty && (
+          <div className="fixed inset-x-0 bottom-above-nav z-30 px-3 pointer-events-none">
+            <div className="pointer-events-auto mx-auto max-w-2xl rounded-2xl border border-line bg-zinc-900 p-3 shadow-xl shadow-black/50">
+              {error && (
+                <p role="alert" className="mb-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+                  {error}
+                </p>
+              )}
+              <div className="flex items-center gap-2">
+                <p className="min-w-0 flex-1 text-sm text-zinc-300">Unsaved changes</p>
+                <Button type="button" variant="bordered" onClick={discard} disabled={isSaving}>
+                  Discard
+                </Button>
+                <Button type="submit" isLoading={isSaving}>
+                  Save
+                </Button>
               </div>
             </div>
-          </CardBody>
-        </Card>
-
-        {/* Computed Targets Overview */}
-        {user?.computed && (
-          <Card variant="flat" className="p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 select-none">
-                Automated Metabolic Computation
-              </h4>
-              <Chip variant="flat" color="primary" size="sm">
-                Live Calibrated
-              </Chip>
-            </div>
-            <div className="grid grid-cols-3 gap-3 text-center">
-              <div className="p-3.5 rounded-2xl bg-zinc-950/60 border border-white/5 flex flex-col items-center justify-center">
-                <div className="flex items-center gap-1 text-[10px] text-zinc-500 uppercase font-semibold">
-                  <Flame className="w-3 h-3 text-zinc-400" aria-hidden="true" />
-                  <span>BMR</span>
-                </div>
-                <span className="text-lg font-bold text-white block mt-1 tabular-nums">
-                  {user.computed.bmr || "—"}
-                </span>
-                <span className="text-[10px] text-zinc-500">kcal/day</span>
-              </div>
-
-              <div className="p-3.5 rounded-2xl bg-zinc-950/60 border border-white/5 flex flex-col items-center justify-center">
-                <div className="flex items-center gap-1 text-[10px] text-orange-400 uppercase font-semibold">
-                  <Zap className="w-3 h-3 text-orange-400" aria-hidden="true" />
-                  <span>TDEE</span>
-                </div>
-                <span className="text-lg font-bold text-orange-300 block mt-1 tabular-nums">
-                  {user.computed.tdee || "—"}
-                </span>
-                <span className="text-[10px] text-zinc-500">kcal/day</span>
-              </div>
-
-              <div className="p-3.5 rounded-2xl bg-zinc-950/60 border border-white/5 flex flex-col items-center justify-center">
-                <div className="flex items-center gap-1 text-[10px] text-emerald-400 uppercase font-semibold">
-                  <Dumbbell className="w-3 h-3 text-emerald-400" aria-hidden="true" />
-                  <span>Optimal Protein</span>
-                </div>
-                <span className="text-lg font-bold text-emerald-300 block mt-1 tabular-nums">
-                  {user.computed.proteinTargetG || "—"}g
-                </span>
-                <span className="text-[10px] text-zinc-500">daily target</span>
-              </div>
-            </div>
-          </Card>
-        )}
-
-        {error && (
-          <div role="alert" className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-medium">
-            {error}
           </div>
         )}
-
-        {/* Action Button */}
-        <Button
-          type="submit"
-          variant="solid"
-          size="lg"
-          isLoading={isSaving}
-          startContent={isSaved ? <Check className="w-4 h-4" aria-hidden="true" /> : undefined}
-          className="w-full font-bold"
-        >
-          {isSaved ? "Saved Successfully!" : "Save Preferences"}
-        </Button>
       </form>
 
-      {/* Security & Sessions */}
-      <Card variant="default">
-        <CardHeader>
-          <div className="flex items-center gap-2 text-white font-bold text-base">
-            <Shield className="w-5 h-5 text-emerald-400" aria-hidden="true" />
-            <span>Security & Sessions</span>
-          </div>
-        </CardHeader>
-        <CardBody className="space-y-3">
-          <p className="text-xs text-zinc-400 leading-relaxed">
-            Token Version: <strong className="text-zinc-200 tabular-nums">{user?.tokenVersion || 0}</strong>. If you suspect any unauthorized access, you can force log out all other devices immediately.
-          </p>
-          <div>
-            <Button
-              type="button"
-              variant="bordered"
-              size="sm"
-              onClick={() => setIsLogoutModalOpen(true)}
-              className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
-            >
-              Log Out All Other Devices
-            </Button>
-          </div>
-        </CardBody>
-      </Card>
-
-      {/* Data Portability & GDPR Export */}
-      <Card variant="default">
-        <CardHeader>
-          <div className="flex items-center justify-between w-full">
-            <div className="flex items-center gap-2 text-white font-bold text-base">
-              <Download className="w-5 h-5 text-emerald-400" aria-hidden="true" />
-              <span>Data Portability & 1-Click Backup</span>
-            </div>
-            <Chip variant="flat" color="primary" size="sm">
-              JSON Archive
-            </Chip>
-          </div>
-        </CardHeader>
-        <CardBody className="space-y-3">
-          <p className="text-xs text-zinc-400 leading-relaxed">
-            Download your complete health archive — including daily nutrition logs, workout history, body composition check-ins, and personal records. Zero platform lock-in.
-          </p>
-          <div>
-            <Button
-              type="button"
-              variant="bordered"
-              size="sm"
-              isLoading={isExporting}
-              onClick={handleExportData}
-              startContent={<Download className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />}
-            >
-              Export Complete Fitness Data (JSON)
-            </Button>
-          </div>
-        </CardBody>
-      </Card>
-
-      {/* App & Version Information */}
-      <Card variant="default">
-        <CardHeader>
-          <div className="flex items-center justify-between w-full">
-            <div className="flex items-center gap-2 text-white font-bold text-base">
-              <Smartphone className="w-5 h-5 text-emerald-400" aria-hidden="true" />
-              <span>App & Version Information</span>
-            </div>
-            <Chip variant="flat" color="primary" size="sm">
-              v{versionData.versionName} ({versionData.versionCode})
-            </Chip>
-          </div>
-        </CardHeader>
-        <CardBody className="space-y-4">
-          <p className="text-xs text-zinc-400 leading-relaxed">
-            Running FitTracker {isAndroidNativeApp() ? "Android Native App" : "Web Platform"}. Automated over-the-air updates check for new features on app launch.
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="bordered"
-              size="sm"
-              onClick={() => triggerAppUpdateCheck()}
-              startContent={<RefreshCw className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />}
-            >
-              Check for Updates
-            </Button>
-
+      <Section title="Account">
+        <p className="text-base text-zinc-300 break-all">Signed in as {user?.email}</p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="bordered"
+            startContent={<LogOut className="h-4 w-4" />}
+            isLoading={isSigningOut}
+            onClick={() => {
+              setIsSigningOut(true);
+              void logout();
+            }}
+          >
+            Sign out
+          </Button>
+          <Button
+            variant="bordered"
+            onClick={() => {
+              setSignOutAllError(null);
+              setIsSignOutAllOpen(true);
+            }}
+          >
+            Sign out everywhere else
+          </Button>
+          {user?.role === "admin" && (
             <Link
-              href="/widgets"
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold transition border border-zinc-700/60"
+              href="/admin"
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/15 px-4 text-sm font-medium text-zinc-200 hover:bg-white/5"
             >
-              <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Widgets Gallery</span>
+              <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+              Admin panel
             </Link>
-          </div>
-        </CardBody>
-      </Card>
+          )}
+        </div>
+      </Section>
 
-      {/* Invalidate Sessions Confirm Modal */}
-      <ConfirmModal
-        isOpen={isLogoutModalOpen}
-        onClose={() => setIsLogoutModalOpen(false)}
-        onConfirm={handleInvalidateAll}
-        title="Log Out All Other Devices"
-        message="Are you sure you want to invalidate all other active sessions? You will remain logged in on this device only."
-        confirmLabel="Log Out Other Devices"
-        confirmVariant="danger"
-        isLoading={isLoggingOut}
+      <Section
+        title="Your data"
+        description="Download everything you have logged: workouts, routines, records, meals, daily logs, habits, plans and check-ins."
+      >
+        <div>
+          <Button
+            variant="bordered"
+            startContent={<Download className="h-4 w-4" />}
+            isLoading={isExporting}
+            onClick={() => void exportData()}
+          >
+            Export my data (JSON)
+          </Button>
+        </div>
+      </Section>
+
+      <Section title="App">
+        <p className="text-base text-zinc-300">
+          {nativeVersion
+            ? `Android app version ${nativeVersion.versionName} (${nativeVersion.versionCode})`
+            : `Web version ${versionData.versionName}`}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {isNative ? (
+            <>
+              <Button
+                variant="bordered"
+                startContent={<RefreshCw className="h-4 w-4" />}
+                onClick={() => triggerAppUpdateCheck()}
+              >
+                Check for updates
+              </Button>
+              <Link
+                href="/widgets"
+                className="inline-flex min-h-11 items-center rounded-xl border border-white/15 px-4 text-sm font-medium text-zinc-200 hover:bg-white/5"
+              >
+                Home screen widgets
+              </Link>
+            </>
+          ) : (
+            <Button
+              variant="bordered"
+              endContent={<ExternalLink className="h-4 w-4" />}
+              onClick={() => openExternalLink(ANDROID_RELEASES_URL)}
+            >
+              Get the Android app
+            </Button>
+          )}
+        </div>
+      </Section>
+
+      <ConfirmDialog
+        isOpen={isSignOutAllOpen}
+        onCancel={() => setIsSignOutAllOpen(false)}
+        onConfirm={signOutEverywhere}
+        title="Sign out everywhere else?"
+        message="Every other phone, tablet and browser signed in to your account is signed out. This device stays signed in."
+        confirmLabel="Sign out the others"
+        isWorking={isSigningOutAll}
+        error={signOutAllError}
       />
     </div>
+  );
+}
+
+function Section({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-3xl border border-line bg-surface p-4 sm:p-6">
+      <h2 className="text-lg font-bold text-white">{title}</h2>
+      {description && <p className="mt-1 text-sm text-zinc-400">{description}</p>}
+      <div className="mt-4 space-y-4">{children}</div>
+    </section>
   );
 }
 

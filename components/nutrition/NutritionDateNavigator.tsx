@@ -1,182 +1,128 @@
 "use client";
 
-import React, { useTransition, useState, useRef } from "react";
+import React, { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Sparkles, Loader2, Calendar } from "lucide-react";
-import { format, parseISO, isToday as checkIsToday, isYesterday as checkIsYesterday } from "date-fns";
-import { getTodayDateString } from "@/lib/fitness/timezone";
-import { NutritionCalendarPopover } from "./NutritionCalendarPopover";
+import { Calendar, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { NutritionCalendarPopover } from "@/components/nutrition/NutritionCalendarPopover";
+import { todayInZone, useUserTimeZone } from "@/components/nutrition/useUserTimeZone";
+import { addDays, formatDateString } from "@/lib/time";
+import { EARLIEST_LOG_DATE } from "@/lib/nutrition/meal-time";
 
 interface NutritionDateNavigatorProps {
-  selectedDate: string; // "YYYY-MM-DD"
-  availableDates?: string[]; // Sorted list of dates with recorded data
-  minDate?: string;
-  maxDate?: string;
+  /** "YYYY-MM-DD" being shown. */
+  selectedDate: string;
+  /** The user's today, computed on the server in the user's zone. */
+  todayStr: string;
+  /** Days that have meals (calendar dots). */
+  datesWithMeals?: string[];
 }
 
-export function NutritionDateNavigator({
-  selectedDate,
-  availableDates = [],
-  minDate,
-  maxDate,
-}: NutritionDateNavigatorProps) {
+const navButton =
+  "w-11 h-11 rounded-xl flex items-center justify-center bg-zinc-800/80 hover:bg-zinc-700 text-zinc-200 border border-white/10 transition active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed";
+
+export function NutritionDateNavigator({ selectedDate, todayStr, datesWithMeals = [] }: NutritionDateNavigatorProps) {
   const router = useRouter();
+  const tz = useUserTimeZone();
   const [isPending, startTransition] = useTransition();
   const [showCalendar, setShowCalendar] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
-  const todayStr = getTodayDateString();
-  const effectiveMaxDate = maxDate || todayStr;
-  const effectiveMinDate = minDate || (availableDates.length > 0 ? availableDates[0] : todayStr);
+  const isToday = selectedDate === todayStr;
+  const isYesterday = selectedDate === addDays(todayStr, -1);
+  const title = formatDateString(selectedDate, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
 
-  const isCurrentToday = selectedDate >= effectiveMaxDate;
-
-  let parsedDate: Date;
-  try {
-    parsedDate = parseISO(selectedDate);
-    if (isNaN(parsedDate.getTime())) {
-      parsedDate = new Date();
-    }
-  } catch {
-    parsedDate = new Date();
-  }
-
-  const isYesterday = checkIsYesterday(parsedDate);
-  const isToday = checkIsToday(parsedDate);
-
-  // Calculate previous and next available dates with data
-  const prevAvailableDate = availableDates.length > 0
-    ? [...availableDates].reverse().find((d) => d < selectedDate) || null
-    : null;
-
-  const nextAvailableDate = availableDates.length > 0
-    ? availableDates.find((d) => d > selectedDate && d <= effectiveMaxDate) || null
-    : null;
-
-  const isPrevDisabled = isPending || (availableDates.length > 0 ? !prevAvailableDate : selectedDate <= effectiveMinDate);
-  const isNextDisabled = isPending || selectedDate >= effectiveMaxDate || (availableDates.length > 0 ? !nextAvailableDate : false);
-
-  const navigateToDate = (targetDateStr: string) => {
-    let clampedDate = targetDateStr;
-    if (clampedDate > effectiveMaxDate) clampedDate = effectiveMaxDate;
-    if (effectiveMinDate && clampedDate < effectiveMinDate) clampedDate = effectiveMinDate;
-
+  const navigateTo = (target: string) => {
+    const now = todayInZone(tz);
+    const clamped = target > now ? now : target < EARLIEST_LOG_DATE ? EARLIEST_LOG_DATE : target;
     startTransition(() => {
-      if (clampedDate === todayStr) {
-        router.push("/nutrition");
-      } else {
-        router.push(`/nutrition?date=${clampedDate}`);
-      }
+      router.push(clamped === now ? "/nutrition" : `/nutrition?date=${clamped}`);
     });
   };
 
-  const handlePrevDay = () => {
-    if (prevAvailableDate) {
-      navigateToDate(prevAvailableDate);
-    }
-  };
-
-  const handleNextDay = () => {
-    if (nextAvailableDate) {
-      navigateToDate(nextAvailableDate);
-    }
-  };
-
-  const formattedDateTitle = format(parsedDate, "EEEE, MMMM d, yyyy");
+  const previousDay = addDays(selectedDate, -1);
+  const nextDay = addDays(selectedDate, 1);
 
   return (
-    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 sm:p-4 rounded-2xl bg-zinc-900/80 backdrop-blur-xl border border-white/10 shadow-lg">
-      {/* Left / Date Label */}
-      <div className="flex flex-col justify-center select-none">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-bold text-white tracking-tight">
-            {formattedDateTitle}
-          </span>
-          {isCurrentToday && (
-            <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-extrabold uppercase tracking-wider ms-1">
+    <nav
+      aria-label="Choose a day"
+      className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 sm:p-4 rounded-2xl bg-zinc-900/80 border border-white/10"
+    >
+      <div className="flex flex-col justify-center">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h2 className="text-base font-bold text-white tracking-tight">{title}</h2>
+          {isToday && (
+            <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-semibold">
               Today
             </span>
           )}
           {isYesterday && (
-            <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[10px] font-extrabold uppercase tracking-wider ms-1">
+            <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-semibold">
               Yesterday
             </span>
           )}
-          {isPending && (
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400 ms-1" />
-          )}
+          {isPending && <Loader2 className="w-4 h-4 animate-spin text-emerald-400" aria-label="Loading day" />}
         </div>
-        <span className="text-xs text-zinc-400 mt-0.5">
-          {isCurrentToday ? "Inspect and track today's nutrition log" : `Daily log entry for ${selectedDate}`}
-        </span>
       </div>
 
-      {/* Right / Controls */}
-      <div className="flex items-center gap-1.5 self-end sm:self-auto">
-        {/* Quick jump to Today */}
-        {!isCurrentToday && (
+      <div className="flex items-center gap-2 self-end sm:self-auto">
+        {!isToday && (
           <button
             type="button"
-            onClick={() => navigateToDate(todayStr)}
+            onClick={() => navigateTo(todayInZone(tz))}
             disabled={isPending}
-            className="px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 hover:text-white text-xs font-bold transition active:scale-95 flex items-center gap-1 cursor-pointer me-1 disabled:opacity-50"
+            className="min-h-11 px-3.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-200 text-sm font-semibold transition active:scale-95 cursor-pointer disabled:opacity-50"
           >
-            <Sparkles className="w-3 h-3" />
-            <span>Today</span>
+            Today
           </button>
         )}
 
-        {/* Previous Day Arrow */}
         <button
           type="button"
-          onClick={handlePrevDay}
-          disabled={isPrevDisabled}
-          aria-label="Previous day with data"
-          title={isPrevDisabled ? "No earlier data recorded" : `Go to previous log (${prevAvailableDate || ""})`}
-          className="p-2 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-white/10 transition active:scale-95 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+          onClick={() => navigateTo(previousDay)}
+          disabled={isPending || selectedDate <= EARLIEST_LOG_DATE}
+          aria-label={`Previous day, ${formatDateString(previousDay)}`}
+          className={navButton}
         >
-          <ChevronLeft className="w-4 h-4" />
+          <ChevronLeft className="w-5 h-5" aria-hidden="true" />
         </button>
 
-        {/* Calendar Picker Button between the two arrows */}
         <div className="relative">
           <button
             ref={triggerRef}
             type="button"
-            onClick={() => setShowCalendar((prev) => !prev)}
+            onClick={() => setShowCalendar((open) => !open)}
             disabled={isPending}
-            aria-label="Open calendar"
+            aria-label="Pick a day from the calendar"
+            aria-haspopup="dialog"
             aria-expanded={showCalendar}
-            title="Pick date from calendar"
-            className="p-2 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-emerald-400 hover:text-emerald-300 border border-white/10 hover:border-emerald-500/40 transition active:scale-95 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+            className={`${navButton} text-emerald-300`}
           >
-            <Calendar className="w-4 h-4" />
+            <Calendar className="w-5 h-5" aria-hidden="true" />
           </button>
-
           <NutritionCalendarPopover
             isOpen={showCalendar}
             onClose={() => setShowCalendar(false)}
             triggerRef={triggerRef}
             selectedDateStr={selectedDate}
-            minDate={effectiveMinDate}
-            maxDate={effectiveMaxDate}
-            onSelectDate={navigateToDate}
-            availableDates={availableDates}
+            minDate={EARLIEST_LOG_DATE}
+            maxDate={todayStr}
+            onSelectDate={navigateTo}
+            availableDates={datesWithMeals}
           />
         </div>
 
-        {/* Next Day Arrow */}
         <button
           type="button"
-          onClick={handleNextDay}
-          disabled={isNextDisabled}
-          aria-label="Next day with data"
-          title={isNextDisabled ? "Cannot navigate past today or no newer data" : `Go to next log (${nextAvailableDate || ""})`}
-          className="p-2 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-white/10 transition active:scale-95 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+          onClick={() => navigateTo(nextDay)}
+          disabled={isPending || isToday || selectedDate >= todayStr}
+          aria-label={`Next day, ${formatDateString(nextDay)}`}
+          className={navButton}
         >
-          <ChevronRight className="w-4 h-4" />
+          <ChevronRight className="w-5 h-5" aria-hidden="true" />
         </button>
       </div>
-    </div>
+    </nav>
   );
 }
+
+export default NutritionDateNavigator;

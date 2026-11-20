@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import {
   format,
   startOfWeek,
@@ -42,9 +42,11 @@ export interface CalendarProps {
    * Set, array, or object keys representing dates with recorded data/activity
    * Displays an indicator dot under the day
    */
-  indicatorDates?: string[] | Set<string> | Record<string, any>;
+  indicatorDates?: string[] | Set<string> | Record<string, unknown>;
   /** Optional label describing what the indicator dots represent */
   indicatorLabel?: string;
+  /** Today ("yyyy-MM-dd") in the user's time zone. Defaults to the device's date. */
+  today?: string;
   /** Whether to show the quick "Today" button in the footer */
   showTodayShortcut?: boolean;
   /** Optional custom class names */
@@ -76,12 +78,13 @@ export function Calendar({
   weekStartsOn = 6,
   indicatorDates,
   indicatorLabel = "Days with activity",
+  today,
   showTodayShortcut = true,
   className,
   onClose,
 }: CalendarProps) {
-  const todayDate = useMemo(() => new Date(), []);
-  const todayStr = useMemo(() => format(todayDate, "yyyy-MM-dd"), [todayDate]);
+  const todayStr = useMemo(() => today || format(new Date(), "yyyy-MM-dd"), [today]);
+  const todayDate = useMemo(() => parseISO(todayStr), [todayStr]);
 
   const parsedValue = useMemo(() => {
     if (!value) return null;
@@ -122,13 +125,15 @@ export function Calendar({
   const [viewMode, setViewMode] = useState<"days" | "months">("days");
   const [viewingYear, setViewingYear] = useState<number>(() => getYear(currentMonth));
 
-  // Sync displayed month when value changes
-  useEffect(() => {
+  // Show the month of a newly selected date (derived during render, no effect).
+  const [syncedValue, setSyncedValue] = useState(value);
+  if (value !== syncedValue) {
+    setSyncedValue(value);
     if (parsedValue) {
       setCurrentMonth(startOfMonth(parsedValue));
       setViewingYear(getYear(parsedValue));
     }
-  }, [parsedValue]);
+  }
 
   // Indicator lookup set for O(1) checks
   const indicatorSet = useMemo(() => {

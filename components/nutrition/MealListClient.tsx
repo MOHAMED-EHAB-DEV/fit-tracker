@@ -1,259 +1,57 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import dynamic from "next/dynamic";
-import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import {
-  UtensilsCrossed,
-  Clock,
-  Edit3,
-  Trash2,
-  Camera,
-  Loader2,
-} from "lucide-react";
-import type { MealData } from "@/components/nutrition/EditMealModal";
-import { deleteMealAction } from "@/lib/fitness/actions";
-
-const Modal = dynamic(() => import("@/components/ui/Modal").then((mod) => mod.Modal), {
-  ssr: false,
-});
-
-const EditMealModal = dynamic(
-  () => import("@/components/nutrition/EditMealModal").then((mod) => mod.EditMealModal),
-  { ssr: false }
-);
+import { Camera, UtensilsCrossed } from "lucide-react";
+import { MealEntries } from "@/components/nutrition/MealEntries";
+import { AddMealButton } from "@/components/nutrition/AddMealButton";
+import type { MealData } from "@/lib/nutrition/types";
 
 interface MealListClientProps {
-  initialMeals: MealData[];
-  selectedDate?: string;
+  meals: MealData[];
+  selectedDate: string;
+  /** "Today", "Yesterday" or a date such as "Mon, Nov 16". */
+  dayLabel: string;
+  isToday: boolean;
 }
 
-function MealImageThumbnail({
-  src,
-  alt,
-}: {
-  src?: string | null;
-  alt: string;
-}) {
-  const [hasError, setHasError] = useState(false);
-
-  if (!src || hasError) {
-    return (
-      <div className="w-16 h-16 rounded-2xl bg-zinc-900 border border-white/10 flex items-center justify-center text-zinc-500 shrink-0">
-        <UtensilsCrossed className="w-6 h-6 text-zinc-600" />
-      </div>
-    );
-  }
+export function MealListClient({ meals, selectedDate, dayLabel, isToday }: MealListClientProps) {
+  // Today links without a pinned date so a page left open past midnight logs to the new day.
+  const analyzeUrl = isToday ? "/nutrition/analyze" : `/nutrition/analyze?date=${selectedDate}`;
 
   return (
-    <div className="w-16 h-16 rounded-2xl overflow-hidden relative shrink-0 border border-white/10 shadow-sm bg-zinc-950">
-      <Image
-        src={src}
-        alt={alt || "Meal photo"}
-        fill
-        sizes="64px"
-        onError={() => setHasError(true)}
-        className="object-cover group-hover:scale-105 transition-transform duration-300"
-      />
-    </div>
-  );
-}
-
-export function MealListClient({ initialMeals, selectedDate }: MealListClientProps) {
-  const router = useRouter();
-  const [meals, setMeals] = useState<MealData[]>(initialMeals);
-  const [editingMeal, setEditingMeal] = useState<MealData | null>(null);
-  const [deletingMeal, setDeletingMeal] = useState<MealData | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  // Sync state if server data changes
-  useEffect(() => {
-    setMeals(initialMeals);
-  }, [initialMeals]);
-
-  const handleDeleteConfirm = async () => {
-    if (!deletingMeal) return;
-
-    setIsDeleting(true);
-    try {
-      const res = await deleteMealAction(deletingMeal._id);
-      if (res.success) {
-        setMeals((prev) => prev.filter((m) => m._id !== deletingMeal._id));
-        setDeletingMeal(null);
-      }
-    } catch (err) {
-      console.error("Failed to delete meal:", err);
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  const analyzeUrl = selectedDate ? `/nutrition/analyze?date=${selectedDate}` : "/nutrition/analyze";
-
-  return (
-    <div className="p-6 rounded-[28px] bg-zinc-900/80 backdrop-blur-2xl border border-white/10 shadow-xl space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="font-extrabold text-base text-white">Logged Meals</h3>
-        <span className="text-xs text-zinc-400 font-semibold">{meals.length} entries</span>
+    <section aria-labelledby="meal-list-title" className="p-4 sm:p-6 rounded-[28px] bg-zinc-900/80 border border-white/10 space-y-4">
+      <div className="flex items-center justify-between gap-2">
+        <h2 id="meal-list-title" className="font-bold text-base text-white">
+          Meals
+        </h2>
+        <span className="text-sm text-zinc-400">
+          {meals.length} {meals.length === 1 ? "meal" : "meals"}
+        </span>
       </div>
 
-      {meals.length === 0 ? (
-        <div className="text-center py-12 border border-dashed border-white/10 rounded-2xl bg-zinc-950/40">
-          <UtensilsCrossed className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
-          <p className="text-sm font-bold text-zinc-300">
-            {selectedDate ? `No meals recorded for ${selectedDate}` : "No meals recorded today"}
-          </p>
-          <p className="text-xs text-zinc-500 mt-1 max-w-sm mx-auto">
-            Snap a meal photo or upload an image to log nutrition with instant AI breakdown
-          </p>
-          <Link
-            href={analyzeUrl}
-            className="inline-flex items-center gap-2 mt-4 px-4 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs shadow-md shadow-emerald-500/20 transition active:scale-95 cursor-pointer"
-          >
-            <Camera className="w-4 h-4" />
-            <span>Snap Meal Photo</span>
-          </Link>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {meals.map((m) => {
-            const time = m.loggedAt
-              ? new Date(m.loggedAt).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : "Today";
-
-            return (
-              <div
-                key={m._id}
-                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 p-3.5 sm:p-4 rounded-2xl bg-zinc-950/60 border border-white/6 hover:border-white/15 transition group"
-              >
-                <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
-                  <MealImageThumbnail
-                    src={m.images?.[0]?.secureUrl}
-                    alt={m.description || "Meal"}
-                  />
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-md border border-emerald-500/20 shrink-0">
-                        {m.mealType.replace("_", " ")}
-                      </span>
-                      <div className="flex items-center gap-1 text-xs text-zinc-500 shrink-0">
-                        <Clock className="w-3 h-3" />
-                        <span>{time}</span>
-                      </div>
-                    </div>
-                    <p className="font-bold text-sm text-zinc-100 mt-1 truncate">
-                      {m.description || "Logged Meal"}
-                    </p>
-                    {m.items && m.items.length > 0 && (
-                      <p className="text-[11px] text-zinc-400 truncate mt-0.5">
-                        {m.items.map((it) => it.name).join(", ")}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-white/6 shrink-0">
-                  <div className="text-start sm:text-end">
-                    <span className="block font-black text-sm sm:text-base text-white tabular-nums">
-                      {m.macros.calories} <span className="text-xs font-semibold text-zinc-400">kcal</span>
-                    </span>
-                    <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-zinc-400 mt-0.5 flex-wrap">
-                      <span className="text-emerald-400 font-bold tabular-nums">P: {Number(m.macros.protein).toFixed(1)}g</span>
-                      <span className="text-amber-400 font-bold tabular-nums">C: {Number(m.macros.carbs).toFixed(1)}g</span>
-                      <span className="text-orange-400 font-bold tabular-nums">F: {Number(m.macros.fat).toFixed(1)}g</span>
-                    </div>
-                  </div>
-
-                  {/* Edit & Delete Action Buttons */}
-                  <div className="flex items-center gap-1.5 ps-2 border-s border-white/6 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setEditingMeal(m)}
-                      className="p-2 sm:p-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/8 hover:border-white/15 transition cursor-pointer"
-                      title="Edit meal details & macros"
-                      aria-label={`Edit ${m.description || "meal"}`}
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setDeletingMeal(m)}
-                      className="p-2 sm:p-2.5 rounded-xl bg-zinc-900 hover:bg-red-500/15 text-zinc-500 hover:text-red-400 border border-white/8 hover:border-red-500/30 transition cursor-pointer"
-                      title="Delete meal"
-                      aria-label={`Delete ${m.description || "meal"}`}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Edit Meal Modal */}
-      {editingMeal && (
-        <EditMealModal
-          isOpen={true}
-          onClose={() => setEditingMeal(null)}
-          meal={editingMeal}
-          onUpdated={() => {
-            setEditingMeal(null);
-            router.refresh();
-          }}
-        />
-      )}
-
-      {/* Delete Confirmation Modal */}
-      {deletingMeal && (
-        <Modal
-          isOpen={true}
-          onClose={() => setDeletingMeal(null)}
-          size="sm"
-          title={
-            <div className="flex items-center gap-2 text-red-400">
-              <Trash2 className="w-4 h-4" />
-              <span>Delete Meal Entry</span>
-            </div>
-          }
-        >
-          <div className="space-y-4">
-            <p className="text-xs text-zinc-300 leading-relaxed">
-              Are you sure you want to delete <strong className="text-white">&quot;{deletingMeal.description}&quot;</strong>? This will deduct <strong className="text-emerald-400">{deletingMeal.macros.calories} kcal</strong> from your daily nutrition totals.
+      <MealEntries
+        meals={meals}
+        emptyState={
+          <div className="text-center py-10 px-4 border border-dashed border-white/10 rounded-2xl bg-zinc-950/40">
+            <UtensilsCrossed className="w-9 h-9 text-zinc-400 mx-auto mb-3" aria-hidden="true" />
+            <p className="text-sm font-semibold text-zinc-200">
+              {isToday ? "No meals logged today yet" : `No meals logged for ${dayLabel}`}
             </p>
-
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setDeletingMeal(null)}
-                disabled={isDeleting}
-                className="px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-xs transition cursor-pointer"
+            <p className="text-sm text-zinc-400 mt-1">Add a meal by hand or snap a photo for an AI estimate.</p>
+            <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
+              <AddMealButton dateString={selectedDate} />
+              <Link
+                href={analyzeUrl}
+                className="inline-flex items-center gap-2 min-h-11 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold text-sm transition active:scale-95"
               >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                onClick={handleDeleteConfirm}
-                disabled={isDeleting}
-                className="px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl text-xs shadow-lg shadow-red-500/20 transition active:scale-95 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              >
-                {isDeleting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                <span>Delete Meal</span>
-              </button>
+                <Camera className="w-4 h-4" aria-hidden="true" />
+                <span>Snap meal photo</span>
+              </Link>
             </div>
           </div>
-        </Modal>
-      )}
-    </div>
+        }
+      />
+    </section>
   );
 }
 

@@ -83,33 +83,42 @@ export function Select<T = string | number>({
       )
     : options;
 
-  useEffect(() => {
-    if (isOpen && searchable) {
-      const timer = setTimeout(() => searchInputRef.current?.focus(), 60);
-      return () => clearTimeout(timer);
-    }
+  // Opening highlights the current choice; closing clears the search (derived during render).
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  if (isOpen !== wasOpen) {
+    setWasOpen(isOpen);
     if (isOpen) {
-      const idx = filteredOptions.findIndex((opt) => opt.value === value);
+      const idx = options.findIndex((opt) => opt.value === value);
       setHighlightedIndex(idx >= 0 ? idx : 0);
     } else {
       setSearchQuery("");
     }
-  }, [isOpen, searchable, value]);
+  }
+
+  useEffect(() => {
+    if (!isOpen || !searchable) return;
+    const timer = setTimeout(() => searchInputRef.current?.focus(), 60);
+    return () => clearTimeout(timer);
+  }, [isOpen, searchable]);
 
   const handleSelect = (opt: SelectOption<T>) => {
     if (opt.disabled) return;
     onChange(opt.value);
     setIsOpen(false);
+    // Keyboard users continue from the field they just filled.
+    triggerRef.current?.focus();
   };
 
-  const handleClear = (e: React.MouseEvent) => {
+  const handleClear = (e: React.SyntheticEvent) => {
     e.stopPropagation();
-    onChange(null as any);
+    onChange(null as unknown as T);
   };
 
-  // Keyboard navigation
+  // Keyboard navigation (on the trigger, and on the search box while it has focus)
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (disabled) return;
+    // In the search box a space is part of the search text, not a choice.
+    const typingInSearch = e.target === searchInputRef.current;
 
     if (!isOpen) {
       if (e.key === "Enter" || e.key === " " || e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -131,13 +140,19 @@ export function Select<T = string | number>({
     } else if (e.key === "End") {
       e.preventDefault();
       setHighlightedIndex(filteredOptions.length - 1);
-    } else if (e.key === "Enter" || e.key === " ") {
+    } else if (e.key === "Enter" || (e.key === " " && !typingInSearch)) {
       e.preventDefault();
       const opt = filteredOptions[highlightedIndex];
       if (opt && !opt.disabled) {
         handleSelect(opt);
       }
-    } else if (e.key === "Escape" || e.key === "Tab") {
+    } else if (e.key === "Escape") {
+      // Only this list closes, not a dialog around it.
+      e.preventDefault();
+      e.stopPropagation();
+      setIsOpen(false);
+      triggerRef.current?.focus();
+    } else if (e.key === "Tab") {
       setIsOpen(false);
     }
   };
@@ -188,7 +203,12 @@ export function Select<T = string | number>({
               role="button"
               tabIndex={0}
               onClick={handleClear}
-              onKeyDown={(e) => e.key === "Enter" && handleClear(e as any)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  handleClear(e);
+                }
+              }}
               className="p-1 hover:text-white rounded-lg hover:bg-white/10 transition cursor-pointer"
               aria-label="Clear selection"
             >
@@ -236,7 +256,13 @@ export function Select<T = string | number>({
                     role="searchbox"
                     aria-label="Filter options"
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setHighlightedIndex(0);
+                    }}
+                    onKeyDown={handleKeyDown}
+                    aria-controls={`${selectId}-listbox`}
+                    aria-activedescendant={highlightedIndex >= 0 ? `${selectId}-opt-${highlightedIndex}` : undefined}
                     placeholder="Search..."
                     className="w-full pl-9 pr-3 py-2 bg-zinc-950/90 border border-white/10 rounded-xl text-white text-xs placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                   />

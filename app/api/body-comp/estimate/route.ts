@@ -1,211 +1,116 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getServerSession } from "@/lib/auth/session";
+import { HttpError, badRequest, errorResponse, fail, ok, parseWith, unauthorized } from "@/lib/api/route";
+import { RATE_LIMITS, enforceRateLimit } from "@/lib/security/rate-limit";
 import { getDb } from "@/lib/db/mongoose";
 import User from "@/lib/db/models/User";
-import BodyComp from "@/lib/db/models/BodyComp";
-import genAI, {
-  flashModel,
-  fallbackFlashModel,
+import {
   createGeminiConfig,
-  generateContentWithFallback,
   formatAiErrorMessage,
+  generateContentWithFallback,
 } from "@/lib/gemini/client";
 import { bodyCompAnalysisSchema } from "@/lib/gemini/schemas";
 import { BODY_COMP_SYSTEM_PROMPT } from "@/lib/gemini/prompts";
+import { estimateFieldsSchema } from "@/lib/validation/body-comp";
+import { readCheckInRequest } from "@/lib/body-comp/form";
+import { validatePhotoFile } from "@/lib/body-comp/photos";
+import { recentCheckInsForPrompt } from "@/lib/body-comp/service";
+import { buildEstimatePrompt } from "@/lib/body-comp/prompt";
+import { AnalysisParseError, parseAnalysisText } from "@/lib/body-comp/analysis";
+import type { AnalysisPreviewDTO } from "@/lib/body-comp/dto";
 
+// AI calls can be slow; give the function room before the platform cuts it off.
+export const maxDuration = 60;
+
+/**
+ * POST /api/body-comp/estimate — runs the AI estimate and returns it as a
+ * proposal. Nothing is saved; the client attaches the proposal to the
+ * check-in only if the user saves it.
+ */
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession();
-    if (!session) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    if (!session) throw unauthorized();
+
+    const { fields, photo } = await readCheckInRequest(request);
+    const input = parseWith(estimateFieldsSchema, {
+      weightKg: fields.weightKg,
+      measurements: fields.measurements,
+      notes: fields.notes,
+    });
+    const hasMeasurements = Boolean(input.measurements && Object.values(input.measurements).some((v) => v != null));
+    if (!photo && !hasMeasurements) {
+      throw badRequest("Add a photo or at least one measurement for an AI estimate.");
+    }
+
+    let validatedPhoto = null;
+    if (photo) {
+      await enforceRateLimit(RATE_LIMITS.uploadPerHour, session.userId);
+      validatedPhoto = await validatePhotoFile(photo);
     }
 
     await getDb();
-    const userDoc = await User.findById(session.userId).select("preferences.customGeminiApiKey").lean();
-    const userApiKey = userDoc?.preferences?.customGeminiApiKey?.trim() || undefined;
+    const [user, history] = await Promise.all([
+      User.findById(session.userId).select("fitnessProfile").lean(),
+      recentCheckInsForPrompt(session.userId),
+    ]);
+    const profile = user?.fitnessProfile;
+    const promptText = buildEstimatePrompt({
+      profile: {
+        sex: profile?.sex ?? null,
+        heightCm: profile?.heightCm ?? null,
+        age: profile?.age ?? null,
+        goal: profile?.goal ?? null,
+        profileWeightKg: profile?.weightKg ?? null,
+      },
+      weightKg: input.weightKg ?? null,
+      measurementsCm: input.measurements ?? null,
+      notes: input.notes || "",
+      history,
+      hasPhoto: Boolean(validatedPhoto),
+    });
 
-    if (!userApiKey && !process.env.GEMINI_API_KEY) {
-      return NextResponse.json(
-        { success: false, error: "No Gemini API key configured. Add your free key in Settings." },
-        { status: 503 }
-      );
-    }
-
-    let weight: number | null = null;
-    let notes = "";
-    let measurementsRaw: string | null = null;
-    let base64Photo: string | null = null;
-
-    const contentType = request.headers.get("content-type") || "";
-
-    if (contentType.includes("multipart/form-data")) {
-      const formData = await request.formData();
-      weight = formData.get("weight") ? Number(formData.get("weight")) : null;
-      notes = (formData.get("notes") as string) || "";
-      measurementsRaw = formData.get("measurements") as string | null;
-
-      const file = formData.get("photo") as File | null;
-      if (file && file.size > 0) {
-        const arrayBuffer = await file.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-        base64Photo = buffer.toString("base64");
-      }
-    } else {
-      const body = await request.json();
-      weight = body.weight ? Number(body.weight) : null;
-      notes = body.notes || "";
-      measurementsRaw = body.measurements ? JSON.stringify(body.measurements) : null;
-      base64Photo = body.photoBase64 || null;
-    }
-
-    if (!base64Photo && !weight && !measurementsRaw) {
-      return NextResponse.json(
-        { success: false, error: "Please upload a photo or provide weight/measurements for AI estimation." },
-        { status: 400 }
-      );
-    }
-
-    await getDb();
-
-    // Fetch user context for precise anthropometric analysis
-    const user = await User.findById(session.userId)
-      .select("fitnessProfile")
-      .lean();
-
-    const previousRecords = await BodyComp.find({ userId: session.userId })
-      .sort({ checkInDate: -1 })
-      .limit(2)
-      .lean();
-
-    const sex = user?.fitnessProfile?.sex || "Unspecified";
-    const heightCm = user?.fitnessProfile?.heightCm ? `${user.fitnessProfile.heightCm} cm` : "Not provided";
-    const age = user?.fitnessProfile?.age ? `${user.fitnessProfile.age} years old` : "Not provided";
-    const goal = user?.fitnessProfile?.goal || "Not specified";
-
-    let prevContext = "Previous Check-ins: None (First check-in)";
-    if (previousRecords.length > 0) {
-      const recordsSummary = previousRecords.map((rec: any, idx: number) => {
-        const dStr =
-          rec.dateString ||
-          (rec.checkInDate
-            ? new Date(rec.checkInDate).toISOString().split("T")[0]
-            : `Record #${idx + 1}`);
-        const wt = rec.weight != null ? `${rec.weight} kg` : "N/A";
-        const bf =
-          rec.bodyFatPercent != null
-            ? `${rec.bodyFatPercent}%`
-            : rec.aiAnalysis?.estimatedBodyFatPercent != null
-            ? `${rec.aiAnalysis.estimatedBodyFatPercent}%`
-            : rec.aiAnalysis?.estimatedBodyFatRange || "N/A";
-
-        let measurementsSummary = "";
-        if (rec.measurements) {
-          const parts = Object.entries(rec.measurements)
-            .filter(([_, v]) => v != null && v !== "")
-            .map(([k, v]) => `${k}: ${v}cm`);
-          if (parts.length > 0) {
-            measurementsSummary = ` | Circumferences: [${parts.join(", ")}]`;
-          }
-        }
-
-        const notesSummary = rec.notes ? ` | Notes: "${rec.notes}"` : "";
-        const aiSummary = rec.aiAnalysis?.qualitativeNotes
-          ? ` | Previous AI Notes: "${rec.aiAnalysis.qualitativeNotes}"`
-          : "";
-
-        return `  - Record #${idx + 1} (${dStr}): Weight: ${wt}, Body Fat: ${bf}${measurementsSummary}${notesSummary}${aiSummary}`;
-      });
-
-      prevContext = [
-        `Historical Baseline Context (Latest ${previousRecords.length} Record${previousRecords.length > 1 ? "s" : ""}):`,
-        ...recordsSummary,
-        "Trend & Progression Directive: Objectively compare current physique conditioning against these latest 2 records to determine 'comparedToPrevious' and rate of fat loss / lean mass preservation.",
-      ].join("\n");
-    }
-
-    const promptText = [
-      "--- PHYSIQUE BODY FAT & CONDITIONING ANALYSIS ---",
-      `Biological Sex: ${sex}`,
-      `Height: ${heightCm}`,
-      `Age: ${age}`,
-      `Current Goal: ${goal}`,
-      `Current Body Weight: ${weight ? `${weight} kg` : (user?.fitnessProfile?.weightKg ? `${user.fitnessProfile.weightKg} kg` : "Not provided")}`,
-      measurementsRaw ? `Body Circumferences: ${measurementsRaw}` : "",
-      notes ? `User Notes: "${notes}"` : "User Notes: None provided.",
-      prevContext,
-      "",
-      "Evaluation Directives:",
-      "1. Objectively evaluate visible muscular development, subcutaneous fat levels, vascularity, and symmetry.",
-      "2. Estimate a single precise body fat percentage ('estimatedBodyFatPercent') and a realistic 2% range ('estimatedBodyFatRange').",
-      "3. Highlight standout muscle groups in 'muscleGroupHighlights'.",
-      "4. Provide 3–4 practical recommendations for caloric phase, protein intake, and training focus in 'recommendations'.",
-      "5. Summarize clinical observations in 'qualitativeNotes'.",
-    ].filter(Boolean).join("\n");
-
-    const contents: any[] = [];
-    if (base64Photo) {
+    const contents: unknown[] = [];
+    if (validatedPhoto) {
       contents.push({
-        inlineData: {
-          data: base64Photo,
-          mimeType: "image/webp",
-        },
+        inlineData: { data: validatedPhoto.buffer.toString("base64"), mimeType: validatedPhoto.mimeType },
       });
     }
     contents.push(promptText);
 
-    const { text, modelUsed } = await generateContentWithFallback({
-      primaryModel: flashModel,
-      fallbackModel: fallbackFlashModel,
-      contents,
-      apiKey: userApiKey,
-      config: createGeminiConfig({
-        systemInstruction: BODY_COMP_SYSTEM_PROMPT,
-        responseMimeType: "application/json",
-        responseSchema: bodyCompAnalysisSchema as any,
-        maxOutputTokens: 2048,
-      }),
-    });
-
-    if (!text) {
-      throw new Error("No response received from Gemini AI model");
+    let text: string | undefined;
+    let modelUsed: string;
+    try {
+      const result = await generateContentWithFallback({
+        userId: session.userId,
+        task: "bodyComp",
+        contents,
+        config: createGeminiConfig({
+          systemInstruction: BODY_COMP_SYSTEM_PROMPT,
+          responseMimeType: "application/json",
+          responseSchema: bodyCompAnalysisSchema,
+          maxOutputTokens: 2048,
+        }),
+      });
+      text = result.text;
+      modelUsed = result.modelUsed;
+    } catch (aiErr) {
+      if (aiErr instanceof HttpError) throw aiErr;
+      console.error("[body-comp/estimate] AI call failed", aiErr);
+      return fail(502, formatAiErrorMessage(aiErr));
     }
 
-    const cleaned = text.replace(/```json\s*|```/g, "").trim();
-    const parsed = JSON.parse(cleaned);
-
-    let estimatedBodyFatPercent = typeof parsed.estimatedBodyFatPercent === "number"
-      ? Math.round(parsed.estimatedBodyFatPercent * 10) / 10
-      : null;
-
-    // Fallback: If numeric percent missing, extract midpoint from range e.g. "12.0% - 14.0%" -> 13.0
-    if (estimatedBodyFatPercent === null && parsed.estimatedBodyFatRange) {
-      const matches = parsed.estimatedBodyFatRange.match(/(\d+(\.\d+)?)/g);
-      if (matches && matches.length >= 2) {
-        const low = parseFloat(matches[0]);
-        const high = parseFloat(matches[1]);
-        estimatedBodyFatPercent = Math.round(((low + high) / 2) * 10) / 10;
-      } else if (matches && matches.length === 1) {
-        estimatedBodyFatPercent = parseFloat(matches[0]);
-      }
+    let proposal;
+    try {
+      proposal = parseAnalysisText(text);
+    } catch (parseErr) {
+      if (parseErr instanceof AnalysisParseError) return fail(502, parseErr.message);
+      throw parseErr;
     }
 
-    const analysis = {
-      estimatedBodyFatPercent,
-      estimatedBodyFatRange: parsed.estimatedBodyFatRange || (estimatedBodyFatPercent ? `${estimatedBodyFatPercent}%` : ""),
-      qualitativeNotes: parsed.qualitativeNotes || "",
-      comparedToPrevious: parsed.comparedToPrevious || "",
-      muscleGroupHighlights: Array.isArray(parsed.muscleGroupHighlights) ? parsed.muscleGroupHighlights : [],
-      recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations : [],
-      modelUsed: flashModel,
-      generatedAt: new Date().toISOString(),
-    };
-
-    return NextResponse.json({ success: true, analysis });
-  } catch (err: any) {
-    console.error("AI Body Comp estimation error:", err);
-    return NextResponse.json(
-      { success: false, error: formatAiErrorMessage(err) },
-      { status: 500 }
-    );
+    const analysis: AnalysisPreviewDTO = { ...proposal, modelUsed, generatedAt: new Date().toISOString() };
+    return ok({ analysis });
+  } catch (err) {
+    return errorResponse(err, "POST /api/body-comp/estimate");
   }
 }

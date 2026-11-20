@@ -1,90 +1,90 @@
-export const MUSCLES = [
-  "Chest",
-  "Back",
-  "Shoulders",
-  "Arms",
-  "Biceps",
-  "Triceps",
-  "Legs",
-  "Quadriceps",
-  "Hamstrings",
-  "Calves",
-  "Glutes",
-  "Core",
-  "Abdominals",
-  "Lats",
-  "Traps",
-  "Middle Back",
-  "Lower Back",
-  "Neck",
-  "Forearms",
-] as const;
+/**
+ * Exercise option lists for forms and filters. The vocabulary itself lives in
+ * `@/lib/workouts/taxonomy`; this file only shapes it for UI controls.
+ */
+import {
+  EQUIPMENT,
+  EQUIPMENT_LABELS,
+  EXERCISE_CATEGORIES,
+  MUSCLE_GROUPS,
+  MUSCLE_GROUP_LABELS,
+  PRIMARY_MUSCLES,
+  TRACKING_TYPES,
+  TRACKING_TYPE_LABELS,
+  type Equipment,
+  type ExerciseCategory,
+} from "@/lib/workouts/taxonomy";
+import {
+  FORCES,
+  LEVELS,
+  MECHANICS,
+  type ExerciseForce,
+  type ExerciseLevel,
+  type ExerciseMechanic,
+  type PrimaryMuscle,
+} from "@/lib/admin/exercise-vocabulary";
 
-export type Muscle = (typeof MUSCLES)[number];
-
-export const MUSCLE_OPTIONS = MUSCLES.map((m) => ({
-  value: m,
-  label: m,
-}));
-
-export const EQUIPMENT_OPTIONS = [
-  "barbell",
-  "dumbbell",
-  "cable",
-  "machine",
-  "bodyweight",
-  "kettlebell",
-  "bands",
-  "smith_machine",
-  "other",
-] as const;
-
-export type EquipmentOption = (typeof EQUIPMENT_OPTIONS)[number];
-
-export const EQUIPMENT_LABELS: Record<EquipmentOption, string> = {
-  barbell: "Barbell",
-  dumbbell: "Dumbbell",
-  cable: "Cable",
-  machine: "Machine",
-  bodyweight: "Bodyweight",
-  kettlebell: "Kettlebell",
-  bands: "Bands",
-  smith_machine: "Smith Machine",
-  other: "Other",
+export {
+  EQUIPMENT_LABELS,
+  FORCES,
+  LEVELS,
+  MECHANICS,
+  MUSCLE_GROUPS,
+  MUSCLE_GROUP_LABELS,
+  TRACKING_TYPES,
+  TRACKING_TYPE_LABELS,
 };
+export type { Equipment, ExerciseCategory, ExerciseForce, ExerciseLevel, ExerciseMechanic };
 
-export const EQUIPMENT_SELECT_OPTIONS = EQUIPMENT_OPTIONS.map((eq) => ({
-  value: eq,
-  label: EQUIPMENT_LABELS[eq] || eq,
+interface Option {
+  value: string;
+  label: string;
+}
+
+const titleCase = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
+
+/** Specific muscles, as stored in `primaryMuscle`. */
+export const MUSCLES = PRIMARY_MUSCLES;
+export type Muscle = PrimaryMuscle;
+export const MUSCLE_OPTIONS: Option[] = PRIMARY_MUSCLES.map((muscle) => ({ value: muscle, label: muscle }));
+
+export const MUSCLE_GROUP_OPTIONS: Option[] = MUSCLE_GROUPS.map((group) => ({
+  value: group,
+  label: MUSCLE_GROUP_LABELS[group],
 }));
 
-export const CATEGORIES = [
-  "strength",
-  "cardio",
-  "stretching",
-  "plyometrics",
-  "powerlifting",
-  "strongman",
-  "olympic_weightlifting",
-] as const;
+export const EQUIPMENT_OPTIONS = EQUIPMENT;
+export type EquipmentOption = Equipment;
+export const EQUIPMENT_SELECT_OPTIONS: Option[] = EQUIPMENT.map((item) => ({
+  value: item,
+  label: EQUIPMENT_LABELS[item],
+}));
 
-export type ExerciseCategory = (typeof CATEGORIES)[number];
-
+export const CATEGORIES = EXERCISE_CATEGORIES;
 export const CATEGORY_LABELS: Record<ExerciseCategory, string> = {
   strength: "Strength",
-  cardio: "Cardio",
-  stretching: "Stretching & Mobility",
+  stretching: "Stretching & mobility",
   plyometrics: "Plyometrics",
   powerlifting: "Powerlifting",
+  "olympic weightlifting": "Olympic weightlifting",
   strongman: "Strongman",
-  olympic_weightlifting: "Olympic Weightlifting",
+  cardio: "Cardio",
 };
-
-export const CATEGORY_OPTIONS = CATEGORIES.map((c) => ({
-  value: c,
-  label: CATEGORY_LABELS[c] || c,
+export const CATEGORY_OPTIONS: Option[] = EXERCISE_CATEGORIES.map((item) => ({
+  value: item,
+  label: CATEGORY_LABELS[item],
 }));
 
+export const TRACKING_TYPE_OPTIONS: Option[] = TRACKING_TYPES.map((type) => ({
+  value: type,
+  label: TRACKING_TYPE_LABELS[type],
+}));
+
+export const LEVEL_OPTIONS: Option[] = LEVELS.map((value) => ({ value, label: titleCase(value) }));
+export const FORCE_OPTIONS: Option[] = FORCES.map((value) => ({ value, label: titleCase(value) }));
+export const MECHANIC_OPTIONS: Option[] = MECHANICS.map((value) => ({ value, label: titleCase(value) }));
+
+/** Quick filters in the user-facing exercise picker. */
 export const EXERCISE_SEARCH_CATEGORIES = [
   { id: "all", label: "All" },
   { id: "strength", label: "Strength" },
@@ -93,24 +93,3 @@ export const EXERCISE_SEARCH_CATEGORIES = [
   { id: "cardio", label: "Cardio" },
   { id: "plyometrics", label: "Plyometrics" },
 ] as const;
-
-export const LEVELS = ["beginner", "intermediate", "expert"] as const;
-export type ExerciseLevel = (typeof LEVELS)[number];
-export const LEVEL_OPTIONS = LEVELS.map((l) => ({
-  value: l,
-  label: l.charAt(0).toUpperCase() + l.slice(1),
-}));
-
-export const FORCES = ["push", "pull", "static"] as const;
-export type ExerciseForce = (typeof FORCES)[number];
-export const FORCE_OPTIONS = FORCES.map((f) => ({
-  value: f,
-  label: f.charAt(0).toUpperCase() + f.slice(1),
-}));
-
-export const MECHANICS = ["compound", "isolation"] as const;
-export type ExerciseMechanic = (typeof MECHANICS)[number];
-export const MECHANIC_OPTIONS = MECHANICS.map((m) => ({
-  value: m,
-  label: m.charAt(0).toUpperCase() + m.slice(1),
-}));

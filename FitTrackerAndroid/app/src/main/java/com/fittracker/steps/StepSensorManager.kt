@@ -1,12 +1,16 @@
 package com.fittracker.steps
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
@@ -17,153 +21,142 @@ data class StepSensorMetadata(
     val vendor: String,
     val version: Int,
     val powerMa: Float,
-    val type: String,
     val isWakeUp: Boolean
 )
 
+/** One TYPE_STEP_COUNTER value with the time it was measured. */
+data class StepReading(
+    /** Steps since the device booted (the sensor's cumulative value). */
+    val counter: Long,
+    /** Sensor timestamp in elapsed-realtime nanoseconds (monotonic within one boot). */
+    val elapsedNs: Long,
+    /** Wall-clock time of the measurement. */
+    val wallMs: Long
+)
+
 /**
- * Ultra-low-power, high-accuracy Step Sensor Manager.
- * Dynamically resolves and binds to the latest, highest-fidelity hardware pedometer sensor
- * available on the host SoC (Qualcomm, MediaTek, Exynos, Google Tensor).
+ * Access to the hardware step counter (TYPE_STEP_COUNTER only).
+ *
+ * Phones that only have TYPE_STEP_DETECTOR are reported as unsupported: a
+ * detector only reports steps while an app listens, so one-shot reads cannot
+ * count anything and the app would show a misleading 0.
+ *
+ * Android delivers step events only to apps in the foreground (or with a
+ * foreground service), so readings happen while the app is open and when a
+ * widget's Sync button starts [StepReadService].
  */
 object StepSensorManager {
 
     private const val TAG = "StepSensorManager"
-    private const val DEFAULT_TIMEOUT_MS = 2500L
+    const val DEFAULT_TIMEOUT_MS = 3000L
 
-    /**
-     * Resolves the latest and most power-efficient step sensor available on the device.
-     * Prioritizes hardware TYPE_STEP_COUNTER with highest sensor version and lowest power draw.
-     */
-    fun getLatestAvailableStepSensor(sensorManager: SensorManager): Sensor? {
-        // 1. Query all hardware step counter sensors
-        val stepCounterSensors = sensorManager.getSensorList(Sensor.TYPE_STEP_COUNTER)
+    fun hasActivityPermission(context: Context): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACTIVITY_RECOGNITION) ==
+            PackageManager.PERMISSION_GRANTED
 
-        if (stepCounterSensors.isNotEmpty()) {
-            // Sort by version (highest/latest first), then by power efficiency (lowest power first)
-            val bestSensor = stepCounterSensors.minWithOrNull(
-                compareByDescending<Sensor> { it.version }
-                    .thenBy { it.power }
-            )
-            if (bestSensor != null) {
-                Log.d(TAG, "Selected latest TYPE_STEP_COUNTER: ${bestSensor.name} v${bestSensor.version} by ${bestSensor.vendor} (power: ${bestSensor.power}mA)")
-                return bestSensor
-            }
-        }
+    private fun stepCounter(context: Context): Pair<SensorManager, Sensor>? {
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager ?: return null
+        val sensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER) ?: return null
+        return sensorManager to sensor
+    }
 
-        // 2. Fall back to system default TYPE_STEP_COUNTER (API 21+ non-wake-up preference for battery)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            val nonWakeupSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER, false)
-            if (nonWakeupSensor != null) {
-                Log.d(TAG, "Selected default non-wake-up TYPE_STEP_COUNTER: ${nonWakeupSensor.name}")
-                return nonWakeupSensor
-            }
-        }
+    fun isSupported(context: Context): Boolean = stepCounter(context) != null
 
-        val defaultCounter = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
-        if (defaultCounter != null) {
-            Log.d(TAG, "Selected default TYPE_STEP_COUNTER: ${defaultCounter.name}")
-            return defaultCounter
-        }
+    fun getMetadata(context: Context): StepSensorMetadata? {
+        val (_, sensor) = stepCounter(context) ?: return null
+        return StepSensorMetadata(
+            name = sensor.name ?: "Step counter",
+            vendor = sensor.vendor ?: "",
+            version = sensor.version,
+            powerMa = sensor.power,
+            isWakeUp = sensor.isWakeUpSensor
+        )
+    }
 
-        // 3. Fallback check for TYPE_STEP_DETECTOR if device lacks step counter accumulator
-        val stepDetectors = sensorManager.getSensorList(Sensor.TYPE_STEP_DETECTOR)
-        if (stepDetectors.isNotEmpty()) {
-            val latestDetector = stepDetectors.maxByOrNull { it.version }
-            Log.w(TAG, "TYPE_STEP_COUNTER unavailable. Falling back to latest TYPE_STEP_DETECTOR: ${latestDetector?.name}")
-            return latestDetector
-        }
-
-        Log.e(TAG, "No hardware step sensor found on this device.")
-        return null
+    /** Converts a sensor event into a reading with a trustworthy timestamp. */
+    private fun toReading(event: SensorEvent): StepReading? {
+        if (event.values.isEmpty()) return null
+        val value = event.values[0]
+        if (value.isNaN() || value < 0f) return null
+        val nowNs = SystemClock.elapsedRealtimeNanos()
+        // Some sensor HALs use another time base; fall back to the receive time.
+        val timestamp = if (event.timestamp in 1..(nowNs + 5_000_000_000L)) event.timestamp else nowNs
+        val wallMs = System.currentTimeMillis() - (nowNs - timestamp) / 1_000_000L
+        return StepReading(value.toLong(), timestamp, wallMs)
     }
 
     /**
-     * Reads current step count using the best available sensor with zero unnecessary battery usage.
-     * Guaranteed to return or timeout within [timeoutMs].
+     * Reads the current counter value once. Returns null on timeout, without
+     * permission or without a step counter.
      */
-    suspend fun readCurrentCount(context: Context, timeoutMs: Long = DEFAULT_TIMEOUT_MS): Long? {
+    suspend fun readOnce(context: Context, timeoutMs: Long = DEFAULT_TIMEOUT_MS): StepReading? {
+        if (!hasActivityPermission(context)) return null
+        val (sensorManager, sensor) = stepCounter(context) ?: return null
+
         return withTimeoutOrNull(timeoutMs) {
             suspendCancellableCoroutine { continuation ->
-                val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
-                if (sensorManager == null) {
-                    if (continuation.isActive) continuation.resume(null)
-                    return@suspendCancellableCoroutine
-                }
-
-                val stepSensor = getLatestAvailableStepSensor(sensorManager)
-                if (stepSensor == null) {
-                    if (continuation.isActive) continuation.resume(null)
-                    return@suspendCancellableCoroutine
-                }
-
-                val isCompleted = AtomicBoolean(false)
-
+                val done = AtomicBoolean(false)
                 val listener = object : SensorEventListener {
                     override fun onSensorChanged(event: SensorEvent?) {
-                        if (event != null && event.values.isNotEmpty()) {
-                            if (isCompleted.compareAndSet(false, true)) {
-                                sensorManager.unregisterListener(this)
-                                val reading = event.values[0].toLong()
-                                if (continuation.isActive) {
-                                    continuation.resume(reading)
-                                }
-                            }
+                        val reading = event?.let { toReading(it) } ?: return
+                        if (done.compareAndSet(false, true)) {
+                            sensorManager.unregisterListener(this)
+                            if (continuation.isActive) continuation.resume(reading)
                         }
                     }
 
                     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
                 }
 
-                val registered = sensorManager.registerListener(
-                    listener,
-                    stepSensor,
-                    SensorManager.SENSOR_DELAY_NORMAL
-                )
-
+                val registered = try {
+                    sensorManager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_NORMAL)
+                } catch (e: SecurityException) {
+                    Log.w(TAG, "Step counter registration refused: ${e.message}")
+                    false
+                }
                 if (!registered) {
-                    if (continuation.isActive) continuation.resume(null)
+                    if (done.compareAndSet(false, true) && continuation.isActive) continuation.resume(null)
                     return@suspendCancellableCoroutine
                 }
-
-                // Immediately flush hardware sensor buffer on API 19+
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-                    try {
-                        sensorManager.flush(listener)
-                    } catch (_: Exception) {
-                        // Safe fallback on proprietary sensor hubs
-                    }
+                try {
+                    sensorManager.flush(listener)
+                } catch (_: Exception) {
+                    // Not every sensor hub supports flush; the first event still arrives.
                 }
-
                 continuation.invokeOnCancellation {
-                    if (isCompleted.compareAndSet(false, true)) {
-                        sensorManager.unregisterListener(listener)
-                    }
+                    if (done.compareAndSet(false, true)) sensorManager.unregisterListener(listener)
                 }
             }
         }
     }
 
     /**
-     * Returns diagnostic information about the active pedometer hardware.
+     * Continuous updates while the app is in the foreground.
+     * Returns a handle that must be passed to [stopLive], or null if unavailable.
      */
-    fun getActiveSensorMetadata(context: Context): StepSensorMetadata? {
-        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager ?: return null
-        val sensor = getLatestAvailableStepSensor(sensorManager) ?: return null
+    fun startLive(context: Context, onReading: (StepReading) -> Unit): SensorEventListener? {
+        if (!hasActivityPermission(context)) return null
+        val (sensorManager, sensor) = stepCounter(context) ?: return null
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent?) {
+                val reading = event?.let { toReading(it) } ?: return
+                onReading(reading)
+            }
 
-        val isWakeUp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            sensor.isWakeUpSensor
-        } else {
-            false
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
         }
+        return try {
+            if (sensorManager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_NORMAL)) listener else null
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Live step counter registration refused: ${e.message}")
+            null
+        }
+    }
 
-        return StepSensorMetadata(
-            name = sensor.name,
-            vendor = sensor.vendor,
-            version = sensor.version,
-            powerMa = sensor.power,
-            type = if (sensor.type == Sensor.TYPE_STEP_COUNTER) "STEP_COUNTER" else "STEP_DETECTOR",
-            isWakeUp = isWakeUp
-        )
+    fun stopLive(context: Context, listener: SensorEventListener?) {
+        if (listener == null) return
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager ?: return
+        sensorManager.unregisterListener(listener)
     }
 }

@@ -1,16 +1,22 @@
 {
   "name": "fit-tracker",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
+  "license": "UNLICENSED",
   "packageManager": "bun@1.4.0",
   "engines": {
     "bun": ">=1.4.0"
   },
   "scripts": {
     "dev": "next dev",
+    "dev:local": "node scripts/dev-local.mjs",
+    "start:local": "node scripts/dev-local.mjs --prod",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "bump": "node scripts/bump-version.mjs",
     "bump:patch": "node scripts/bump-version.mjs patch",
     "bump:minor": "node scripts/bump-version.mjs minor",
@@ -41,7 +47,8 @@
     "next": "^16.3.6",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -51,7 +58,9 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
+    "mongodb-memory-server-core": "^11.3.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^5.1.1"
   }
 }

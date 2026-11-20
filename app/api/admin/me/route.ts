@@ -1,20 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth/admin";
+import { route, ok } from "@/lib/api/route";
 
-export async function GET(request: NextRequest) {
-  const result = await requireAdmin(request);
-  if (result instanceof NextResponse) return result;
-
-  const { user } = result;
-
-  return NextResponse.json({
-    success: true,
+export const GET = route({ auth: "admin" }, async ({ session }) =>
+  ok({
     isAdmin: true,
-    user: {
-      _id: (user as any)._id.toString(),
-      name: user.name,
-      email: user.email,
-      role: user.role,
-    },
-  });
-}
+    user: { id: session.userId, name: session.name, email: session.email, role: session.role },
+  })
+);

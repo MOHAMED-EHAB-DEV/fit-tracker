@@ -15,6 +15,7 @@
 
 # next.js
 /.next/
+/.next-local/
 /.cache/
 /out/
 
@@ -33,6 +34,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -40,3 +42,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local-only: tests and exercise review working files
+/tests/
+/vitest.config.mts
+/exercise-review/

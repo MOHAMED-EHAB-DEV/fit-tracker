@@ -1,100 +1,61 @@
-import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth/admin";
+import mongoose from "mongoose";
+import { route, ok, badRequest, notFound } from "@/lib/api/route";
+import { RATE_LIMITS } from "@/lib/security/rate-limit";
 import { getDb } from "@/lib/db/mongoose";
 import Meal from "@/lib/db/models/Meal";
-import DailyLog from "@/lib/db/models/DailyLog";
-import mongoose from "mongoose";
+import { recomputeDay } from "@/lib/fitness/daily-log";
+import { adminMealPatchSchema } from "@/lib/validation/admin";
 
-type RouteContext = { params: Promise<{ id: string }> };
+type Params = { id: string };
 
-export async function PATCH(request: NextRequest, context: RouteContext) {
-  const result = await requireAdmin(request);
-  if (result instanceof NextResponse) return result;
-
-  const { id } = await context.params;
-  if (!mongoose.isValidObjectId(id)) {
-    return NextResponse.json({ success: false, error: "Invalid meal ID" }, { status: 400 });
-  }
-
-  const body = await request.json().catch(() => ({}));
-  const allowed = ["mealType", "description", "macros", "isManualOverride"];
-
-  const updateData: any = {};
-  for (const key of allowed) {
-    if (key in body) updateData[key] = body[key];
-  }
-
-  if (Object.keys(updateData).length === 0) {
-    return NextResponse.json({ success: false, error: "No valid fields to update" }, { status: 400 });
-  }
-
-  await getDb();
-
-  // If macros are changing, update DailyLog accordingly
-  if (updateData.macros) {
-    const oldMeal = await Meal.findById(id).lean();
-    if (oldMeal) {
-      const old = (oldMeal as any).macros;
-      const next = updateData.macros;
-      const delta = {
-        caloriesIn: (next.calories ?? old.calories) - old.calories,
-        "macros.protein": (next.protein ?? old.protein) - old.protein,
-        "macros.carbs": (next.carbs ?? old.carbs) - old.carbs,
-        "macros.fat": (next.fat ?? old.fat) - old.fat,
-        "macros.fiber": (next.fiber ?? old.fiber) - old.fiber,
-      };
-      await DailyLog.findOneAndUpdate(
-        { userId: (oldMeal as any).userId, dateString: (oldMeal as any).dateString },
-        { $inc: delta }
-      );
-    }
-  }
-
-  const meal = await Meal.findByIdAndUpdate(
-    id,
-    { $set: updateData },
-    { new: true, runValidators: true }
-  );
-
-  if (!meal) {
-    return NextResponse.json({ success: false, error: "Meal not found" }, { status: 404 });
-  }
-
-  return NextResponse.json({ success: true, meal });
+function mealId(id: string) {
+  if (!mongoose.isValidObjectId(id)) throw badRequest("Invalid meal id");
+  return new mongoose.Types.ObjectId(id);
 }
 
-export async function DELETE(request: NextRequest, context: RouteContext) {
-  const result = await requireAdmin(request);
-  if (result instanceof NextResponse) return result;
-
-  const { id } = await context.params;
-  if (!mongoose.isValidObjectId(id)) {
-    return NextResponse.json({ success: false, error: "Invalid meal ID" }, { status: 400 });
-  }
-
-  await getDb();
-  const meal = await Meal.findById(id).lean();
-  if (!meal) {
-    return NextResponse.json({ success: false, error: "Meal not found" }, { status: 404 });
-  }
-
-  const m = meal as any;
-
-  // Subtract from daily log
-  await DailyLog.findOneAndUpdate(
-    { userId: m.userId, dateString: m.dateString },
-    {
-      $inc: {
-        caloriesIn: -m.macros.calories,
-        "macros.protein": -m.macros.protein,
-        "macros.carbs": -m.macros.carbs,
-        "macros.fat": -m.macros.fat,
-        "macros.fiber": -m.macros.fiber,
-      },
+/** Corrects a meal. The day's totals are rebuilt from the meals afterwards. */
+export const PATCH = route<typeof adminMealPatchSchema._output, undefined, Params>(
+  { auth: "admin", body: adminMealPatchSchema, rateLimit: RATE_LIMITS.writePerMinute },
+  async ({ params, body }) => {
+    await getDb();
+    const set: Record<string, unknown> = {};
+    if (body.mealType !== undefined) set.mealType = body.mealType;
+    if (body.description !== undefined) set.description = body.description;
+    if (body.macros) {
+      set.macros = body.macros;
+      set.isManualOverride = true;
     }
-  );
+    const meal = await Meal.findOneAndUpdate({ _id: mealId(params.id) }, { $set: set }, {
+      returnDocument: "after",
+      runValidators: true,
+    })
+      .select("userId mealType description dateString macros isManualOverride")
+      .lean();
+    if (!meal) throw notFound("Meal not found");
+    await recomputeDay(String(meal.userId), meal.dateString);
+    return ok({ meal });
+  }
+);
 
-  await Meal.findByIdAndDelete(id);
+export const DELETE = route<undefined, undefined, Params>(
+  { auth: "admin", rateLimit: RATE_LIMITS.writePerMinute },
+  async ({ params }) => {
+    await getDb();
+    const meal = await Meal.findOneAndDelete({ _id: mealId(params.id) }).lean();
+    if (!meal) throw notFound("Meal not found");
+    await recomputeDay(String(meal.userId), meal.dateString);
 
-  return NextResponse.json({ success: true, message: "Meal deleted" });
-}
+    // Same rule as a user deleting their meal: only the owner's own photos (or
+    // old shared ones nobody else uses) are destroyed.
+    let photosNotRemoved = 0;
+    if ((meal.images || []).length) {
+      const { destroyMealImages } = await import("@/lib/nutrition/images");
+      photosNotRemoved = (await destroyMealImages(String(meal.userId), meal.images, String(meal._id))).failed;
+    }
+    return ok({
+      message: photosNotRemoved
+        ? `Meal deleted. ${photosNotRemoved} photo(s) could not be removed from storage.`
+        : "Meal deleted",
+    });
+  }
+);

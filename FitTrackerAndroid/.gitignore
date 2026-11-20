@@ -1,0 +1,18 @@
+# Gradle / Android Studio
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Signing material must never be committed (see RELEASE_SIGNING.md).
+*.jks
+*.keystore
+*.p12
+*.pem
+signing-lineage*
+# The public debug key stays tracked: it proves key lineage for existing installs.
+!keystore/debug.keystore

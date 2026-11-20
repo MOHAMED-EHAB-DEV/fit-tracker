@@ -1,12 +1,26 @@
 "use client";
 
-import React, { createContext, useContext, useState, useCallback, useTransition } from "react";
-import { IUser } from "@/lib/db/models/User";
-import { WeightUnit } from "@/lib/fitness/units";
+import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
+import type { IUser } from "@/lib/db/models/User";
+import { normalizeWeightUnit, type WeightUnit } from "@/lib/fitness/units";
+import { normalizeWeekStart, resolveTimeZone, type WeekdayKey } from "@/lib/time";
+import { api } from "@/lib/client/api";
+
+/**
+ * The signed-in user as the browser sees them. It never contains secrets:
+ * the personal AI key is reduced to `preferences.hasCustomGeminiKey`.
+ */
+export type ClientUser = IUser & {
+  preferences: IUser["preferences"] & { hasCustomGeminiKey?: boolean };
+};
 
 interface UserContextType {
-  user: IUser | null;
+  user: ClientUser | null;
+  /** How the user wants weights shown. Stored values are always kilograms. */
   weightUnit: WeightUnit;
+  /** The user's IANA time zone; every "today" in the app is computed in it. */
+  timezone: string;
+  weekStartDay: WeekdayKey;
   toggleWeightUnit: () => Promise<void>;
   setWeightUnit: (unit: WeightUnit) => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -22,96 +36,78 @@ export function UserProvider({
   children: React.ReactNode;
   initialUser: IUser | null;
 }) {
-  const [user, setUser] = useState<IUser | null>(initialUser);
-  const [weightUnit, setLocalWeightUnit] = useState<WeightUnit>(
-    (initialUser?.preferences?.weightUnit as WeightUnit) || "kg"
-  );
-  const [, startTransition] = useTransition();
+  const [user, setUser] = useState<ClientUser | null>(initialUser as ClientUser | null);
+
+  const weightUnit = normalizeWeightUnit(user?.preferences?.weightUnit);
+  const timezone = resolveTimeZone(user?.preferences?.timezone);
+  const weekStartDay = normalizeWeekStart(user?.preferences?.weekStartDay);
+
+  const applyUnit = useCallback((unit: WeightUnit) => {
+    setUser((previous) =>
+      previous ? ({ ...previous, preferences: { ...previous.preferences, weightUnit: unit } } as ClientUser) : previous
+    );
+  }, []);
 
   const setWeightUnit = useCallback(
     async (unit: WeightUnit) => {
-      // Optimistic update
-      setLocalWeightUnit(unit);
-      setUser((prev) => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          preferences: {
-            ...prev.preferences,
-            weightUnit: unit,
-          },
-        } as IUser;
-      });
-
-      // Persist to backend
+      const before = weightUnit;
+      applyUnit(unit);
       try {
-        await fetch("/api/user/preferences", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ weightUnit: unit }),
-        });
+        await api("/api/user/preferences", { method: "PATCH", body: { weightUnit: unit } });
       } catch (err) {
-        console.error("Failed to save weight unit:", err);
+        // Not saved: show the old unit again rather than pretending.
+        applyUnit(before);
+        throw err;
       }
     },
-    []
+    [applyUnit, weightUnit]
   );
 
   const toggleWeightUnit = useCallback(async () => {
-    const nextUnit: WeightUnit = weightUnit === "kg" ? "lbs" : "kg";
-    await setWeightUnit(nextUnit);
+    await setWeightUnit(weightUnit === "kg" ? "lbs" : "kg");
   }, [weightUnit, setWeightUnit]);
 
   const refreshUser = useCallback(async () => {
     try {
-      const res = await fetch("/api/auth/me");
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.user) {
-          startTransition(() => {
-            setUser(data.user);
-            if (data.user.preferences?.weightUnit) {
-              setLocalWeightUnit(data.user.preferences.weightUnit);
-            }
-          });
-        }
-      }
-    } catch (err) {
-      console.error("Failed to refresh user:", err);
+      const data = await api<{ user?: ClientUser }>("/api/auth/me");
+      if (data.user) setUser(data.user);
+    } catch {
+      // Keep the copy we have; the next navigation re-reads it on the server.
     }
   }, []);
 
   const updateUserLocally = useCallback((updated: Partial<IUser>) => {
-    setUser((prev) => (prev ? ({ ...prev, ...updated } as IUser) : null));
+    setUser((previous) => (previous ? ({ ...previous, ...updated } as ClientUser) : previous));
   }, []);
 
-  return (
-    <UserContext.Provider
-      value={{
-        user,
-        weightUnit,
-        toggleWeightUnit,
-        setWeightUnit,
-        refreshUser,
-        updateUserLocally,
-      }}
-    >
-      {children}
-    </UserContext.Provider>
+  const value = useMemo<UserContextType>(
+    () => ({
+      user,
+      weightUnit,
+      timezone,
+      weekStartDay,
+      toggleWeightUnit,
+      setWeightUnit,
+      refreshUser,
+      updateUserLocally,
+    }),
+    [user, weightUnit, timezone, weekStartDay, toggleWeightUnit, setWeightUnit, refreshUser, updateUserLocally]
   );
+
+  return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
 }
 
-export function useUser() {
-  const context = useContext(UserContext);
-  if (context === undefined) {
-    return {
-      user: null,
-      weightUnit: "kg" as WeightUnit,
-      toggleWeightUnit: async () => {},
-      setWeightUnit: async () => {},
-      refreshUser: async () => {},
-      updateUserLocally: () => {},
-    };
-  }
-  return context;
+const FALLBACK: UserContextType = {
+  user: null,
+  weightUnit: "kg",
+  timezone: resolveTimeZone(null),
+  weekStartDay: normalizeWeekStart(null),
+  toggleWeightUnit: async () => undefined,
+  setWeightUnit: async () => undefined,
+  refreshUser: async () => undefined,
+  updateUserLocally: () => undefined,
+};
+
+export function useUser(): UserContextType {
+  return useContext(UserContext) ?? FALLBACK;
 }

@@ -1,242 +1,162 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import {
-  Users,
-  ShieldCheck,
-  Shield,
-  Trash2,
-  Eye,
-  Ban,
-  CheckCircle,
-} from "lucide-react";
+import React, { useRef, useState } from "react";
+import Link from "next/link";
+import { ShieldCheck, Shield, Trash2, Eye, Ban, CheckCircle } from "lucide-react";
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { ConfirmModal } from "@/components/admin/ConfirmModal";
-import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { Chip } from "@/components/ui/Chip";
-import { formatDistanceToNow } from "date-fns";
+import { useToast } from "@/components/ui/Toast";
+import { useAdminList } from "@/components/admin/useAdminList";
+import { apiRequest, errorMessage } from "@/components/admin/api";
+import { formatAdminDate, useAdminZone } from "@/components/admin/AdminZone";
+import { userActionCopy, type UserAction } from "@/components/admin/userActions";
+import type { AdminUserRow } from "@/lib/admin/users";
 
-export interface UserRow {
-  _id: string;
-  name: string;
-  email: string;
-  role: "user" | "admin";
-  isBanned: boolean;
-  isProfileComplete: boolean;
-  createdAt: string;
-  lastLoginAt: string | null;
-  fitnessProfile?: { goal?: string };
-}
+const PAGE_SIZE = 20;
 
-export interface Pagination {
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-}
+const actionButton =
+  "min-h-11 min-w-11 flex items-center justify-center rounded-lg text-zinc-300 transition cursor-pointer focus:outline-none focus-visible:ring-2 disabled:opacity-40 disabled:cursor-not-allowed";
 
-export function AdminUsersClient() {
-  const router = useRouter();
-  const [users, setUsers] = useState<UserRow[]>([]);
-  const [pagination, setPagination] = useState<Pagination>({
-    total: 0,
-    page: 1,
-    limit: 20,
-    totalPages: 1,
-  });
-  const [isLoading, setIsLoading] = useState(true);
+export function AdminUsersClient({ currentAdminId }: { currentAdminId: string }) {
+  const { toast } = useToast();
+  const timeZone = useAdminZone();
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState("createdAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [filterRole, setFilterRole] = useState("");
   const [filterBanned, setFilterBanned] = useState("");
 
-  // Confirm modal state
-  const [modal, setModal] = useState<{
-    open: boolean;
-    type: "delete" | "ban" | "unban" | "promote" | "demote";
-    user: UserRow | null;
-    isLoading: boolean;
-  }>({ open: false, type: "delete", user: null, isLoading: false });
-
-  const fetchUsers = useCallback(
-    async (page = 1) => {
-      setIsLoading(true);
-      try {
-        const params = new URLSearchParams({
-          page: String(page),
-          limit: "20",
-          search,
-          sortField,
-          sortDir,
-          ...(filterRole && { role: filterRole }),
-          ...(filterBanned !== "" && { isBanned: filterBanned }),
-        });
-        const res = await fetch(`/api/admin/users?${params}`);
-        const data = await res.json();
-        if (data.success) {
-          setUsers(data.users);
-          setPagination(data.pagination);
-        }
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [search, sortField, sortDir, filterRole, filterBanned]
+  const list = useAdminList<AdminUserRow>(
+    "/api/admin/users",
+    "users",
+    { search: search.trim(), sortField, sortDir, role: filterRole, isBanned: filterBanned },
+    PAGE_SIZE
   );
+  const activeAdmins = typeof list.meta.activeAdmins === "number" ? list.meta.activeAdmins : 0;
 
-  useEffect(() => {
-    const t = setTimeout(() => fetchUsers(1), 300);
-    return () => clearTimeout(t);
-  }, [fetchUsers]);
+  const [modal, setModal] = useState<{ action: UserAction; user: AdminUserRow } | null>(null);
+  const [modalBusy, setModalBusy] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
+  const busy = useRef(false);
 
-  const handleAction = async () => {
-    if (!modal.user) return;
-    setModal((m) => ({ ...m, isLoading: true }));
+  const openModal = (action: UserAction, user: AdminUserRow) => {
+    setModalError(null);
+    setModal({ action, user });
+  };
+
+  const runAction = async () => {
+    if (!modal || busy.current) return;
+    busy.current = true;
+    setModalBusy(true);
+    setModalError(null);
+    const { action, user } = modal;
     try {
-      const { type, user } = modal;
-      if (type === "delete") {
-        await fetch(`/api/admin/users/${user._id}`, { method: "DELETE" });
-      } else if (type === "ban" || type === "unban") {
-        await fetch(`/api/admin/users/${user._id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ isBanned: type === "ban" }),
-        });
-      } else if (type === "promote" || type === "demote") {
-        await fetch(`/api/admin/users/${user._id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ role: type === "promote" ? "admin" : "user" }),
-        });
+      if (action === "delete") {
+        const data = await apiRequest<{ message: string }>(`/api/admin/users/${user.id}`, { method: "DELETE" });
+        toast(data.message, data.message.includes("could not") ? "warning" : "success");
+      } else {
+        const body =
+          action === "ban" || action === "unban"
+            ? { isBanned: action === "ban" }
+            : { role: action === "promote" ? "admin" : "user" };
+        await apiRequest(`/api/admin/users/${user.id}`, { method: "PATCH", body });
+        toast(userActionCopy(action, user.name).done, "success");
       }
-      setModal({ open: false, type: "delete", user: null, isLoading: false });
-      fetchUsers(pagination.page);
-    } catch {
-      setModal((m) => ({ ...m, isLoading: false }));
+      setModal(null);
+      list.reload();
+    } catch (err) {
+      setModalError(errorMessage(err));
+    } finally {
+      busy.current = false;
+      setModalBusy(false);
     }
   };
 
-  const columns: Column<UserRow>[] = [
+  const columns: Column<AdminUserRow>[] = [
     {
       key: "name",
       label: "User",
       sortable: true,
-      render: (row: UserRow) => (
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-violet-500/20 border border-violet-500/30 text-violet-400 flex items-center justify-center font-bold text-xs shrink-0">
-            {row.name?.charAt(0).toUpperCase()}
-          </div>
-          <div>
-            <p className="font-semibold text-zinc-200 text-sm">{row.name}</p>
-            <p className="text-[11px] text-zinc-500 font-mono">{row.email}</p>
-          </div>
-        </div>
+      render: (row) => (
+        <Link
+          href={`/admin/users/${row.id}`}
+          className="flex items-center gap-3 min-h-11 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+        >
+          <span className="w-8 h-8 rounded-full bg-violet-500/20 border border-violet-500/30 text-violet-300 flex items-center justify-center font-bold text-xs shrink-0" aria-hidden="true">
+            {row.name?.charAt(0).toUpperCase() || "?"}
+          </span>
+          <span className="min-w-0">
+            <span className="block font-semibold text-zinc-200 text-sm">
+              {row.name}
+              {row.id === currentAdminId && <span className="ml-2 text-xs font-bold text-violet-300">(you)</span>}
+            </span>
+            <span className="block text-xs text-zinc-400 font-mono">{row.email}</span>
+          </span>
+        </Link>
       ),
     },
     {
       key: "role",
       label: "Role",
       sortable: true,
-      render: (row: UserRow) => (
-        <Chip
-          size="sm"
-          variant="flat"
-          color={row.role === "admin" ? "primary" : "default"}
-          startContent={row.role === "admin" ? <ShieldCheck className="w-3 h-3 text-violet-400" aria-hidden="true" /> : undefined}
-          className="capitalize text-[10px]"
-        >
+      render: (row) => (
+        <Chip size="sm" variant="flat" color={row.role === "admin" ? "primary" : "default"} className="capitalize text-xs">
           {row.role}
         </Chip>
       ),
     },
     {
-      key: "isBanned",
+      key: "status",
       label: "Status",
-      render: (row: UserRow) =>
+      render: (row) =>
         row.isBanned ? (
-          <Chip size="sm" variant="flat" color="danger" className="uppercase text-[10px]">
-            Banned
-          </Chip>
+          <Chip size="sm" variant="flat" color="danger" className="text-xs">Banned</Chip>
         ) : row.isProfileComplete ? (
-          <Chip size="sm" variant="flat" color="success" className="uppercase text-[10px]">
-            Active
-          </Chip>
+          <Chip size="sm" variant="flat" color="success" className="text-xs">Profile complete</Chip>
         ) : (
-          <Chip size="sm" variant="flat" color="warning" className="uppercase text-[10px]">
-            Incomplete
-          </Chip>
+          <Chip size="sm" variant="flat" color="warning" className="text-xs">Profile incomplete</Chip>
         ),
     },
     {
       key: "createdAt",
       label: "Joined",
       sortable: true,
-      render: (row: UserRow) => (
-        <span className="text-xs text-zinc-500 tabular-nums">
-          {row.createdAt
-            ? formatDistanceToNow(new Date(row.createdAt), { addSuffix: true })
-            : "—"}
-        </span>
-      ),
+      render: (row) => <span className="text-xs text-zinc-400 tabular-nums">{formatAdminDate(row.createdAt, timeZone)}</span>,
+    },
+    {
+      key: "lastLoginAt",
+      label: "Last sign-in",
+      sortable: true,
+      render: (row) => <span className="text-xs text-zinc-400 tabular-nums">{formatAdminDate(row.lastLoginAt, timeZone)}</span>,
     },
   ];
 
-  const modalConfig: Record<string, { title: string; message: string; confirmLabel: string; confirmVariant: "danger" | "warning" | "primary" }> = {
-    delete: {
-      title: "Delete User",
-      message: `Permanently delete ${modal.user?.name}? All their workouts, meals, and check-in logs will also be erased.`,
-      confirmLabel: "Delete User",
-      confirmVariant: "danger",
-    },
-    ban: {
-      title: "Ban User",
-      message: `Ban ${modal.user?.name}? They will no longer be able to log in or use the platform.`,
-      confirmLabel: "Ban User",
-      confirmVariant: "danger",
-    },
-    unban: {
-      title: "Unban User",
-      message: `Restore access for ${modal.user?.name}?`,
-      confirmLabel: "Unban",
-      confirmVariant: "primary",
-    },
-    promote: {
-      title: "Promote to Admin",
-      message: `Grant administrative privileges to ${modal.user?.name}? They will have full control over all platform data.`,
-      confirmLabel: "Promote",
-      confirmVariant: "primary",
-    },
-    demote: {
-      title: "Demote to User",
-      message: `Remove administrative privileges from ${modal.user?.name}?`,
-      confirmLabel: "Demote",
-      confirmVariant: "danger",
-    },
+  const lockReason = (row: AdminUserRow): string | null => {
+    if (row.id === currentAdminId) return "You cannot change your own role, ban or delete yourself";
+    if (row.role === "admin" && !row.isBanned && activeAdmins <= 1) return "The last admin who can sign in cannot be demoted, banned or deleted";
+    return null;
   };
 
-  const currentModalConfig = modalConfig[modal.type];
+  const copy = modal ? userActionCopy(modal.action, modal.user.name) : null;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-white tracking-tight">User Management</h1>
-        <p className="text-zinc-500 text-xs mt-0.5 tabular-nums">
-          {pagination.total.toLocaleString()} registered accounts on the platform
+        <h1 className="text-2xl font-bold text-white tracking-tight">Users</h1>
+        <p className="text-zinc-400 text-sm mt-0.5 tabular-nums">
+          {list.pagination.total.toLocaleString()} account{list.pagination.total === 1 ? "" : "s"} match these filters
         </p>
       </div>
 
-      {/* Filter Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-zinc-900/60 border border-zinc-800/60 rounded-2xl p-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-zinc-900/60 border border-zinc-800/60 rounded-2xl p-4">
         <Select
           label="Role"
           value={filterRole}
-          onChange={setFilterRole}
+          onChange={(value) => setFilterRole(value || "")}
           options={[
-            { value: "", label: "All Roles" },
+            { value: "", label: "All roles" },
             { value: "user", label: "Users" },
             { value: "admin", label: "Admins" },
           ]}
@@ -244,116 +164,97 @@ export function AdminUsersClient() {
         <Select
           label="Status"
           value={filterBanned}
-          onChange={setFilterBanned}
+          onChange={(value) => setFilterBanned(value || "")}
           options={[
-            { value: "", label: "All Statuses" },
-            { value: "false", label: "Active" },
+            { value: "", label: "All" },
+            { value: "false", label: "Not banned" },
             { value: "true", label: "Banned" },
           ]}
         />
       </div>
 
-      {/* Table */}
-      <DataTable<UserRow>
+      <DataTable<AdminUserRow>
         columns={columns}
-        data={users}
-        keyField="_id"
-        total={pagination.total}
-        page={pagination.page}
-        pageSize={pagination.limit}
-        onPageChange={(p) => fetchUsers(p)}
+        data={list.rows}
+        keyField="id"
+        total={list.pagination.total}
+        page={list.page}
+        pageSize={PAGE_SIZE}
+        onPageChange={list.setPage}
         searchValue={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Search by name, email..."
+        searchLabel="Search users by name or email"
+        searchPlaceholder="Search by name or email…"
         sortField={sortField}
         sortDir={sortDir}
-        onSort={(f, d) => {
-          setSortField(f);
-          setSortDir(d);
+        onSort={(field, dir) => {
+          setSortField(field);
+          setSortDir(dir);
         }}
-        isLoading={isLoading}
-        emptyMessage="No users found matching your search."
-        actions={(row: UserRow) => (
-          <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              onClick={() => router.push(`/admin/users/${row._id}`)}
-              className="p-1.5 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
-              title="View user details"
-              aria-label={`View ${row.name}`}
-            >
-              <Eye className="w-3.5 h-3.5" aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                setModal({
-                  open: true,
-                  type: row.role === "admin" ? "demote" : "promote",
-                  user: row,
-                  isLoading: false,
-                })
-              }
-              className="p-1.5 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg text-zinc-400 hover:text-violet-400 hover:bg-violet-500/10 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
-              title={row.role === "admin" ? "Demote to user" : "Promote to admin"}
-              aria-label={row.role === "admin" ? `Demote ${row.name}` : `Promote ${row.name}`}
-            >
-              {row.role === "admin" ? (
-                <Shield className="w-3.5 h-3.5" aria-hidden="true" />
-              ) : (
-                <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                setModal({
-                  open: true,
-                  type: row.isBanned ? "unban" : "ban",
-                  user: row,
-                  isLoading: false,
-                })
-              }
-              className="p-1.5 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg text-zinc-400 hover:text-amber-400 hover:bg-amber-500/10 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
-              title={row.isBanned ? "Unban user" : "Ban user"}
-              aria-label={row.isBanned ? `Unban ${row.name}` : `Ban ${row.name}`}
-            >
-              {row.isBanned ? (
-                <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" />
-              ) : (
-                <Ban className="w-3.5 h-3.5" aria-hidden="true" />
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                setModal({
-                  open: true,
-                  type: "delete",
-                  user: row,
-                  isLoading: false,
-                })
-              }
-              className="p-1.5 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
-              title="Delete user"
-              aria-label={`Delete ${row.name}`}
-            >
-              <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-            </button>
-          </div>
-        )}
+        isLoading={list.isLoading}
+        error={list.error}
+        onRetry={list.reload}
+        caption="Users"
+        emptyMessage="No users match your search."
+        actions={(row) => {
+          const locked = lockReason(row);
+          return (
+            <div className="flex items-center justify-end gap-1">
+              <Link
+                href={`/admin/users/${row.id}`}
+                className={`${actionButton} hover:text-white hover:bg-zinc-800/60 focus-visible:ring-violet-400`}
+                aria-label={`Open ${row.name}`}
+                title="Open user"
+              >
+                <Eye className="w-4 h-4" aria-hidden="true" />
+              </Link>
+              <button
+                type="button"
+                disabled={Boolean(locked)}
+                onClick={() => openModal(row.role === "admin" ? "demote" : "promote", row)}
+                className={`${actionButton} hover:text-violet-300 hover:bg-violet-500/10 focus-visible:ring-violet-400`}
+                title={locked || (row.role === "admin" ? "Remove admin rights" : "Make admin")}
+                aria-label={row.role === "admin" ? `Remove admin rights from ${row.name}` : `Make ${row.name} an admin`}
+              >
+                {row.role === "admin" ? <Shield className="w-4 h-4" aria-hidden="true" /> : <ShieldCheck className="w-4 h-4" aria-hidden="true" />}
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(locked)}
+                onClick={() => openModal(row.isBanned ? "unban" : "ban", row)}
+                className={`${actionButton} hover:text-amber-300 hover:bg-amber-500/10 focus-visible:ring-amber-400`}
+                title={locked || (row.isBanned ? "Unban" : "Ban")}
+                aria-label={row.isBanned ? `Unban ${row.name}` : `Ban ${row.name}`}
+              >
+                {row.isBanned ? <CheckCircle className="w-4 h-4" aria-hidden="true" /> : <Ban className="w-4 h-4" aria-hidden="true" />}
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(locked)}
+                onClick={() => openModal("delete", row)}
+                className={`${actionButton} hover:text-red-300 hover:bg-red-500/10 focus-visible:ring-red-400`}
+                title={locked || "Delete user"}
+                aria-label={`Delete ${row.name}`}
+              >
+                <Trash2 className="w-4 h-4" aria-hidden="true" />
+              </button>
+            </div>
+          );
+        }}
       />
 
-      {/* Confirm Modal */}
       <ConfirmModal
-        isOpen={modal.open}
-        onClose={() => setModal({ open: false, type: "delete", user: null, isLoading: false })}
-        onConfirm={handleAction}
-        title={currentModalConfig?.title || ""}
-        message={currentModalConfig?.message || ""}
-        confirmLabel={currentModalConfig?.confirmLabel || ""}
-        confirmVariant={currentModalConfig?.confirmVariant || "danger"}
-        isLoading={modal.isLoading}
+        isOpen={Boolean(modal)}
+        onClose={() => {
+          if (!modalBusy) setModal(null);
+        }}
+        onConfirm={runAction}
+        title={copy?.title || ""}
+        message={copy?.message || ""}
+        confirmLabel={copy?.confirmLabel || "Confirm"}
+        confirmVariant={copy?.variant || "danger"}
+        isLoading={modalBusy}
+        error={modalError}
       />
     </div>
   );

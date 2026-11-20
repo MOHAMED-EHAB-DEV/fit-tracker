@@ -3,82 +3,73 @@
 import { useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { Dumbbell, Camera, Sparkles, Zap } from "lucide-react";
+import { Camera, Dumbbell, Sparkles, Zap } from "lucide-react";
 
 const QuickLogModal = dynamic(
   () => import("@/components/dashboard/QuickLogModal").then((mod) => mod.QuickLogModal),
   { ssr: false }
 );
 
-interface DashboardClientHeaderProps {
-  userName: string;
+export interface DashboardClientHeaderProps {
+  /** The user's first name; null/empty shows a neutral greeting. */
+  userName: string | null;
+  /** Today's water (ml), passed to the Quick Log modal. */
   waterMl: number;
+  /** Today in the user's time zone, already formatted ("Thursday, November 19"). */
+  dateLabel?: string;
 }
 
-export function DashboardClientHeader({
-  userName,
-  waterMl,
-}: DashboardClientHeaderProps) {
+/** First word of a display name, or null. */
+export function firstName(name: string | null | undefined): string | null {
+  const first = (name || "").trim().split(/\s+/)[0];
+  return first ? first : null;
+}
+
+const SECONDARY_LINK =
+  "hidden md:inline-flex min-h-11 items-center gap-2 rounded-xl border border-line bg-surface px-4 text-sm font-semibold text-zinc-200 hover:bg-surface-2";
+
+/**
+ * Greeting and quick logging. On phones only "Quick log" is shown: starting a
+ * workout, meals and the coach live in the bottom bar and its + button.
+ */
+export function DashboardClientHeader({ userName, waterMl, dateLabel }: DashboardClientHeaderProps) {
   const [isQuickLogOpen, setIsQuickLogOpen] = useState(false);
+  const name = firstName(userName);
 
   return (
     <>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-            Hello, {userName} 👋
-          </h1>
-          <p className="text-sm text-zinc-400 mt-0.5">
-            Here&apos;s your daily fitness & nutrition overview
-          </p>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="truncate text-2xl font-bold text-white">{name ? `Hello, ${name}` : "Hello"}</h1>
+          <p className="text-sm text-zinc-400">{dateLabel || "Your day at a glance"}</p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          {/* Quick Log Button */}
+        <div className="flex shrink-0 items-center gap-2">
+          <Link href="/workouts" className={SECONDARY_LINK}>
+            <Dumbbell className="h-4 w-4 text-emerald-400" aria-hidden="true" />
+            Train
+          </Link>
+          <Link href="/nutrition/analyze?from=dashboard" className={SECONDARY_LINK}>
+            <Camera className="h-4 w-4 text-emerald-400" aria-hidden="true" />
+            Photo meal
+          </Link>
+          <Link href="/coach" className={SECONDARY_LINK}>
+            <Sparkles className="h-4 w-4 text-emerald-400" aria-hidden="true" />
+            Coach
+          </Link>
           <button
             type="button"
             onClick={() => setIsQuickLogOpen(true)}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-zinc-800 hover:bg-zinc-700/80 text-emerald-400 font-bold text-xs border border-zinc-700 transition active:scale-95 shadow-sm cursor-pointer"
+            aria-haspopup="dialog"
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-500 px-4 text-sm font-bold text-zinc-950 hover:bg-emerald-400 cursor-pointer"
           >
-            <Zap className="w-4 h-4 fill-emerald-400" />
-            <span>Quick Log</span>
+            <Zap className="h-4 w-4" aria-hidden="true" />
+            Quick log
           </button>
-
-          {/* Start Workout */}
-          <Link
-            href="/workouts/new"
-            className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-bold text-xs shadow-lg shadow-emerald-500/20 transition active:scale-95"
-          >
-            <Dumbbell className="w-4 h-4" />
-            <span>Start Workout</span>
-          </Link>
-
-          {/* Snap Meal */}
-          <Link
-            href="/nutrition/analyze"
-            className="flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-zinc-800 hover:bg-zinc-700/80 text-zinc-200 text-xs font-semibold border border-zinc-700 transition active:scale-95"
-          >
-            <Camera className="w-4 h-4 text-orange-400" />
-            <span className="hidden sm:inline">Snap Meal</span>
-          </Link>
-
-          {/* AI Coach */}
-          <Link
-            href="/coach"
-            className="flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-medium border border-zinc-800 transition"
-          >
-            <Sparkles className="w-4 h-4 text-emerald-400" />
-            <span className="hidden sm:inline">AI Coach</span>
-          </Link>
         </div>
       </div>
 
-      {/* Quick Log Modal */}
-      <QuickLogModal
-        isOpen={isQuickLogOpen}
-        onClose={() => setIsQuickLogOpen(false)}
-        initialWaterMl={waterMl}
-      />
+      <QuickLogModal isOpen={isQuickLogOpen} onClose={() => setIsQuickLogOpen(false)} initialWaterMl={waterMl} />
     </>
   );
 }

@@ -1,19 +1,49 @@
 <resources>
     <string name="app_name">FitTracker</string>
     <string name="title_activity_main">FitTracker</string>
-    <string name="title_home">Home</string>
-    <string name="title_food">Food</string>
-    <string name="title_dashboard">Dashboard</string>
-    <string name="title_progress">Progress</string>
-    <string name="title_settings">Settings</string>
-    <string name="title_add_food">Add Food</string>
-    <string name="title_login">Login</string>
-    <string name="title_register">Register</string>
-    <string name="title_camera">Camera</string>
     <string name="widget_step_medium_name">Activity &amp; Steps</string>
-    <string name="widget_step_medium_desc">Track your live steps, goal progress, distance, and calories burned.</string>
+    <string name="widget_step_medium_desc">Today\'s steps, goal progress, distance and walking calories, with a Sync button.</string>
     <string name="widget_step_small_name">Quick Step Counter</string>
-    <string name="widget_step_small_desc">Glanceable step count and goal percentage.</string>
+    <string name="widget_step_small_desc">Today\'s steps, goal progress and distance.</string>
     <string name="widget_fitness_large_name">Daily Fitness Overview</string>
-    <string name="widget_fitness_large_desc">Comprehensive dashboard tracking steps, calorie balance, and hydration.</string>
+    <string name="widget_fitness_large_desc">Steps, calories eaten, water and habit streak for today.</string>
+
+    <!-- Offline / error page -->
+    <string name="error_offline_title">You\'re offline</string>
+    <string name="error_offline_message">FitTracker needs an internet connection. Check your connection and try again.</string>
+    <string name="error_load_title">Couldn\'t load FitTracker</string>
+    <string name="error_load_message">Something went wrong while loading the app. Please try again.</string>
+    <string name="error_retry">Retry</string>
+
+    <!-- Permissions -->
+    <string name="perm_activity_title">Count your steps</string>
+    <string name="perm_activity_message">FitTracker uses your phone\'s step counter to show today\'s steps and the calories you burn walking. Allow \"Physical activity\" access to turn this on.</string>
+    <string name="perm_activity_denied">Step counting is off because \"Physical activity\" access was denied. You can turn it on in the app settings.</string>
+    <string name="perm_camera_title">Take a photo</string>
+    <string name="perm_camera_message">Allow camera access to take meal and progress photos. You can still pick existing photos without it.</string>
+    <string name="perm_camera_denied">Camera access is off, so you can only choose existing photos. You can turn it on in the app settings.</string>
+    <string name="perm_notifications_title">Planner reminders</string>
+    <string name="perm_notifications_message">Allow notifications so FitTracker can remind you before your planned workouts and events.</string>
+    <string name="perm_notifications_denied">Notifications are off, so planner reminders can\'t be shown. You can turn them on in the app settings.</string>
+    <string name="perm_continue">Continue</string>
+    <string name="perm_not_now">Not now</string>
+    <string name="perm_open_settings">Open settings</string>
+
+    <!-- Notifications -->
+    <string name="channel_planner_name">Planner reminders</string>
+    <string name="channel_planner_desc">Reminders before your planned events</string>
+    <string name="channel_steps_name">Step sync</string>
+    <string name="channel_steps_desc">Shown briefly while a widget reads the step counter</string>
+    <string name="notification_steps_reading">Updating today\'s steps…</string>
+    <string name="notification_private_title">Planner reminder</string>
+    <string name="notification_private_text">Open FitTracker to see the details</string>
+
+    <!-- Files -->
+    <string name="chooser_title">Take a photo or choose a file</string>
+    <string name="file_saved">File saved</string>
+    <string name="file_save_failed">The file could not be saved. Please try again.</string>
+    <string name="file_save_cancelled">Not saved</string>
+    <string name="file_too_large">This file is too large to save from the app.</string>
+    <string name="photo_lost">The photo could not be attached because Android closed the app while the camera was open. Please try again.</string>
+    <string name="no_browser">No app found to open this link.</string>
 </resources>

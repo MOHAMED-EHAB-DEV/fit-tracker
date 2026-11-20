@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useRef, useState } from "react";
 import Link from "next/link";
 import {
   Users,
@@ -13,296 +13,253 @@ import {
   BookOpen,
   UserCheck,
   UserX,
+  Archive,
+  RefreshCw,
 } from "lucide-react";
 import { StatsCard } from "@/components/admin/StatsCard";
-import { formatDistanceToNow } from "date-fns";
-
-export interface AdminStats {
-  users: {
-    total: number;
-    newThisWeek: number;
-    admins: number;
-    banned: number;
-    profileComplete: number;
-  };
-  workouts: { total: number; thisWeek: number; completed: number };
-  meals: { total: number; thisWeek: number; totalCaloriesLogged: number };
-  exercises: { total: number; custom: number; global: number };
-  nutritionPlans: { total: number };
-}
-
-export interface RecentUserItem {
-  _id: string;
-  name: string;
-  email: string;
-  role: string;
-  createdAt: string;
-  isProfileComplete: boolean;
-  isBanned: boolean;
-}
+import { Button } from "@/components/ui/Button";
+import { apiRequest, errorMessage } from "@/components/admin/api";
+import { formatAdminDate, formatCompact, useAdminZone } from "@/components/admin/AdminZone";
+import { formatDateString } from "@/lib/time";
+import type { AdminStats } from "@/lib/admin/stats";
+import type { AdminUserRow } from "@/lib/admin/users";
 
 interface AdminDashboardClientProps {
-  initialStats?: AdminStats | null;
-  initialRecentUsers?: RecentUserItem[];
+  initialStats: AdminStats;
+  initialRecentUsers: AdminUserRow[];
 }
 
-export function AdminDashboardClient({
-  initialStats = null,
-  initialRecentUsers = [],
-}: AdminDashboardClientProps) {
-  const [stats, setStats] = useState<AdminStats | null>(initialStats);
-  const [recentUsers, setRecentUsers] = useState<RecentUserItem[]>(initialRecentUsers);
-  const [isLoading, setIsLoading] = useState(!initialStats);
+const percent = (part: number, whole: number) => (whole > 0 ? `${Math.round((part / whole) * 100)}% of all users` : null);
 
-  useEffect(() => {
-    if (!initialStats) {
-      fetch("/api/admin/stats")
-        .then((r) => r.json())
-        .then((d) => {
-          if (d.success) {
-            setStats(d.stats);
-            setRecentUsers(d.recentUsers || []);
-          }
-        })
-        .finally(() => setIsLoading(false));
+export function AdminDashboardClient({ initialStats, initialRecentUsers }: AdminDashboardClientProps) {
+  const timeZone = useAdminZone();
+  const [stats, setStats] = useState(initialStats);
+  const [recentUsers, setRecentUsers] = useState(initialRecentUsers);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const busy = useRef(false);
+
+  const refresh = async () => {
+    if (busy.current) return;
+    busy.current = true;
+    setIsRefreshing(true);
+    setError(null);
+    try {
+      const data = await apiRequest<{ stats: AdminStats; recentUsers: AdminUserRow[] }>("/api/admin/stats");
+      setStats(data.stats);
+      setRecentUsers(data.recentUsers);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      busy.current = false;
+      setIsRefreshing(false);
     }
-  }, [initialStats]);
-
-  const formatCalories = (n: number) => {
-    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-    if (n >= 1000) return `${(n / 1000).toFixed(0)}k`;
-    return String(n);
   };
+
+  const weekLabel = `since ${formatDateString(stats.week.start, { weekday: "short", month: "short", day: "numeric" })}`;
 
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <div>
-        <div className="flex items-center gap-2 mb-1">
-          <div className="w-2 h-2 bg-violet-400 rounded-full animate-pulse" aria-hidden="true" />
-          <span className="text-xs font-semibold uppercase tracking-widest text-violet-500">Live Overview</span>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-extrabold text-white tracking-tight">Admin dashboard</h1>
+          <p className="text-zinc-400 text-sm mt-1">
+            &ldquo;This week&rdquo; starts on {stats.week.weekStartDay} ({weekLabel}, {stats.week.timezone}).
+          </p>
         </div>
-        <h1 className="text-3xl font-extrabold text-white tracking-tight">Admin Dashboard</h1>
-        <p className="text-zinc-500 text-sm mt-1">Platform-wide metrics and recent activity</p>
+        <Button
+          type="button"
+          variant="bordered"
+          size="md"
+          onClick={refresh}
+          isLoading={isRefreshing}
+          startContent={<RefreshCw className="w-4 h-4" aria-hidden="true" />}
+          className="min-h-11"
+        >
+          Refresh
+        </Button>
       </div>
 
-      {/* Stats Grid */}
-      {isLoading ? (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="bg-zinc-900/60 border border-zinc-800/60 rounded-2xl p-5 h-28 animate-pulse" />
-          ))}
-        </div>
-      ) : stats ? (
-        <>
-          {/* Users Row */}
-          <section>
-            <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-600 mb-3 flex items-center gap-2">
-              <Users className="w-3.5 h-3.5" aria-hidden="true" /> Users
-            </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-              <StatsCard
-                label="Total Users"
-                value={stats.users.total}
-                delta={`${stats.users.newThisWeek} this week`}
-                icon={Users}
-                iconColor="text-violet-400"
-                bgColor="bg-violet-500/10"
-              />
-              <StatsCard
-                label="Profile Complete"
-                value={stats.users.profileComplete}
-                delta={`${Math.round((stats.users.profileComplete / Math.max(stats.users.total, 1)) * 100)}%`}
-                icon={UserCheck}
-                iconColor="text-emerald-400"
-                bgColor="bg-emerald-500/10"
-              />
-              <StatsCard
-                label="Admins"
-                value={stats.users.admins}
-                icon={ShieldCheck}
-                iconColor="text-violet-400"
-                bgColor="bg-violet-500/10"
-              />
-              <StatsCard
-                label="Banned"
-                value={stats.users.banned}
-                icon={UserX}
-                iconColor="text-red-400"
-                bgColor="bg-red-500/10"
-                deltaPositive={false}
-              />
-              <StatsCard
-                label="New This Week"
-                value={stats.users.newThisWeek}
-                icon={TrendingUp}
-                iconColor="text-sky-400"
-                bgColor="bg-sky-500/10"
-              />
-            </div>
-          </section>
-
-          {/* Workouts + Meals Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <section>
-              <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-600 mb-3 flex items-center gap-2">
-                <Dumbbell className="w-3.5 h-3.5" aria-hidden="true" /> Workouts
-              </h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                <StatsCard
-                  label="Total Logged"
-                  value={stats.workouts.total}
-                  delta={`${stats.workouts.thisWeek} this week`}
-                  icon={Dumbbell}
-                  iconColor="text-orange-400"
-                  bgColor="bg-orange-500/10"
-                />
-                <StatsCard
-                  label="Completed"
-                  value={stats.workouts.completed}
-                  icon={Activity}
-                  iconColor="text-emerald-400"
-                  bgColor="bg-emerald-500/10"
-                />
-                <StatsCard
-                  label="This Week"
-                  value={stats.workouts.thisWeek}
-                  icon={TrendingUp}
-                  iconColor="text-sky-400"
-                  bgColor="bg-sky-500/10"
-                />
-              </div>
-            </section>
-
-            <section>
-              <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-600 mb-3 flex items-center gap-2">
-                <UtensilsCrossed className="w-3.5 h-3.5" aria-hidden="true" /> Nutrition
-              </h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                <StatsCard
-                  label="Meals Logged"
-                  value={stats.meals.total}
-                  delta={`${stats.meals.thisWeek} this week`}
-                  icon={UtensilsCrossed}
-                  iconColor="text-pink-400"
-                  bgColor="bg-pink-500/10"
-                />
-                <StatsCard
-                  label="Calories Tracked"
-                  value={formatCalories(stats.meals.totalCaloriesLogged)}
-                  icon={Flame}
-                  iconColor="text-amber-400"
-                  bgColor="bg-amber-500/10"
-                />
-                <StatsCard
-                  label="Nutrition Plans"
-                  value={stats.nutritionPlans.total}
-                  icon={BookOpen}
-                  iconColor="text-teal-400"
-                  bgColor="bg-teal-500/10"
-                />
-              </div>
-            </section>
-          </div>
-
-          {/* Exercises Row */}
-          <section>
-            <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-600 mb-3 flex items-center gap-2">
-              <Dumbbell className="w-3.5 h-3.5" aria-hidden="true" /> Exercise Catalog
-            </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 max-w-xl">
-              <StatsCard
-                label="Total Exercises"
-                value={stats.exercises.total}
-                icon={Dumbbell}
-                iconColor="text-violet-400"
-                bgColor="bg-violet-500/10"
-              />
-              <StatsCard
-                label="Global"
-                value={stats.exercises.global}
-                icon={BookOpen}
-                iconColor="text-zinc-400"
-                bgColor="bg-zinc-700/40"
-              />
-              <StatsCard
-                label="Custom"
-                value={stats.exercises.custom}
-                icon={Activity}
-                iconColor="text-violet-400"
-                bgColor="bg-violet-500/10"
-              />
-            </div>
-          </section>
-        </>
-      ) : (
-        <p className="text-zinc-500 text-sm">Failed to load stats.</p>
+      {error && (
+        <p role="alert" className="text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl p-3">
+          Could not refresh: {error}
+        </p>
       )}
 
-      {/* Recent Users */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-600 flex items-center gap-2">
-            <Users className="w-3.5 h-3.5" aria-hidden="true" /> Recently Joined
+      <section aria-labelledby="stats-users">
+        <h2 id="stats-users" className="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-3 flex items-center gap-2">
+          <Users className="w-3.5 h-3.5" aria-hidden="true" /> Users
+        </h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+          <StatsCard label="Accounts" value={stats.users.total} icon={Users} />
+          <StatsCard
+            label="Signed up this week"
+            value={stats.users.newThisWeek}
+            delta={weekLabel}
+            icon={TrendingUp}
+            iconColor="text-sky-400"
+            bgColor="bg-sky-500/10"
+          />
+          <StatsCard
+            label="Profiles complete"
+            value={stats.users.profileComplete}
+            delta={percent(stats.users.profileComplete, stats.users.total)}
+            icon={UserCheck}
+            iconColor="text-emerald-400"
+            bgColor="bg-emerald-500/10"
+          />
+          <StatsCard label="Active admins" value={stats.users.admins} icon={ShieldCheck} />
+          <StatsCard
+            label="Banned"
+            value={stats.users.banned}
+            icon={UserX}
+            iconColor="text-red-400"
+            bgColor="bg-red-500/10"
+          />
+        </div>
+      </section>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <section aria-labelledby="stats-workouts">
+          <h2 id="stats-workouts" className="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-3 flex items-center gap-2">
+            <Dumbbell className="w-3.5 h-3.5" aria-hidden="true" /> Workouts
           </h2>
-          <Link href="/admin/users" className="text-xs text-violet-400 hover:text-violet-300 transition font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 rounded">
-            View all →
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <StatsCard
+              label="Completed workouts"
+              value={stats.workouts.completedTotal}
+              delta="all time"
+              icon={Activity}
+              iconColor="text-emerald-400"
+              bgColor="bg-emerald-500/10"
+            />
+            <StatsCard
+              label="Completed this week"
+              value={stats.workouts.completedThisWeek}
+              delta={`started ${weekLabel}`}
+              icon={TrendingUp}
+              iconColor="text-sky-400"
+              bgColor="bg-sky-500/10"
+            />
+            <StatsCard
+              label="In progress now"
+              value={stats.workouts.inProgress}
+              icon={Dumbbell}
+              iconColor="text-orange-400"
+              bgColor="bg-orange-500/10"
+            />
+          </div>
+        </section>
+
+        <section aria-labelledby="stats-nutrition">
+          <h2 id="stats-nutrition" className="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-3 flex items-center gap-2">
+            <UtensilsCrossed className="w-3.5 h-3.5" aria-hidden="true" /> Nutrition
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <StatsCard
+              label="Meals logged"
+              value={stats.meals.total}
+              delta={`${stats.meals.loggedThisWeek.toLocaleString()} this week`}
+              icon={UtensilsCrossed}
+              iconColor="text-pink-400"
+              bgColor="bg-pink-500/10"
+            />
+            <StatsCard
+              label="Calories logged this week"
+              value={formatCompact(stats.meals.caloriesThisWeek)}
+              delta="kcal, all users"
+              icon={Flame}
+              iconColor="text-amber-400"
+              bgColor="bg-amber-500/10"
+            />
+            <StatsCard
+              label="Nutrition plans"
+              value={stats.nutritionPlans.total}
+              delta={`${stats.nutritionPlans.assigned.toLocaleString()} assigned to users`}
+              icon={BookOpen}
+              iconColor="text-teal-400"
+              bgColor="bg-teal-500/10"
+            />
+          </div>
+        </section>
+      </div>
+
+      <section aria-labelledby="stats-exercises">
+        <h2 id="stats-exercises" className="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-3 flex items-center gap-2">
+          <Dumbbell className="w-3.5 h-3.5" aria-hidden="true" /> Exercise catalog
+        </h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 max-w-xl">
+          <StatsCard label="Available exercises" value={stats.exercises.active} delta="not archived" icon={Dumbbell} />
+          <StatsCard
+            label="Users' custom exercises"
+            value={stats.exercises.custom}
+            icon={Activity}
+            iconColor="text-zinc-300"
+            bgColor="bg-zinc-700/40"
+          />
+          <StatsCard
+            label="Archived"
+            value={stats.exercises.archived}
+            icon={Archive}
+            iconColor="text-zinc-300"
+            bgColor="bg-zinc-700/40"
+          />
+        </div>
+      </section>
+
+      <section aria-labelledby="recent-users">
+        <div className="flex items-center justify-between mb-3">
+          <h2 id="recent-users" className="text-xs font-bold uppercase tracking-widest text-zinc-400 flex items-center gap-2">
+            <Users className="w-3.5 h-3.5" aria-hidden="true" /> Recently joined
+          </h2>
+          <Link
+            href="/admin/users"
+            className="inline-flex items-center min-h-11 text-sm text-violet-400 hover:text-violet-300 transition font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 rounded"
+          >
+            View all users →
           </Link>
         </div>
-        <div className="bg-zinc-900/60 border border-zinc-800/60 rounded-2xl overflow-hidden">
-          {isLoading ? (
-            <div className="p-4 space-y-3">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="h-10 bg-zinc-800/60 rounded-xl animate-pulse" />
-              ))}
-            </div>
-          ) : recentUsers.length === 0 ? (
-            <p className="text-center text-zinc-600 text-sm py-10">No users yet</p>
+        <div className="bg-zinc-900/60 border border-zinc-800/60 rounded-2xl overflow-x-auto">
+          {recentUsers.length === 0 ? (
+            <p className="text-center text-zinc-400 text-sm py-10">No users yet</p>
           ) : (
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-zinc-800/60">
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500">User</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500">Role</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500">Joined</th>
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-zinc-400">User</th>
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-zinc-400">Role</th>
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-zinc-400">Status</th>
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-zinc-400">Joined</th>
                 </tr>
               </thead>
               <tbody>
                 {recentUsers.map((u) => (
-                  <tr key={u._id} className="border-b border-zinc-800/30 last:border-0 hover:bg-violet-500/3 transition-colors">
+                  <tr key={u.id} className="border-b border-zinc-800/30 last:border-0">
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-7 h-7 rounded-full bg-violet-500/20 border border-violet-500/30 text-violet-400 flex items-center justify-center font-bold text-xs shrink-0">
+                      <Link
+                        href={`/admin/users/${u.id}`}
+                        className="flex items-center gap-3 min-h-11 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+                      >
+                        <span className="w-8 h-8 rounded-full bg-violet-500/20 border border-violet-500/30 text-violet-300 flex items-center justify-center font-bold text-xs shrink-0" aria-hidden="true">
                           {u.name?.charAt(0).toUpperCase() || "?"}
-                        </div>
-                        <div>
-                          <p className="font-medium text-zinc-200 text-xs">{u.name}</p>
-                          <p className="text-[10px] text-zinc-500">{u.email}</p>
-                        </div>
-                      </div>
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block font-medium text-zinc-200 text-sm truncate">{u.name}</span>
+                          <span className="block text-xs text-zinc-400 truncate">{u.email}</span>
+                        </span>
+                      </Link>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${
-                        u.role === "admin"
-                          ? "bg-violet-500/20 text-violet-400 border border-violet-500/30"
-                          : "bg-zinc-800 text-zinc-500"
-                      }`}>
-                        {u.role}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 text-xs font-bold uppercase text-zinc-300">{u.role}</td>
+                    <td className="px-4 py-3 text-xs font-bold uppercase">
                       {u.isBanned ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-red-500/10 text-red-400 border border-red-500/20">Banned</span>
+                        <span className="text-red-400">Banned</span>
                       ) : u.isProfileComplete ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Active</span>
+                        <span className="text-emerald-400">Profile complete</span>
                       ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-amber-500/10 text-amber-400 border border-amber-500/20">Incomplete</span>
+                        <span className="text-amber-400">Profile incomplete</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-xs text-zinc-500 tabular-nums">
-                      {u.createdAt ? formatDistanceToNow(new Date(u.createdAt), { addSuffix: true }) : "—"}
-                    </td>
+                    <td className="px-4 py-3 text-xs text-zinc-400 tabular-nums">{formatAdminDate(u.createdAt, timeZone)}</td>
                   </tr>
                 ))}
               </tbody>

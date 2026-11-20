@@ -1,40 +1,45 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import {
-  Clock,
-  Trash2,
-  Edit3,
-  CheckCircle2,
-  Circle,
-  Bell,
-  Save,
-  Calendar,
-  Repeat,
-  Info,
-} from "lucide-react";
-import { PlannedEventItem, HabitOption, EventCategory, RecurrenceType, CATEGORY_CONFIG } from "./types";
-import { triggerSystemNotification } from "@/services/webview-bridge";
+import { useState } from "react";
+import { Clock, Trash2, Edit3, CheckCircle2, Save, Calendar, Repeat } from "lucide-react";
+import { PlannedEventItem, HabitOption, EventFormValues, CATEGORY_CONFIG, RECURRENCE_LABEL, normalizeTime } from "./types";
+import EventForm, { validateEventForm } from "./EventForm";
 import { Drawer } from "@/components/ui/Drawer";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { formatDateString } from "@/lib/time";
+
+export type DeleteMode = "this" | "following" | "all";
 
 interface EventDrawerProps {
+  /** The event shown; kept while the drawer animates closed. */
   event: PlannedEventItem | null;
   isOpen: boolean;
   onClose: () => void;
-  onUpdate: (id: string, updates: Partial<PlannedEventItem>) => Promise<void>;
-  onDelete: (id: string, mode?: "this" | "all") => Promise<void>;
-  onToggleComplete: (event: PlannedEventItem) => Promise<void>;
+  /** Each resolves to an error message, or null on success. */
+  onUpdate: (id: string, values: EventFormValues) => Promise<string | null>;
+  onDelete: (id: string, mode: DeleteMode) => Promise<string | null>;
+  onToggleComplete: (event: PlannedEventItem) => void;
+  isToggling: boolean;
   availableHabits: HabitOption[];
 }
 
-const RECURRENCE_OPTIONS: { value: RecurrenceType; label: string }[] = [
-  { value: "once", label: "Once" },
-  { value: "daily", label: "Daily" },
-  { value: "weekly", label: "Weekly" },
-  { value: "monthly", label: "Monthly" },
-];
+const FORM_ID = "planner-edit-event-form";
+
+function formFromEvent(event: PlannedEventItem): EventFormValues {
+  return {
+    title: event.title,
+    description: event.description || "",
+    // Older AI events may hold "7:30 PM"; the form and the API use HH:MM.
+    startTime: normalizeTime(event.startTime) || "09:00",
+    endTime: normalizeTime(event.endTime) || "",
+    category: event.category,
+    color: event.color,
+    recurrence: event.recurrence,
+    linkedHabitIds: event.linkedHabitIds.map((habit) => habit._id),
+  };
+}
+
+const longDate = (date: string) => formatDateString(date, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
 
 export default function EventDrawer({
   event,
@@ -43,528 +48,250 @@ export default function EventDrawer({
   onUpdate,
   onDelete,
   onToggleComplete,
+  isToggling,
   availableHabits,
 }: EventDrawerProps) {
-  const [isEditing, setIsEditing] = useState(false);
+  const [editValues, setEditValues] = useState<EventFormValues | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [shownEventKey, setShownEventKey] = useState<string | null>(null);
 
-  // Form states
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [startTime, setStartTime] = useState("09:00");
-  const [endTime, setEndTime] = useState("");
-  const [category, setCategory] = useState<EventCategory>("other");
-  const [color, setColor] = useState("#10b981");
-  const [recurrence, setRecurrence] = useState<RecurrenceType>("once");
-  const [selectedHabitIds, setSelectedHabitIds] = useState<string[]>([]);
-
-  // Sync state when event changes
-  useEffect(() => {
-    if (event) {
-      setTitle(event.title);
-      setDescription(event.description || "");
-      setStartTime(event.startTime);
-      setEndTime(event.endTime || "");
-      setCategory(event.category || "other");
-      setColor(event.color || "#10b981");
-      setRecurrence(event.recurrence || "once");
-      setSelectedHabitIds(
-        (event.linkedHabitIds || []).map((h: any) =>
-          typeof h === "string" ? h : String(h._id || h)
-        )
-      );
-      setIsEditing(false);
-      setShowDeleteConfirm(false);
-    }
-  }, [event]);
+  // Reset local state whenever a different event/occurrence is shown.
+  const eventKey = event ? `${event._id}:${event.occurrenceDate}` : null;
+  if (eventKey !== shownEventKey) {
+    setShownEventKey(eventKey);
+    setEditValues(null);
+    setFormError(null);
+    setShowDeleteConfirm(false);
+    setDeleteError(null);
+  }
 
   if (!event) return null;
 
-  const currentConfig = CATEGORY_CONFIG[category] || CATEGORY_CONFIG.other;
+  const isEditing = editValues !== null;
+  const isRecurring = event.recurrence !== "once";
+  const config = CATEGORY_CONFIG[event.category] || CATEGORY_CONFIG.other;
 
-  const handleRecurrenceChange = (newRecurrence: RecurrenceType) => {
-    setRecurrence(newRecurrence);
+  const cancelEdit = () => {
+    setEditValues(null);
+    setFormError(null);
   };
 
-  const handleToggleHabitLink = (habitId: string) => {
-    setSelectedHabitIds((prev) => {
-      const habitIdStr = String(habitId);
-      const exists = prev.some((id) => String(id) === habitIdStr);
-      return exists
-        ? prev.filter((id) => String(id) !== habitIdStr)
-        : [...prev, habitIdStr];
-    });
+  const close = () => {
+    if (isSaving || isDeleting) return;
+    cancelEdit();
+    setShowDeleteConfirm(false);
+    onClose();
   };
 
-  const handleSaveEdit = async () => {
-    if (!title.trim()) return;
+  const save = async () => {
+    if (!editValues || isSaving) return;
+    const problem = validateEventForm(editValues);
+    if (problem) {
+      setFormError(problem);
+      return;
+    }
     setIsSaving(true);
-    try {
-      await onUpdate(event._id, {
-        title: title.trim(),
-        description: description.trim(),
-        startTime: startTime.trim(),
-        endTime: endTime.trim(),
-        category,
-        color,
-        recurrence,
-        linkedHabitIds: selectedHabitIds as any,
-      });
-      setIsEditing(false);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleDeleteOccurrence = async () => {
-    setIsDeleting(true);
-    try {
-      await onDelete(event._id, "this");
-      onClose();
-    } finally {
-      setIsDeleting(false);
-      setShowDeleteConfirm(false);
-    }
-  };
-
-  const handleDeleteAll = async () => {
-    setIsDeleting(true);
-    try {
-      await onDelete(event._id, "all");
-      onClose();
-    } finally {
-      setIsDeleting(false);
-      setShowDeleteConfirm(false);
-    }
-  };
-
-  const handleSendNotification = () => {
-    triggerSystemNotification({
-      id: event._id,
-      title: event.title,
-      description: event.description || `Event scheduled at ${event.startTime}`,
-      category: event.category,
+    setFormError(null);
+    const failure = await onUpdate(event._id, {
+      ...editValues,
+      title: editValues.title.trim(),
+      description: editValues.description.trim(),
     });
+    setIsSaving(false);
+    if (failure) setFormError(failure);
+    else setEditValues(null);
   };
 
-  const isRecurringEvent = event.recurrence && event.recurrence !== "once";
+  const remove = async (mode: DeleteMode) => {
+    if (isDeleting) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    const failure = await onDelete(event._id, mode);
+    setIsDeleting(false);
+    if (failure) setDeleteError(failure);
+    else setShowDeleteConfirm(false);
+  };
 
-  const drawerTitle = (
-    <div className="flex items-center gap-2">
-      <span
-        className={`px-2.5 py-0.5 text-xs font-semibold rounded-lg border ${currentConfig.badgeBg} ${currentConfig.badgeText} ${currentConfig.borderCol}`}
-      >
-        {currentConfig.label}
+  const title = (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className={`px-2.5 py-0.5 text-xs font-semibold rounded-lg border ${config.badgeBg} ${config.badgeText} ${config.borderCol}`}>
+        {config.label}
       </span>
-      {isRecurringEvent && (
-        <span className="flex items-center gap-1 text-xs font-medium text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-md border border-blue-500/20">
-          <Repeat className="w-3.5 h-3.5" />
-          {event.recurrence}
+      {isRecurring && (
+        <span className="flex items-center gap-1 text-xs font-medium text-blue-300 bg-blue-500/10 px-2 py-0.5 rounded-md border border-blue-500/20">
+          <Repeat className="w-3.5 h-3.5" aria-hidden="true" />
+          {RECURRENCE_LABEL[event.recurrence]}
         </span>
       )}
       {event.isCompleted && (
         <span className="flex items-center gap-1 text-xs font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
-          <CheckCircle2 className="w-3.5 h-3.5" />
-          Completed
+          <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
+          Done
         </span>
       )}
     </div>
   );
 
-  const drawerFooter = isEditing ? (
+  const footer = isEditing ? (
     <div className="w-full flex items-center justify-end gap-2">
-      <Button
-        variant="ghost"
-        size="sm"
-        disabled={isSaving}
-        onClick={() => {
-          if (event) {
-            setTitle(event.title);
-            setDescription(event.description || "");
-            setStartTime(event.startTime);
-            setEndTime(event.endTime || "");
-            setCategory(event.category || "other");
-            setColor(event.color || "#10b981");
-            setRecurrence(event.recurrence || "once");
-            setSelectedHabitIds(
-              (event.linkedHabitIds || []).map((h: any) =>
-                typeof h === "string" ? h : String(h?._id || h)
-              )
-            );
-          }
-          setIsEditing(false);
-          setShowDeleteConfirm(false);
-        }}
-      >
+      <Button variant="ghost" size="md" disabled={isSaving} onClick={cancelEdit}>
         Cancel
       </Button>
-
-      <Button
-        variant="solid"
-        size="sm"
-        isLoading={isSaving}
-        onClick={handleSaveEdit}
-        startContent={<Save className="w-4 h-4" />}
-      >
-        Save Changes
+      <Button type="submit" form={FORM_ID} variant="solid" size="md" isLoading={isSaving} startContent={<Save className="w-4 h-4" />}>
+        Save
       </Button>
     </div>
   ) : (
-    <div className="w-full flex items-center justify-between">
+    <div className="w-full flex items-center justify-between gap-2">
       <Button
         variant="ghost"
-        size="sm"
+        size="md"
         disabled={isDeleting}
-        onClick={() => setShowDeleteConfirm(!showDeleteConfirm)}
+        aria-expanded={showDeleteConfirm}
+        onClick={() => {
+          setShowDeleteConfirm((value) => !value);
+          setDeleteError(null);
+        }}
         className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
         startContent={<Trash2 className="w-4 h-4" />}
       >
-        {isDeleting ? "Deleting..." : "Delete"}
+        Delete
       </Button>
-
       <Button
         variant="bordered"
-        size="sm"
+        size="md"
         onClick={() => {
-          setIsEditing(true);
+          setEditValues(formFromEvent(event));
           setShowDeleteConfirm(false);
         }}
-        startContent={<Edit3 className="w-3.5 h-3.5" />}
+        startContent={<Edit3 className="w-4 h-4" />}
       >
-        Edit Event
+        Edit
       </Button>
     </div>
   );
 
   return (
-    <Drawer
-      isOpen={isOpen}
-      onClose={onClose}
-      position="left"
-      title={drawerTitle}
-      footer={drawerFooter}
-      className="w-full sm:max-w-md bg-zinc-950/98"
-    >
+    <Drawer isOpen={isOpen} onClose={close} position="left" title={title} footer={footer} className="w-full sm:max-w-md bg-zinc-950/98">
       <div className="space-y-6">
-        {/* Delete Confirmation Options */}
-        {showDeleteConfirm && (
-          <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/25 space-y-3 animate-in fade-in-50">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-rose-300">
-              Delete Options
-            </h4>
-            <p className="text-xs text-zinc-300">
-              {isRecurringEvent
-                ? "This is a repeating event. Choose which instances to remove:"
-                : "Are you sure you want to permanently delete this event?"}
+        {showDeleteConfirm && !isEditing && (
+          <div role="group" aria-label="Delete options" className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/25 space-y-3">
+            <p className="text-sm text-zinc-200">
+              {isRecurring
+                ? `"${event.title}" repeats. What should be removed?`
+                : `Delete "${event.title}"? This cannot be undone.`}
             </p>
-            <div className="flex flex-wrap items-center gap-2 pt-1">
-              {isRecurringEvent && (
-                <Button
-                  variant="bordered"
-                  size="sm"
-                  disabled={isDeleting}
-                  onClick={handleDeleteOccurrence}
-                  className="text-xs border-rose-500/30 text-rose-300 hover:bg-rose-500/20"
-                >
-                  Only This Day
-                </Button>
+            {deleteError && (
+              <p role="alert" className="text-sm text-rose-300">
+                {deleteError}
+              </p>
+            )}
+            <div className="flex flex-col gap-2">
+              {isRecurring && (
+                <>
+                  <Button variant="bordered" size="md" disabled={isDeleting} onClick={() => remove("this")} className="justify-start border-rose-500/30 text-rose-200">
+                    Only {formatDateString(event.occurrenceDate)}
+                  </Button>
+                  <Button variant="bordered" size="md" disabled={isDeleting} onClick={() => remove("following")} className="justify-start border-rose-500/30 text-rose-200">
+                    {formatDateString(event.occurrenceDate)} and every later day
+                  </Button>
+                </>
               )}
-              <Button
-                variant="danger"
-                size="sm"
-                disabled={isDeleting}
-                onClick={handleDeleteAll}
-                className="text-xs"
-              >
-                {isRecurringEvent ? "All Occurrences" : "Confirm Delete"}
+              <Button variant="danger" size="md" isLoading={isDeleting} onClick={() => remove("all")} className="justify-start">
+                {isRecurring ? "The whole series, including past days" : "Delete event"}
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowDeleteConfirm(false)}
-                className="text-xs"
-              >
-                Cancel
+              <Button variant="ghost" size="md" disabled={isDeleting} onClick={() => setShowDeleteConfirm(false)}>
+                Keep it
               </Button>
             </div>
           </div>
         )}
 
-        {isEditing ? (
-          /* Edit Mode */
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
-                Event Title
-              </label>
-              <Input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Heavy Leg Day Workout"
-              />
-            </div>
-
-            {/* Recurrence Selector in Edit Mode */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <Repeat className="w-3.5 h-3.5 text-emerald-400" />
-                  Recurrence
-                </label>
-              </div>
-
-              <div className="grid grid-cols-4 gap-2">
-                {RECURRENCE_OPTIONS.map((opt) => {
-                  const isSelected = recurrence === opt.value;
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => handleRecurrenceChange(opt.value)}
-                      className={`py-2 px-2.5 rounded-xl text-xs font-semibold border transition-all text-center ${
-                        isSelected
-                          ? "bg-emerald-500/15 border-emerald-500/50 text-emerald-300 ring-1 ring-emerald-500/30 shadow-sm"
-                          : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200"
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
-                  Start Time
-                </label>
-                <input
-                  type="time"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-emerald-500 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
-                  End Time
-                </label>
-                <input
-                  type="time"
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-emerald-500 text-sm"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
-                Category
-              </label>
-              <select
-                value={category}
-                onChange={(e) => {
-                  const cat = e.target.value as EventCategory;
-                  setCategory(cat);
-                  setColor(CATEGORY_CONFIG[cat].defaultColor);
-                }}
-                className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-emerald-500 text-sm"
-              >
-                <option value="workout">🏋️ Workout</option>
-                <option value="nutrition">🥗 Nutrition</option>
-                <option value="habit">⚡ Habit</option>
-                <option value="recovery">🧘 Recovery</option>
-                <option value="focus">🎯 Deep Focus</option>
-                <option value="other">⏰ Other / General</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
-                Description & Notes
-              </label>
-              <textarea
-                rows={3}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-emerald-500 text-sm resize-none"
-                placeholder="Details, targets, or instructions..."
-              />
-            </div>
-
-            {/* Habit Linking */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-                  Connected Habits
-                </label>
-                <span className="text-[11px] text-zinc-500">
-                  Syncs Daily Log
-                </span>
-              </div>
-
-              {availableHabits.length === 0 ? (
-                <p className="text-xs text-zinc-500">No active habits found.</p>
-              ) : (
-                <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                  {availableHabits.map((habit) => {
-                    const habitIdStr = String(habit._id);
-                    const isLinked = selectedHabitIds.some(
-                      (id) => String(id) === habitIdStr
-                    );
-                    return (
-                      <button
-                        key={habitIdStr}
-                        type="button"
-                        onClick={() => handleToggleHabitLink(habitIdStr)}
-                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm border transition-colors ${
-                          isLinked
-                            ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-300"
-                            : "bg-zinc-900/60 border-zinc-800/80 text-zinc-400 hover:text-zinc-200"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="text-base">{habit.emoji}</span>
-                          <span>{habit.name}</span>
-                        </div>
-                        {isLinked ? (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                        ) : (
-                          <Circle className="w-4 h-4 text-zinc-600" />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <div className="pt-2 flex items-center gap-2">
-              <Button
-                variant="solid"
-                isLoading={isSaving}
-                onClick={handleSaveEdit}
-                className="flex-1"
-                startContent={<Save className="w-4 h-4" />}
-              >
-                Save Changes
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => setIsEditing(false)}
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
+        {isEditing && editValues ? (
+          <>
+            {isRecurring && (
+              <p className="text-xs text-zinc-400">
+                Changes apply to every occurrence of this repeating event.
+              </p>
+            )}
+            <EventForm
+              formId={FORM_ID}
+              values={editValues}
+              onChange={setEditValues}
+              onSubmit={save}
+              availableHabits={availableHabits}
+              error={formError}
+            />
+          </>
         ) : (
-          /* View Mode */
           <div className="space-y-6">
             <div>
-              <h3
-                className={`text-xl font-bold text-zinc-100 ${
-                  event.isCompleted ? "line-through text-zinc-400" : ""
-                }`}
-              >
+              <h3 className={`text-xl font-bold break-words ${event.isCompleted ? "line-through text-zinc-400" : "text-zinc-100"}`}>
                 {event.title}
               </h3>
-
-              <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-zinc-400">
+              <dl className="flex flex-wrap items-center gap-3 mt-2 text-sm text-zinc-400">
                 <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 font-mono">
-                  <Clock className="w-3.5 h-3.5 text-zinc-500" />
-                  <span>{event.startTime}</span>
-                  {event.endTime && <span>→ {event.endTime}</span>}
+                  <dt className="sr-only">Time</dt>
+                  <Clock className="w-3.5 h-3.5 text-zinc-400" aria-hidden="true" />
+                  <dd>
+                    {event.startTime}
+                    {event.endTime && ` → ${event.endTime}`}
+                  </dd>
                 </div>
-
                 <div className="flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 text-zinc-500" />
-                  <span>{event.date}</span>
+                  <dt className="sr-only">Day</dt>
+                  <Calendar className="w-3.5 h-3.5 text-zinc-400" aria-hidden="true" />
+                  <dd>{longDate(event.occurrenceDate)}</dd>
                 </div>
-
-                {isRecurringEvent && (
-                  <div className="flex items-center gap-1 text-blue-400 font-medium">
-                    <Repeat className="w-3.5 h-3.5" />
-                    <span>Repeats {event.recurrence}</span>
-                  </div>
-                )}
-              </div>
+              </dl>
+              {isRecurring && (
+                <p className="mt-2 flex items-center gap-1 text-sm text-blue-300">
+                  <Repeat className="w-3.5 h-3.5" aria-hidden="true" />
+                  Repeats {RECURRENCE_LABEL[event.recurrence].toLowerCase()} since {formatDateString(event.date)}
+                  {event.endDate ? `, until ${formatDateString(event.endDate)}` : ""}
+                </p>
+              )}
             </div>
 
             {event.description && (
               <div className="p-3.5 rounded-2xl bg-zinc-900/70 border border-zinc-800/80">
-                <p className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">
-                  {event.description}
-                </p>
+                <p className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed break-words">{event.description}</p>
               </div>
             )}
 
-            {/* Linked Habits */}
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-                  Connected Habits
-                </span>
-                <span className="text-[11px] text-zinc-500">
-                  Syncs Daily Log
-                </span>
-              </div>
-
-              {event.linkedHabitIds && event.linkedHabitIds.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {event.linkedHabitIds.map((h: any) => {
-                    const habitIdStr = String(
-                      typeof h === "object" && h !== null ? h._id || "" : h
-                    );
-                    const habitObj =
-                      typeof h === "object" && h !== null && h.name
-                        ? h
-                        : availableHabits.find((ah) => String(ah._id) === habitIdStr);
-                    const name = habitObj?.name || "Habit";
-                    const emoji = habitObj?.emoji || "⚡";
-                    const key = habitIdStr || String(h);
-
-                    return (
-                      <div
-                        key={key}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-medium text-zinc-200"
-                      >
-                        <span className="text-sm">{emoji}</span>
-                        <span>{name}</span>
-                      </div>
-                    );
-                  })}
-                </div>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Linked habits</h4>
+              {event.linkedHabitIds.length > 0 ? (
+                <ul className="flex flex-wrap gap-2">
+                  {event.linkedHabitIds.map((habit) => (
+                    <li
+                      key={habit._id}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-sm font-medium text-zinc-200"
+                    >
+                      <span aria-hidden="true">{habit.emoji}</span>
+                      {habit.name}
+                    </li>
+                  ))}
+                </ul>
               ) : (
-                <p className="text-xs text-zinc-500">
-                  No habits connected to this event.
-                </p>
+                <p className="text-sm text-zinc-400">No habits linked.</p>
               )}
             </div>
 
-            {/* Quick Actions */}
-            <div className="pt-4 border-t border-zinc-800/80 space-y-3">
+            <div className="pt-4 border-t border-zinc-800/80">
               <Button
                 variant={event.isCompleted ? "bordered" : "solid"}
                 size="lg"
+                isLoading={isToggling}
                 onClick={() => onToggleComplete(event)}
                 className="w-full"
                 startContent={<CheckCircle2 className="w-4 h-4" />}
               >
-                {event.isCompleted ? "Mark as Incomplete" : "Mark as Completed"}
-              </Button>
-
-              <Button
-                variant="flat"
-                size="md"
-                onClick={handleSendNotification}
-                className="w-full"
-                startContent={<Bell className="w-4 h-4" />}
-              >
-                Show Notification Banner
+                {event.isCompleted ? "Mark as not done" : "Mark as done"}
               </Button>
             </div>
           </div>

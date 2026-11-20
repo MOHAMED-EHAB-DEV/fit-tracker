@@ -1,51 +1,92 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "@/lib/auth/session";
+import { ok, route } from "@/lib/api/route";
 import { getDb } from "@/lib/db/mongoose";
 import PlannedEvent from "@/lib/db/models/PlannedEvent";
 import { getTodayDateString } from "@/lib/fitness/timezone";
+import { addDays } from "@/lib/time";
+import {
+  expandOccurrences,
+  reminderWindowDates,
+  type ReminderEventInput,
+} from "@/lib/planner-reminders/occurrences";
 
-export async function GET(request: NextRequest) {
-  try {
-    const session = await getServerSession();
-    if (!session) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    }
+/** Minutes before an event's start time at which the phone reminds the user. */
+const REMINDER_LEAD_MINUTES = 15;
+/** Safety cap on how many events one user's expansion reads. */
+const MAX_EVENTS = 500;
 
-    const { searchParams } = new URL(request.url);
-    const date = searchParams.get("date") || getTodayDateString();
-
-    await getDb();
-    const events = await PlannedEvent.find({
-      userId: session.userId,
-      date,
-      isCompleted: false,
-    })
-      .sort({ startTime: 1 })
-      .lean();
-
-    // Map each event to alarm metadata (15 minutes before startTime)
-    const upcoming = events.map((event) => {
-      const [hours, minutes] = event.startTime.split(":").map(Number);
-      const eventDate = new Date(`${event.date}T00:00:00`);
-      eventDate.setHours(hours, minutes, 0, 0);
-
-      // Notification time is 15 minutes before
-      const notifyTime = new Date(eventDate.getTime() - 15 * 60 * 1000);
-
-      return {
-        id: event._id.toString(),
-        title: event.title,
-        description: event.description,
-        startTime: event.startTime,
-        date: event.date,
-        eventTimestamp: eventDate.getTime(),
-        notifyTimestamp: notifyTime.getTime(),
-        category: event.category,
-      };
-    });
-
-    return NextResponse.json({ success: true, upcoming, date });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
-  }
+interface LeanPlannedEvent {
+  _id: { toString(): string };
+  title?: string;
+  description?: string;
+  category?: string;
+  date?: string;
+  endDate?: string | null;
+  startTime?: string;
+  recurrence?: string | null;
+  excludedDates?: string[];
+  completedDates?: string[];
+  isCompleted?: boolean;
 }
+
+/**
+ * Reminder occurrences for the user's today and tomorrow (in their time
+ * zone), recurrence expanded, as exact UTC instants. Used by the Android app
+ * to schedule notifications.
+ */
+export const GET = route({}, async ({ session }) => {
+  const now = new Date();
+  const timeZone = session.timezone;
+  const dates = reminderWindowDates(getTodayDateString(now, timeZone));
+  const [today, tomorrow] = dates;
+  const yesterday = addDays(today, -1);
+
+  await getDb();
+  const events = await PlannedEvent.find({
+    userId: session.userId,
+    date: { $lte: tomorrow },
+    $or: [
+      // Series that have not ended before today ("delete following" leaves ended ones behind).
+      { recurrence: { $in: ["daily", "weekly", "monthly"] }, $or: [{ endDate: null }, { endDate: { $gte: yesterday } }] },
+      { date: { $gte: yesterday } },
+    ],
+  })
+    .select("title description category date endDate startTime recurrence excludedDates completedDates isCompleted")
+    // Deterministic when a user has more than the cap: the newest first.
+    .sort({ date: -1, _id: -1 })
+    .limit(MAX_EVENTS)
+    .lean<LeanPlannedEvent[]>();
+
+  const inputs: ReminderEventInput[] = events.map((event) => ({
+    id: event._id.toString(),
+    title: event.title || "",
+    description: event.description,
+    category: event.category,
+    date: event.date || "",
+    endDate: event.endDate,
+    startTime: event.startTime,
+    recurrence: event.recurrence,
+    excludedDates: event.excludedDates,
+    completedDates: event.completedDates,
+    isCompleted: event.isCompleted,
+  }));
+
+  const reminders = expandOccurrences(inputs, {
+    // Yesterday's plan too: its late-night blocks (00:00-04:59) happen tonight.
+    dates: [yesterday, ...dates],
+    timeZone,
+    now,
+    leadMinutes: REMINDER_LEAD_MINUTES,
+  });
+
+  return ok(
+    {
+      timeZone,
+      generatedAt: now.toISOString(),
+      leadMinutes: REMINDER_LEAD_MINUTES,
+      dates,
+      // Soonest first; the phone schedules at most 60 alarms.
+      reminders: reminders.slice(0, 60),
+    },
+    { headers: { "Cache-Control": "no-store" } }
+  );
+});

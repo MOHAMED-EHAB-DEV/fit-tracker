@@ -1,27 +1,18 @@
-import React, { Suspense } from "react";
+import { Suspense } from "react";
+import type { Metadata } from "next";
 import { PhotoAnalyzer } from "@/components/nutrition/PhotoAnalyzer";
-import { Loader2 } from "lucide-react";
-import { Metadata } from "next";
+import NutritionAnalyzeLoading from "./loading";
 
 export const metadata: Metadata = {
-  title: "Analyze Meal — AI Fit Tracker",
-  description: "Snap or upload meal photos to calculate calories and macros with AI.",
+  title: "AI meal estimate",
+  description: "Estimate a meal's calories and macros from photos, then review before saving.",
 };
 
 export default function AnalyzeMealPage() {
+  // PhotoAnalyzer reads ?date= and ?from= with useSearchParams, which needs a Suspense boundary.
   return (
-    <div className="space-y-6">
-      <Suspense
-        fallback={
-          <div className="flex items-center justify-center min-h-[40vh] text-zinc-500 gap-2">
-            <Loader2 className="w-5 h-5 animate-spin text-emerald-400" />
-            <span>Loading food analyzer...</span>
-          </div>
-        }
-      >
-        <PhotoAnalyzer />
-      </Suspense>
-    </div>
+    <Suspense fallback={<NutritionAnalyzeLoading />}>
+      <PhotoAnalyzer />
+    </Suspense>
   );
 }
-

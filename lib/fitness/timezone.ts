@@ -1,45 +1,59 @@
-import { format, startOfWeek, addDays, parseISO } from "date-fns";
-
-export const DEFAULT_TIMEZONE = "Africa/Cairo";
-
 /**
- * Returns today's date formatted as "YYYY-MM-DD" in the user's timezone.
+ * Day and week helpers used across the app.
+ *
+ * These are thin wrappers over `lib/time.ts`. Every function takes an optional
+ * IANA time zone (the user's `preferences.timezone`); when it is omitted the
+ * app default (Africa/Cairo) is used. Nothing here depends on the server's or
+ * the device's clock zone.
  */
-export function getTodayDateString(date: Date = new Date()): string {
-  return format(date, "yyyy-MM-dd");
+import {
+  DEFAULT_TIMEZONE as APP_DEFAULT_TIMEZONE,
+  addDays,
+  isValidDateString,
+  localDateString,
+  normalizeWeekStart,
+  weekDatesOf,
+  weekStartOf,
+} from "@/lib/time";
+
+export const DEFAULT_TIMEZONE = APP_DEFAULT_TIMEZONE;
+
+/** "YYYY-MM-DD" for an instant in the user's time zone. */
+export function getTodayDateString(date: Date = new Date(), tz?: string | null): string {
+  return localDateString(date, tz);
 }
 
-/**
- * Returns the Saturday start-of-week date string ("YYYY-MM-DD") for any given date.
- * weekStartsOn: 6 represents Saturday in date-fns.
- */
-export function getWeekStartDateString(date: Date = new Date()): string {
-  const sat = startOfWeek(date, { weekStartsOn: 6 });
-  return format(sat, "yyyy-MM-dd");
+/** First day ("YYYY-MM-DD") of the user's week containing `date`. */
+export function getWeekStartDateString(
+  date: Date = new Date(),
+  tz?: string | null,
+  weekStartDay?: string | null
+): string {
+  return weekStartOf(localDateString(date, tz), normalizeWeekStart(weekStartDay));
 }
 
-/**
- * Returns an array of 7 date strings ("YYYY-MM-DD") for the active week starting Saturday.
- */
-export function getWeekDatesStrings(dateOrWeekStart: Date | string = new Date()): string[] {
-  let startDate: Date;
-  if (typeof dateOrWeekStart === "string") {
-    startDate = parseISO(dateOrWeekStart);
-  } else {
-    startDate = startOfWeek(dateOrWeekStart, { weekStartsOn: 6 });
+/** The 7 date strings of a week, from a week-start string or any instant in it. */
+export function getWeekDatesStrings(
+  dateOrWeekStart: Date | string = new Date(),
+  tz?: string | null,
+  weekStartDay?: string | null
+): string[] {
+  if (typeof dateOrWeekStart === "string" && isValidDateString(dateOrWeekStart)) {
+    return Array.from({ length: 7 }, (_, index) => addDays(dateOrWeekStart, index));
   }
-
-  const dateStrings: string[] = [];
-  for (let i = 0; i < 7; i++) {
-    dateStrings.push(format(addDays(startDate, i), "yyyy-MM-dd"));
-  }
-  return dateStrings;
+  const date = typeof dateOrWeekStart === "string" ? new Date(dateOrWeekStart) : dateOrWeekStart;
+  return weekDatesOf(localDateString(date, tz), normalizeWeekStart(weekStartDay));
 }
 
 /**
- * Parses a date or returns the current UTC midnight representation of Cairo time.
+ * A stable Date for a calendar day: UTC midnight of the user's local date.
+ * Used for `date` fields that sit beside a `dateString`.
  */
-export function getCairoMidnightUTC(date: Date = new Date()): Date {
-  const dateStr = getTodayDateString(date);
-  return new Date(`${dateStr}T00:00:00.000Z`);
+export function getDayAnchorDate(date: Date = new Date(), tz?: string | null): Date {
+  return new Date(`${localDateString(date, tz)}T00:00:00.000Z`);
+}
+
+/** @deprecated Use getDayAnchorDate; kept for existing callers. */
+export function getCairoMidnightUTC(date: Date = new Date(), tz?: string | null): Date {
+  return getDayAnchorDate(date, tz);
 }

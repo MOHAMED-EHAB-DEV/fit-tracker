@@ -1,93 +1,70 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import {
+  HttpError,
+  assertNoMongoOperators,
+  badRequest,
+  enforceRateLimit,
+  errorResponse,
+  ok,
+  parseWith,
+  readJson,
+  route,
+  unauthorized,
+} from "@/lib/api/route";
 import { getServerSession } from "@/lib/auth/session";
-import { getDb } from "@/lib/db/mongoose";
-import Meal from "@/lib/db/models/Meal";
-import DailyLog from "@/lib/db/models/DailyLog";
-import { getTodayDateString } from "@/lib/fitness/timezone";
+import { RATE_LIMITS } from "@/lib/security/rate-limit";
+import { localDateString } from "@/lib/time";
+import { MEAL_LIMITS, mealCreateSchema, mealsQuerySchema } from "@/lib/validation/nutrition";
+import { createMealForUser, listMealsForDay } from "@/lib/nutrition/meals";
+import { readMealPhotos } from "@/lib/nutrition/upload";
 
-export async function GET(request: NextRequest) {
-  try {
-    const session = await getServerSession();
-    if (!session) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    }
+// Uploading photos to storage can take a few seconds.
+export const maxDuration = 30;
 
-    const { searchParams } = new URL(request.url);
-    const dateStr = searchParams.get("date") || getTodayDateString();
+/** Meals of one day (default: the user's today). */
+export const GET = route({ query: mealsQuerySchema }, async ({ session, query }) => {
+  const date = query.date || localDateString(new Date(), session.timezone);
+  return ok({ date, meals: await listMealsForDay(session.userId, date) });
+});
 
-    await getDb();
-    const meals = await Meal.find({
-      userId: session.userId,
-      dateString: dateStr,
-    }).sort({ loggedAt: -1 });
-
-    return NextResponse.json({ success: true, meals });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
-  }
-}
-
+/**
+ * Logs a meal.
+ *  - JSON body: a manual meal (no photos).
+ *  - multipart/form-data: field "meal" (the same JSON) plus up to 4 "photos".
+ *    Photos are stored only here, after the user confirmed the meal.
+ */
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession();
-    if (!session) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    if (!session) throw unauthorized();
+    await enforceRateLimit(RATE_LIMITS.writePerMinute, session.userId);
+
+    const contentType = request.headers.get("content-type") || "";
+    let raw: unknown;
+    let photos: Buffer[] = [];
+
+    if (contentType.includes("multipart/form-data")) {
+      const declared = Number(request.headers.get("content-length") || 0);
+      if (declared > MEAL_LIMITS.requestBytesMax) throw new HttpError(413, "The photos are too large. Use fewer or smaller photos.");
+      const form = await request.formData();
+      const field = form.get("meal");
+      if (typeof field !== "string" || field.length > 64 * 1024) throw badRequest("Missing meal details");
+      try {
+        raw = JSON.parse(field);
+      } catch {
+        throw badRequest("Invalid meal details");
+      }
+      assertNoMongoOperators(raw);
+      photos = (await readMealPhotos(form, "photos")).map((photo) => photo.buffer);
+      if (photos.length > 0) await enforceRateLimit(RATE_LIMITS.uploadPerHour, session.userId);
+    } else {
+      raw = await readJson(request, 64 * 1024);
     }
 
-    const body = await request.json();
-    const { mealType, description, macros, dateString, items } = body;
-
-    if (!mealType || !macros) {
-      return NextResponse.json({ success: false, error: "Missing required meal fields" }, { status: 400 });
-    }
-
-    await getDb();
-    const targetDateStr = dateString || getTodayDateString();
-
-    const meal = await Meal.create({
-      userId: session.userId,
-      loggedAt: new Date(),
-      dateString: targetDateStr,
-      mealType,
-      description: description || "Manual Meal",
-      imageSource: "text_only",
-      items: Array.isArray(items)
-        ? items.map((it: any) => ({
-            name: String(it.name || "Item"),
-            quantity: String(it.quantity || ""),
-            calories: Math.round(Number(it.calories) || 0),
-            protein: Number((Number(it.protein) || 0).toFixed(1)),
-            carbs: Number((Number(it.carbs) || 0).toFixed(1)),
-            fat: Number((Number(it.fat) || 0).toFixed(1)),
-            fiber: Number((Number(it.fiber) || 0).toFixed(1)),
-          }))
-        : [],
-      macros: {
-        calories: Number(macros.calories) || 0,
-        protein: Number(macros.protein) || 0,
-        carbs: Number(macros.carbs) || 0,
-        fat: Number(macros.fat) || 0,
-        fiber: Number(macros.fiber) || 0,
-      },
-      isManualOverride: true,
-    });
-
-    await DailyLog.findOneAndUpdate(
-      { userId: session.userId, dateString: targetDateStr },
-      {
-        $inc: {
-          caloriesIn: Number(macros.calories) || 0,
-          "macros.protein": Number(macros.protein) || 0,
-          "macros.carbs": Number(macros.carbs) || 0,
-          "macros.fat": Number(macros.fat) || 0,
-          "macros.fiber": Number(macros.fiber) || 0,
-        },
-      },
-      { upsert: true }
-    );
-
-    return NextResponse.json({ success: true, meal }, { status: 201 });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    const input = parseWith(mealCreateSchema, raw);
+    const meal = await createMealForUser(session, input, photos);
+    return ok({ meal }, { status: 201 });
+  } catch (err) {
+    return errorResponse(err, "POST /api/meals");
   }
 }

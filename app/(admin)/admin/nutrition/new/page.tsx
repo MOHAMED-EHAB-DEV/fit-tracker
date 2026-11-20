@@ -1,12 +1,14 @@
 import React from "react";
 import { Metadata } from "next";
-import { AdminNutritionNewClient } from "@/components/admin/AdminNutritionNewClient";
+import { requireAdminPage } from "@/lib/auth/admin";
+import { NutritionPlanForm } from "@/components/admin/NutritionPlanForm";
 
 export const metadata: Metadata = {
-  title: "Create Nutrition Plan — Control Panel",
-  description: "Configure targets and daily meal templates for a new nutrition plan.",
+  title: "New nutrition plan",
+  description: "Set targets and a daily meal template for a new nutrition plan.",
 };
 
-export default function AdminNewNutritionPlanPage() {
-  return <AdminNutritionNewClient />;
+export default async function AdminNewNutritionPlanPage() {
+  await requireAdminPage();
+  return <NutritionPlanForm />;
 }

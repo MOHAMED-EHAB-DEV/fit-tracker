@@ -122,15 +122,12 @@ export function useFloatingPosition({
     };
   }, [triggerRef, floatingRef, align, side, offset, matchWidth, autoFlip]);
 
-  const [position, setPosition] = useState<FloatingPosition>(() => {
-    return (
-      computeCoords() || {
-        top: 0,
-        left: 0,
-        actualSide: side,
-        isReady: false,
-      }
-    );
+  // Measured in a layout effect once the element exists (never during render).
+  const [position, setPosition] = useState<FloatingPosition>({
+    top: 0,
+    left: 0,
+    actualSide: side,
+    isReady: false,
   });
 
   const updatePosition = useCallback(() => {

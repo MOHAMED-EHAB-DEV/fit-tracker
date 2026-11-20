@@ -3,6 +3,8 @@ import { MacroSplit } from "./fitness";
 export interface MealAnalysisItem extends MacroSplit {
   name: string;
   quantity: string;
+  /** Re-analysis only: 1-based number of the current ingredient this item keeps. */
+  fromCurrent?: number;
 }
 
 export interface MealAnalysisResponse {
@@ -12,22 +14,6 @@ export interface MealAnalysisResponse {
   confidence: "high" | "medium" | "low";
   confidenceReason?: string;
   geminiNotes?: string;
-}
-
-export interface MultiLogItem {
-  type: "meal" | "water" | "steps" | "weight" | "note";
-  description: string;
-  macros?: MacroSplit;
-  amountMl?: number;
-  count?: number;
-  weightKg?: number;
-  confidence: "high" | "medium" | "low";
-}
-
-export interface MultiLogResponse {
-  logItems: MultiLogItem[];
-  chatReply: string;
-  parseNotes?: string;
 }
 
 export interface BodyCompAnalysisResponse {
@@ -55,43 +41,4 @@ export interface DataContextSummary {
   badgeLabel: string;
 }
 
-export interface ReferencedMessage {
-  id: string;
-  sender: "user" | "assistant";
-  text: string;
-  timestamp?: string;
-  commandName?: string;
-}
-
-export interface CoachAttachment {
-  id: string;
-  name: string;
-  type: string;
-  size: number;
-  base64: string;
-  previewUrl?: string;
-}
-
-export interface CoachChatRequest {
-  message: string;
-  model?: GeminiModelChoice;
-  mode?: "coach" | "log" | "auto";
-  referencedMessages?: ReferencedMessage[];
-  attachments?: CoachAttachment[];
-}
-
-export interface CoachChatResponse {
-  success: boolean;
-  chatReply: string;
-  modelUsed?: string;
-  commandDetected?: string | null;
-  dataContext?: DataContextSummary | null;
-  logItems?: MultiLogItem[];
-  writeResults?: {
-    mealsCreated: number;
-    waterAdded: number;
-    stepsUpdated: number;
-  };
-  error?: string;
-}
-
+// Coach chat request/response types live in lib/assistant/types.ts.
