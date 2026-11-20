@@ -6,6 +6,13 @@ import { ChevronDown, Check, X, Search } from "lucide-react";
 import { usePopover } from "@/hooks/usePopover";
 import { useFloatingPosition } from "@/hooks/useFloatingPosition";
 import { cn } from "@/lib/utils";
+import {
+  FIELD_BOX_DISABLED,
+  FIELD_ERROR,
+  FIELD_LABEL,
+  FIELD_SIZE,
+  type FieldSize,
+} from "@/components/ui/field-styles";
 
 export interface SelectOption<T = string | number> {
   value: T;
@@ -26,7 +33,14 @@ export interface SelectProps<T = string | number> {
   disabled?: boolean;
   error?: string;
   ariaLabel?: string;
+  /** Classes for the outer wrapper (label + trigger + error). */
   className?: string;
+  /** Classes for the trigger button. */
+  triggerClassName?: string;
+  size?: FieldSize;
+  id?: string;
+  /** Submits the value under this name inside a <form>. */
+  name?: string;
 }
 
 export function Select<T = string | number>({
@@ -41,6 +55,10 @@ export function Select<T = string | number>({
   error,
   ariaLabel,
   className,
+  triggerClassName,
+  size = "md",
+  id,
+  name,
 }: SelectProps<T>) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listboxWrapperRef = useRef<HTMLDivElement>(null);
@@ -48,7 +66,8 @@ export function Select<T = string | number>({
   const listRef = useRef<HTMLUListElement>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
-  const selectId = useId();
+  const generatedId = useId();
+  const selectId = id || generatedId;
 
   const {
     isOpen,
@@ -160,7 +179,7 @@ export function Select<T = string | number>({
   return (
     <div ref={containerRef} className={cn("relative w-full space-y-1.5 text-start", className)}>
       {label && (
-        <label id={`${selectId}-label`} htmlFor={`${selectId}-button`} className="block text-xs font-bold uppercase tracking-wider text-zinc-400 select-none">
+        <label id={`${selectId}-label`} htmlFor={id || `${selectId}-button`} className={FIELD_LABEL}>
           {label}
         </label>
       )}
@@ -168,7 +187,7 @@ export function Select<T = string | number>({
       {/* Trigger Button */}
       <button
         ref={triggerRef}
-        id={`${selectId}-button`}
+        id={id || `${selectId}-button`}
         type="button"
         role="combobox"
         aria-haspopup="listbox"
@@ -177,22 +196,25 @@ export function Select<T = string | number>({
         aria-labelledby={label ? `${selectId}-label` : undefined}
         aria-label={ariaLabel || (!label ? placeholder : undefined)}
         aria-activedescendant={isOpen && highlightedIndex >= 0 ? `${selectId}-opt-${highlightedIndex}` : undefined}
+        aria-invalid={error ? true : undefined}
         disabled={disabled}
         onClick={() => !disabled && setIsOpen((prev) => !prev)}
         onKeyDown={handleKeyDown}
         className={cn(
-          "w-full px-4 py-3 min-h-11 bg-zinc-950/80 backdrop-blur-md border rounded-2xl text-start flex items-center justify-between gap-2 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 active:scale-[0.99] cursor-pointer select-none",
+          "w-full ps-3.5 pe-3 bg-surface-2 border rounded-xl text-start flex items-center justify-between gap-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/25 cursor-pointer select-none",
+          FIELD_SIZE[size],
           error
-            ? "border-red-500/80 focus:border-red-500 shadow-sm shadow-red-500/20"
+            ? "border-red-500/80 focus-visible:border-red-500"
             : isOpen
-            ? "border-emerald-500 ring-1 ring-emerald-500/40 shadow-lg shadow-emerald-500/10"
-            : "border-white/10 hover:border-white/20 hover:bg-zinc-900/60",
-          disabled && "opacity-40 cursor-not-allowed pointer-events-none"
+            ? "border-emerald-500 ring-2 ring-emerald-500/25"
+            : "border-line hover:border-white/20 focus-visible:border-emerald-500",
+          disabled && FIELD_BOX_DISABLED,
+          triggerClassName
         )}
       >
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
           {selectedOption?.icon && <span aria-hidden="true" className="shrink-0">{selectedOption.icon}</span>}
-          <span className={cn("truncate text-sm font-semibold", selectedOption ? "text-white" : "text-zinc-500")}>
+          <span className={cn("truncate", selectedOption ? "text-white" : "text-zinc-500")}>
             {selectedOption ? selectedOption.label : placeholder}
           </span>
         </div>
@@ -226,10 +248,12 @@ export function Select<T = string | number>({
       </button>
 
       {error && (
-        <p role="alert" className="text-xs font-semibold text-red-400 mt-1">
+        <p role="alert" className={FIELD_ERROR}>
           {error}
         </p>
       )}
+
+      {name && <input type="hidden" name={name} value={value === null || value === undefined ? "" : String(value)} />}
 
       {/* Portaled Popover Listbox */}
       {shouldRender && typeof document !== "undefined" &&
@@ -264,7 +288,7 @@ export function Select<T = string | number>({
                     aria-controls={`${selectId}-listbox`}
                     aria-activedescendant={highlightedIndex >= 0 ? `${selectId}-opt-${highlightedIndex}` : undefined}
                     placeholder="Search..."
-                    className="w-full pl-9 pr-3 py-2 bg-zinc-950/90 border border-white/10 rounded-xl text-white text-xs placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    className="w-full pl-9 pr-3 py-2 min-h-10 bg-zinc-950/90 border border-white/10 rounded-xl text-white text-base placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                   />
                 </div>
               </div>
@@ -298,7 +322,7 @@ export function Select<T = string | number>({
                       onClick={() => handleSelect(opt)}
                       onMouseEnter={() => setHighlightedIndex(i)}
                       className={cn(
-                        "px-3.5 py-2.5 rounded-xl text-xs flex items-center justify-between cursor-pointer transition-colors duration-100 select-none",
+                        "px-3.5 py-2.5 min-h-11 rounded-xl text-sm flex items-center justify-between cursor-pointer transition-colors duration-100 select-none",
                         isSelected
                           ? "bg-emerald-500/15 text-emerald-300 font-bold border border-emerald-500/20 shadow-sm"
                           : isHighlighted
@@ -312,7 +336,7 @@ export function Select<T = string | number>({
                         <div>
                           <span className="block truncate">{opt.label}</span>
                           {opt.description && (
-                            <span className="text-[10px] text-zinc-500 block truncate mt-0.5">
+                            <span className="text-xs text-zinc-400 block truncate mt-0.5">
                               {opt.description}
                             </span>
                           )}

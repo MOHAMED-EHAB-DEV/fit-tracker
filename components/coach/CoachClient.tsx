@@ -33,6 +33,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
+import { Textarea } from "@/components/ui/Textarea";
 import { useToast } from "@/components/ui/Toast";
 import { useUser } from "@/context/UserContext";
 import { Markdown } from "@/components/coach/Markdown";
@@ -933,7 +934,7 @@ export function CoachClient() {
         <label htmlFor="coach-input" className="sr-only">
           Message the AI Coach
         </label>
-        <textarea
+        <Textarea
           id="coach-input"
           ref={inputRef}
           value={input}
@@ -954,7 +955,8 @@ export function CoachClient() {
                 ? "Ask about the quoted messages..."
                 : "Ask anything, or type / for commands (Shift+Enter for a new line)"
           }
-          className="flex-1 resize-none px-4 py-3 min-h-11 max-h-40 bg-zinc-900 border border-zinc-700/60 rounded-2xl text-white placeholder-zinc-500 text-sm leading-5 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+          containerClassName="flex-1 min-w-0"
+          className="resize-none px-4 min-h-11 max-h-40 rounded-2xl leading-5"
         />
 
         {isLoading ? (

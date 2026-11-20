@@ -6,6 +6,10 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Save, Plus, Trash2, Users, Search, X } from "lucide-react";
 import { ConfirmModal } from "@/components/admin/ConfirmModal";
 import { Button } from "@/components/ui/Button";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Textarea } from "@/components/ui/Textarea";
 import { useToast } from "@/components/ui/Toast";
 import { apiRequest, errorMessage, isAbort } from "@/components/admin/api";
 import { useUnsavedChanges } from "@/components/admin/useUnsavedChanges";
@@ -133,9 +137,6 @@ function buildBody(form: PlanForm) {
 
 // ── Small controls (module level so they never remount while typing) ────────
 
-const inputClass =
-  "w-full bg-zinc-900 border rounded-xl px-3 min-h-11 text-sm text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 transition";
-
 function TextField({
   label,
   value,
@@ -155,47 +156,38 @@ function TextField({
   placeholder?: string;
   multiline?: boolean;
 }) {
-  const id = useId();
-  const border = error ? "border-red-500/70" : "border-zinc-800";
-  return (
-    <div>
-      <label htmlFor={id} className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
-        {label}
-        {required && <span className="text-red-300"> *</span>}
-      </label>
-      {multiline ? (
-        <textarea
-          id={id}
-          rows={2}
-          maxLength={1000}
-          value={value}
-          placeholder={placeholder}
-          onChange={(e) => onChange(e.target.value)}
-          className={`${inputClass} ${border} py-2 resize-y`}
-        />
-      ) : (
-        <input
-          id={id}
-          type={numeric ? "number" : "text"}
-          inputMode={numeric ? (numeric.step < 1 ? "decimal" : "numeric") : undefined}
-          min={numeric?.min}
-          max={numeric?.max}
-          step={numeric?.step}
-          maxLength={numeric ? undefined : 120}
-          value={value}
-          placeholder={placeholder}
-          aria-invalid={Boolean(error)}
-          aria-describedby={error ? `${id}-error` : undefined}
-          onChange={(e) => onChange(e.target.value)}
-          className={`${inputClass} ${border}`}
-        />
-      )}
-      {error && (
-        <p id={`${id}-error`} className="text-xs text-red-300 mt-1">
-          {error}
-        </p>
-      )}
-    </div>
+  const fieldLabel = (
+    <>
+      {label}
+      {required && <span className="text-red-300"> *</span>}
+    </>
+  );
+  return multiline ? (
+    <Textarea
+      label={fieldLabel}
+      rows={2}
+      maxLength={1000}
+      value={value}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+      isInvalid={Boolean(error)}
+      errorMessage={error}
+    />
+  ) : (
+    <Input
+      label={fieldLabel}
+      type={numeric ? "number" : "text"}
+      inputMode={numeric ? (numeric.step < 1 ? "decimal" : "numeric") : undefined}
+      min={numeric?.min}
+      max={numeric?.max}
+      step={numeric?.step}
+      maxLength={numeric ? undefined : 120}
+      value={value}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+      isInvalid={Boolean(error)}
+      errorMessage={error}
+    />
   );
 }
 
@@ -285,21 +277,16 @@ function AssigneesPanel({ planId, assigned, onChange }: { planId: string; assign
       )}
 
       <div className="space-y-2">
-        <label htmlFor={searchId} className="block text-xs font-bold uppercase tracking-wider text-zinc-400">
-          Find a user to assign
-        </label>
-        <div className="relative">
-          <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true" />
-          <input
-            id={searchId}
-            type="search"
-            value={query}
-            maxLength={100}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Name or email (at least 2 characters)"
-            className={`${inputClass} border-zinc-800 pl-9`}
-          />
-        </div>
+        <Input
+          id={searchId}
+          label="Find a user to assign"
+          type="search"
+          value={query}
+          maxLength={100}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Name or email (at least 2 characters)"
+          startContent={<Search className="w-4 h-4" />}
+        />
         {searchError && <p role="alert" className="text-sm text-red-300">{searchError}</p>}
         {visibleResults.length > 0 && (
           <ul className="divide-y divide-zinc-800 border border-zinc-800 rounded-xl overflow-hidden">
@@ -470,17 +457,15 @@ export function NutritionPlanForm({ initialPlan = null }: { initialPlan?: AdminP
           <TextField label="Carbs (g)" numeric={{ min: 0, max: 1500, step: 1 }} value={form.targetCarbsG} onChange={setField("targetCarbsG")} error={errors.targetCarbsG} />
           <TextField label="Fat (g)" numeric={{ min: 0, max: 500, step: 1 }} value={form.targetFatG} onChange={setField("targetFatG")} error={errors.targetFatG} />
         </div>
-        <label className="flex items-center gap-3 min-h-11 cursor-pointer w-fit">
-          <input
-            type="checkbox"
-            checked={form.isPublic}
-            onChange={(e) => setForm((current) => ({ ...current, isPublic: e.target.checked }))}
-            className="w-5 h-5 accent-violet-500"
-          />
-          <span className="text-sm text-zinc-200">
-            Public template <span className="text-zinc-400">(a label for admins; users only get plans assigned to them)</span>
-          </span>
-        </label>
+        <Checkbox
+          checked={form.isPublic}
+          onChange={(e) => setForm((current) => ({ ...current, isPublic: e.target.checked }))}
+          label={
+            <>
+              Public template <span className="text-zinc-400">(a label for admins; users only get plans assigned to them)</span>
+            </>
+          }
+        />
       </section>
 
       {isEdit && plan ? (
@@ -528,23 +513,13 @@ export function NutritionPlanForm({ initialPlan = null }: { initialPlan?: AdminP
               </button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label htmlFor={`${meal.key}-type`} className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                  Meal type
-                </label>
-                <select
-                  id={`${meal.key}-type`}
-                  className={`${inputClass} border-zinc-800 cursor-pointer`}
-                  value={meal.mealType}
-                  onChange={(e) => setMeal(index, "mealType")(e.target.value)}
-                >
-                  {MEAL_TYPE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <Select<string>
+                id={`${meal.key}-type`}
+                label="Meal type"
+                options={MEAL_TYPE_OPTIONS}
+                value={meal.mealType}
+                onChange={(value) => setMeal(index, "mealType")(value)}
+              />
               <TextField label="Name" required value={meal.name} onChange={setMeal(index, "name")} error={errors[`meals.${index}.name`]} placeholder="e.g. High-protein breakfast" />
             </div>
             <TextField label="Description" value={meal.description} onChange={setMeal(index, "description")} />

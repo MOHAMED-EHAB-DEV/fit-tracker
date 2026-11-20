@@ -8,6 +8,7 @@ import { ConfirmModal } from "@/components/admin/ConfirmModal";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
+import { Textarea } from "@/components/ui/Textarea";
 import { Card } from "@/components/ui/Card";
 import { useToast } from "@/components/ui/Toast";
 import {
@@ -546,17 +547,15 @@ export function ExerciseForm({ mode, initialExercise = null }: ExerciseFormProps
               <span className="w-8 h-8 mt-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold flex items-center justify-center shrink-0" aria-hidden="true">
                 {index + 1}
               </span>
-              <label htmlFor={step.key} className="sr-only">
-                Step {index + 1}
-              </label>
-              <textarea
+              <Textarea
                 id={step.key}
+                aria-label={`Step ${index + 1}`}
                 rows={2}
                 maxLength={L.instructionMax}
                 value={step.text}
                 placeholder={`Step ${index + 1}…`}
                 onChange={(e) => setStep(step.key, e.target.value)}
-                className="flex-1 min-w-0 bg-zinc-950/60 border border-white/10 rounded-2xl px-4 py-2.5 text-sm text-zinc-100 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition resize-y placeholder:text-zinc-400"
+                containerClassName="flex-1 min-w-0"
               />
               <div className="flex flex-col">
                 <button

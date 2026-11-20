@@ -5,6 +5,7 @@ import Image from "next/image";
 import { AlertCircle, Camera, ImagePlus, Loader2, Plus, Scale, Trash2, Zap } from "lucide-react";
 import { useClientResize } from "@/hooks/useClientResize";
 import { Modal } from "@/components/ui/Modal";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { useToast } from "@/components/ui/Toast";
 import { useUser } from "@/context/UserContext";
 import { errorMessage, requestJson } from "@/components/habits/api";
@@ -421,15 +422,11 @@ export function BodyCompClient({ initialCheckIns, initialHasMore, todayStr, time
             {activeEstimate && (
               <>
                 <AnalysisView analysis={activeEstimate} title="AI estimate (preview)" />
-                <label className="flex items-center gap-2.5 min-h-11 text-sm text-zinc-200 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={includeEstimate}
-                    onChange={(e) => setIncludeEstimate(e.target.checked)}
-                    className="w-5 h-5 accent-emerald-500"
-                  />
-                  Save this estimate with the check-in
-                </label>
+                <Checkbox
+                  checked={includeEstimate}
+                  onChange={(e) => setIncludeEstimate(e.target.checked)}
+                  label="Save this estimate with the check-in"
+                />
               </>
             )}
           </div>

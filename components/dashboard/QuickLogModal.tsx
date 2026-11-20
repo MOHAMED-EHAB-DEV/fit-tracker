@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Check, Droplets, Footprints, Plus, Scale, Undo2, UtensilsCrossed } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { FIELD_LABEL } from "@/components/ui/field-styles";
 import { useToast } from "@/components/ui/Toast";
 import { WATER_QUICK_AMOUNTS } from "@/constants/nutrition";
 import { useNativeStepTracker } from "@/hooks/useNativeStepTracker";
@@ -37,8 +39,6 @@ const TABS: Array<{ id: TabType; label: string; icon: React.ReactNode; ring: str
 const WEIGHT_BOUNDS = { kg: { min: 20, max: 400 }, lbs: { min: 44, max: 880 } } as const;
 const MAX_STEPS = 100_000;
 
-const fieldClass =
-  "w-full min-h-11 px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm tabular-nums focus:outline-none focus-visible:ring-2";
 
 export function QuickLogModal({ isOpen, onClose, initialWaterMl }: QuickLogModalProps) {
   const router = useRouter();
@@ -286,43 +286,35 @@ export function QuickLogModal({ isOpen, onClose, initialWaterMl }: QuickLogModal
             }}
             className="space-y-4"
           >
-            <div>
-              <label htmlFor="quick-weight-val" className="block text-xs font-semibold text-zinc-300 mb-1">
-                Body weight ({weightUnit}) *
-              </label>
-              <input
-                id="quick-weight-val"
-                type="number"
-                inputMode="decimal"
-                step="0.1"
-                min={weightBounds.min}
-                max={weightBounds.max}
-                required
-                placeholder={weightUnit === "kg" ? "e.g. 74.8" : "e.g. 165"}
-                value={weight}
-                disabled={busy}
-                onChange={(event) => setWeight(event.target.value)}
-                className={cn(fieldClass, "focus-visible:ring-amber-500")}
-              />
-            </div>
-            <div>
-              <label htmlFor="quick-weight-bf" className="block text-xs font-semibold text-zinc-300 mb-1">
-                Body fat % (optional)
-              </label>
-              <input
-                id="quick-weight-bf"
-                type="number"
-                inputMode="decimal"
-                step="0.1"
-                min={2}
-                max={70}
-                placeholder="e.g. 14.5"
-                value={bodyFat}
-                disabled={busy}
-                onChange={(event) => setBodyFat(event.target.value)}
-                className={cn(fieldClass, "focus-visible:ring-amber-500")}
-              />
-            </div>
+            <Input
+              id="quick-weight-val"
+              label={`Body weight (${weightUnit}) *`}
+              type="number"
+              inputMode="decimal"
+              step="0.1"
+              min={weightBounds.min}
+              max={weightBounds.max}
+              required
+              placeholder={weightUnit === "kg" ? "e.g. 74.8" : "e.g. 165"}
+              value={weight}
+              disabled={busy}
+              onChange={(event) => setWeight(event.target.value)}
+              inputClassName="tabular-nums"
+            />
+            <Input
+              id="quick-weight-bf"
+              label="Body fat % (optional)"
+              type="number"
+              inputMode="decimal"
+              step="0.1"
+              min={2}
+              max={70}
+              placeholder="e.g. 14.5"
+              value={bodyFat}
+              disabled={busy}
+              onChange={(event) => setBodyFat(event.target.value)}
+              inputClassName="tabular-nums"
+            />
             <Button type="submit" variant="solid" size="lg" className="w-full" isLoading={busy} disabled={busy}>
               Save weight
             </Button>
@@ -343,7 +335,7 @@ export function QuickLogModal({ isOpen, onClose, initialWaterMl }: QuickLogModal
           >
             <div>
               <div className="flex items-center justify-between gap-2 mb-1">
-                <label htmlFor="quick-steps-val" className="block text-xs font-semibold text-zinc-300">
+                <label htmlFor="quick-steps-val" className={FIELD_LABEL}>
                   Total steps today *
                 </label>
                 {isNative && nativeSteps > 0 && (
@@ -356,7 +348,7 @@ export function QuickLogModal({ isOpen, onClose, initialWaterMl }: QuickLogModal
                   </button>
                 )}
               </div>
-              <input
+              <Input
                 id="quick-steps-val"
                 type="number"
                 inputMode="numeric"
@@ -368,7 +360,7 @@ export function QuickLogModal({ isOpen, onClose, initialWaterMl }: QuickLogModal
                 value={steps}
                 disabled={busy}
                 onChange={(event) => setSteps(event.target.value)}
-                className={cn(fieldClass, "focus-visible:ring-blue-500")}
+                inputClassName="tabular-nums"
               />
             </div>
             <Button type="submit" variant="solid" size="lg" className="w-full" isLoading={busy} disabled={busy}>

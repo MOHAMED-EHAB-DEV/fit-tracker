@@ -96,10 +96,7 @@ export function DataTable<T extends object>({
           placeholder={searchPlaceholder}
           aria-label={searchLabel}
           maxLength={100}
-          startContent={<Search className="w-4 h-4 text-zinc-400" />}
-          variant="bordered"
-          radius="md"
-          className="bg-zinc-900/60 border-zinc-800/60 text-zinc-200 focus:border-violet-500/60"
+          startContent={<Search className="w-4 h-4" />}
         />
       )}
 

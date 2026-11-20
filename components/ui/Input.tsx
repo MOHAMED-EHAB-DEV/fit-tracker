@@ -2,32 +2,34 @@
 
 import React, { useId } from "react";
 import { cn } from "@/lib/utils";
+import {
+  FIELD_BOX,
+  FIELD_BOX_DISABLED,
+  FIELD_BOX_INVALID,
+  FIELD_DESCRIPTION,
+  FIELD_ERROR,
+  FIELD_LABEL,
+  FIELD_SIZE,
+  type FieldSize,
+} from "@/components/ui/field-styles";
 
-export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
-  label?: string;
-  description?: string;
-  errorMessage?: string;
+export interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "size"> {
+  label?: React.ReactNode;
+  description?: React.ReactNode;
+  errorMessage?: React.ReactNode;
   isInvalid?: boolean;
+  /** Decorative content before the text (an icon). Hidden from screen readers. */
   startContent?: React.ReactNode;
+  /** Content after the text: a unit, or an interactive button such as "show password". */
   endContent?: React.ReactNode;
-  variant?: "flat" | "bordered" | "underlined" | "faded";
-  radius?: "none" | "sm" | "md" | "lg" | "full";
+  size?: FieldSize;
+  /** Classes for the field box. */
+  className?: string;
+  /** Classes for the outer wrapper (label + box + messages). */
+  containerClassName?: string;
+  /** Classes for the <input> element itself. */
+  inputClassName?: string;
 }
-
-const VARIANT_MAP = {
-  flat: "bg-zinc-900/70 hover:bg-zinc-900/90 border border-transparent focus-within:border-emerald-500/50 focus-within:bg-zinc-900 focus-within:ring-2 focus-within:ring-emerald-500/25",
-  bordered: "bg-zinc-950/60 border border-white/10 hover:border-white/20 focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/25",
-  faded: "bg-zinc-900/40 border border-white/8 hover:border-white/15 focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/25",
-  underlined: "bg-transparent border-b-2 border-white/10 rounded-none px-0 focus-within:border-emerald-500",
-};
-
-const RADIUS_MAP = {
-  none: "rounded-none",
-  sm: "rounded-lg",
-  md: "rounded-xl",
-  lg: "rounded-2xl",
-  full: "rounded-full",
-};
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
   (
@@ -38,10 +40,11 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
       isInvalid = false,
       startContent,
       endContent,
-      variant = "bordered",
-      radius = "lg",
+      size = "md",
       disabled,
       className,
+      containerClassName,
+      inputClassName,
       id,
       "aria-describedby": ariaDescribedBy,
       ...props
@@ -52,59 +55,61 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
     const inputId = id || generatedId;
     const errorId = `${inputId}-error`;
     const descId = `${inputId}-desc`;
+    const showError = isInvalid && Boolean(errorMessage);
 
-    const computedDescribedBy = [
-      isInvalid && errorMessage ? errorId : null,
-      description ? descId : null,
-      ariaDescribedBy,
-    ]
-      .filter(Boolean)
-      .join(" ") || undefined;
+    const describedBy =
+      [showError ? errorId : null, description && !showError ? descId : null, ariaDescribedBy]
+        .filter(Boolean)
+        .join(" ") || undefined;
 
     return (
-      <div className="w-full space-y-1.5 text-start">
+      <div className={cn("w-full space-y-1.5 text-start", containerClassName)}>
         {label && (
-          <label
-            htmlFor={inputId}
-            className="block text-xs font-bold uppercase tracking-wider text-zinc-400 select-none"
-          >
+          <label htmlFor={inputId} className={FIELD_LABEL}>
             {label}
           </label>
         )}
 
         <div
           className={cn(
-            "relative flex items-center gap-2.5 px-4 py-3 min-h-11 text-sm transition-all duration-200 backdrop-blur-md",
-            VARIANT_MAP[variant],
-            RADIUS_MAP[radius],
-            isInvalid && "border-red-500/80 ring-2 ring-red-500/20 bg-red-500/5",
-            disabled && "opacity-40 cursor-not-allowed pointer-events-none",
+            "relative flex items-center gap-2 px-3.5",
+            FIELD_BOX,
+            FIELD_SIZE[size],
+            isInvalid && FIELD_BOX_INVALID,
+            disabled && FIELD_BOX_DISABLED,
             className
           )}
         >
-          {startContent && <span className="text-zinc-500 shrink-0 select-none" aria-hidden="true">{startContent}</span>}
+          {startContent && (
+            <span className="flex shrink-0 text-zinc-400 select-none" aria-hidden="true">
+              {startContent}
+            </span>
+          )}
 
           <input
             ref={ref}
             id={inputId}
             disabled={disabled}
-            aria-invalid={isInvalid}
-            aria-describedby={computedDescribedBy}
-            className="w-full bg-transparent text-white placeholder-zinc-500 text-sm font-medium focus:outline-none disabled:cursor-not-allowed"
+            aria-invalid={isInvalid || undefined}
+            aria-describedby={describedBy}
+            className={cn(
+              "w-full min-w-0 self-stretch bg-transparent text-white placeholder:text-zinc-500 focus:outline-none disabled:cursor-not-allowed scheme-dark [&::-webkit-search-cancel-button]:appearance-none",
+              inputClassName
+            )}
             {...props}
           />
 
-          {endContent && <span className="text-zinc-500 shrink-0 select-none" aria-hidden="true">{endContent}</span>}
+          {endContent && <span className="flex shrink-0 items-center text-zinc-400 -me-1.5">{endContent}</span>}
         </div>
 
-        {errorMessage && isInvalid && (
-          <p id={errorId} role="alert" className="text-xs font-semibold text-red-400 mt-1">
+        {showError && (
+          <p id={errorId} role="alert" className={FIELD_ERROR}>
             {errorMessage}
           </p>
         )}
 
-        {description && !isInvalid && (
-          <p id={descId} className="text-xs text-zinc-500 mt-1">
+        {description && !showError && (
+          <p id={descId} className={FIELD_DESCRIPTION}>
             {description}
           </p>
         )}

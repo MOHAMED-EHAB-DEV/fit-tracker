@@ -4,7 +4,8 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
-import { AUTH_INPUT_CLASS, AUTH_LINK_CLASS, AuthCard, FormError } from "@/components/auth/AuthCard";
+import { Input } from "@/components/ui/Input";
+import { AUTH_LINK_CLASS, AuthCard, FormError } from "@/components/auth/AuthCard";
 import { PasswordField } from "@/components/auth/PasswordField";
 import { api, errorMessage } from "@/lib/client/api";
 import { notifyNativeLogout } from "@/services/webview-bridge";
@@ -64,24 +65,19 @@ export function LoginForm() {
       <form onSubmit={handleSubmit} className="space-y-4">
         <FormError message={error} />
 
-        <div className="space-y-1.5">
-          <label htmlFor="login-email" className="block text-sm font-medium text-zinc-200">
-            Email
-          </label>
-          <input
-            id="login-email"
-            type="email"
-            inputMode="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            autoComplete="email"
-            autoCapitalize="none"
-            spellCheck={false}
-            required
-            maxLength={254}
-            className={AUTH_INPUT_CLASS}
-          />
-        </div>
+        <Input
+          id="login-email"
+          label="Email"
+          type="email"
+          inputMode="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          autoComplete="email"
+          autoCapitalize="none"
+          spellCheck={false}
+          required
+          maxLength={254}
+        />
 
         <PasswordField label="Password" value={password} onChange={setPassword} autoComplete="current-password" />
 

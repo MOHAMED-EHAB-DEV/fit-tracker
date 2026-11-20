@@ -6,6 +6,9 @@ import dynamic from "next/dynamic";
 import data from "@emoji-mart/data";
 import { Archive, Loader2, Palette } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
+import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
+import { FIELD_LABEL } from "@/components/ui/field-styles";
 import { cn } from "@/lib/utils";
 import { usePopover } from "@/hooks/usePopover";
 import { useFloatingPosition } from "@/hooks/useFloatingPosition";
@@ -189,7 +192,7 @@ function HabitFormModalInner({ isOpen, habit, onClose, onSaved, onRequestArchive
         )}
 
         <div>
-          <label htmlFor={ids.name} className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-2">
+          <label htmlFor={ids.name} className={cn(FIELD_LABEL, "mb-1.5")}>
             Habit name & emoji
           </label>
           <div className="flex items-center gap-2.5">
@@ -205,7 +208,7 @@ function HabitFormModalInner({ isOpen, habit, onClose, onSaved, onRequestArchive
             >
               {emoji}
             </button>
-            <input
+            <Input
               id={ids.name}
               type="text"
               required
@@ -213,9 +216,9 @@ function HabitFormModalInner({ isOpen, habit, onClose, onSaved, onRequestArchive
               maxLength={HABIT_NAME_MAX}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Read 20 pages"
-              aria-invalid={Boolean(error) && !trimmedName}
+              isInvalid={Boolean(error) && !trimmedName}
               aria-describedby={error ? ids.error : undefined}
-              className="flex-1 min-w-0 min-h-12 px-4 rounded-2xl bg-zinc-800/60 border border-zinc-700 text-base text-white placeholder-zinc-400 focus:outline-hidden focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
+              containerClassName="flex-1 min-w-0"
             />
           </div>
           {emojiRendered &&
@@ -252,21 +255,19 @@ function HabitFormModalInner({ isOpen, habit, onClose, onSaved, onRequestArchive
         </div>
 
         <div>
-          <label
-            htmlFor={ids.description}
-            className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-2"
-          >
-            Description <span className="normal-case font-semibold tracking-normal text-zinc-500">(optional)</span>
-          </label>
-          <textarea
+          <Textarea
             id={ids.description}
+            label={
+              <>
+                Description <span className="font-normal text-zinc-500">(optional)</span>
+              </>
+            }
             rows={3}
             value={description}
             maxLength={HABIT_DESCRIPTION_MAX}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Why it matters, or how you'll do it"
             aria-describedby={showDescriptionCount ? ids.descriptionCount : undefined}
-            className="block w-full min-h-12 px-4 py-3 rounded-2xl bg-zinc-800/60 border border-zinc-700 text-base text-white placeholder-zinc-400 resize-y focus:outline-hidden focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
           />
           {showDescriptionCount && (
             <p
@@ -320,15 +321,16 @@ function HabitFormModalInner({ isOpen, habit, onClose, onSaved, onRequestArchive
             <label htmlFor={ids.colorText} className="sr-only">
               Hex colour
             </label>
-            <input
+            <Input
               id={ids.colorText}
               type="text"
               value={colorText}
               onChange={(e) => setColorText(e.target.value)}
               placeholder="#10b981"
               maxLength={7}
-              aria-invalid={!color}
-              className="flex-1 min-w-0 min-h-11 px-3 rounded-xl bg-zinc-800/60 border border-zinc-700 text-sm font-mono text-zinc-100 placeholder-zinc-400 focus:outline-hidden focus:border-emerald-500 transition"
+              isInvalid={!color}
+              containerClassName="flex-1 min-w-0"
+              inputClassName="font-mono"
             />
           </div>
           {!color && <p className="mt-1.5 text-xs text-amber-400">Enter a hex colour such as #10b981.</p>}

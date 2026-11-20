@@ -7,6 +7,8 @@ import { describeProposal } from "@/lib/assistant/proposals";
 import { logProposalSchema, LOG_LIMITS } from "@/lib/validation/assistant";
 import { MEAL_TYPES, type LogProposal, type MealTypeId } from "@/lib/assistant/types";
 import type { ProposalState } from "@/lib/assistant/chat-storage";
+import { Input } from "@/components/ui/Input";
+import { Select, type SelectOption } from "@/components/ui/Select";
 
 const MEAL_TYPE_LABEL: Record<MealTypeId, string> = {
   breakfast: "Breakfast",
@@ -28,9 +30,11 @@ interface ProposalCardProps {
   onDismiss: () => void;
 }
 
-const inputClass =
-  "w-full min-h-11 px-3 bg-zinc-900 border border-zinc-700 rounded-xl text-sm text-zinc-100 focus:outline-none focus:border-emerald-500 focus-visible:ring-2 focus-visible:ring-emerald-500/30";
-const labelClass = "block text-xs font-medium text-zinc-400 mb-1";
+const MEAL_TYPE_OPTIONS: SelectOption<MealTypeId>[] = MEAL_TYPES.map((type) => ({ value: type, label: MEAL_TYPE_LABEL[type] }));
+const UNIT_OPTIONS: SelectOption<"kg" | "lbs">[] = [
+  { value: "kg", label: "kg" },
+  { value: "lbs", label: "lbs" },
+];
 
 function NumberField({
   id,
@@ -50,22 +54,18 @@ function NumberField({
   onChange: (value: number) => void;
 }) {
   return (
-    <div>
-      <label htmlFor={id} className={labelClass}>
-        {label}
-      </label>
-      <input
-        id={id}
-        type="number"
-        inputMode="decimal"
-        min={min}
-        max={max}
-        step={step}
-        value={Number.isFinite(value) ? value : ""}
-        onChange={(e) => onChange(e.target.value === "" ? NaN : Number(e.target.value))}
-        className={inputClass}
-      />
-    </div>
+    <Input
+      id={id}
+      label={label}
+      size="sm"
+      type="number"
+      inputMode="decimal"
+      min={min}
+      max={max}
+      step={step}
+      value={Number.isFinite(value) ? value : ""}
+      onChange={(e) => onChange(e.target.value === "" ? NaN : Number(e.target.value))}
+    />
   );
 }
 
@@ -120,35 +120,24 @@ export function ProposalCard({ state, today, onChange, onConfirm, onDismiss }: P
         <div className="grid grid-cols-2 gap-2">
           {proposal.kind === "meal" && (
             <>
-              <div className="col-span-2">
-                <label htmlFor={`${ids}-desc`} className={labelClass}>
-                  Description
-                </label>
-                <input
-                  id={`${ids}-desc`}
-                  value={proposal.description}
-                  maxLength={200}
-                  onChange={(e) => set({ description: e.target.value })}
-                  className={inputClass}
-                />
-              </div>
-              <div className="col-span-2 sm:col-span-1">
-                <label htmlFor={`${ids}-type`} className={labelClass}>
-                  Meal
-                </label>
-                <select
-                  id={`${ids}-type`}
-                  value={proposal.mealType}
-                  onChange={(e) => set({ mealType: e.target.value as MealTypeId })}
-                  className={inputClass}
-                >
-                  {MEAL_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {MEAL_TYPE_LABEL[type]}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <Input
+                id={`${ids}-desc`}
+                label="Description"
+                size="sm"
+                value={proposal.description}
+                maxLength={200}
+                onChange={(e) => set({ description: e.target.value })}
+                containerClassName="col-span-2"
+              />
+              <Select<MealTypeId>
+                id={`${ids}-type`}
+                label="Meal"
+                size="sm"
+                options={MEAL_TYPE_OPTIONS}
+                value={proposal.mealType}
+                onChange={(mealType) => set({ mealType })}
+                className="col-span-2 sm:col-span-1"
+              />
               <NumberField id={`${ids}-kcal`} label="Calories (kcal)" value={proposal.calories} min={0} max={LOG_LIMITS.calories} step={1} onChange={(v) => set({ calories: v })} />
               <NumberField id={`${ids}-p`} label="Protein (g)" value={proposal.protein} min={0} max={LOG_LIMITS.protein} step={0.1} onChange={(v) => set({ protein: v })} />
               <NumberField id={`${ids}-c`} label="Carbs (g)" value={proposal.carbs} min={0} max={LOG_LIMITS.carbs} step={0.1} onChange={(v) => set({ carbs: v })} />
@@ -164,36 +153,27 @@ export function ProposalCard({ state, today, onChange, onConfirm, onDismiss }: P
           {proposal.kind === "weight" && (
             <>
               <NumberField id={`${ids}-w`} label="Weight" value={proposal.weight} min={1} max={1000} step={0.1} onChange={(v) => set({ weight: v })} />
-              <div>
-                <label htmlFor={`${ids}-unit`} className={labelClass}>
-                  Unit
-                </label>
-                <select
-                  id={`${ids}-unit`}
-                  value={proposal.unit}
-                  onChange={(e) => set({ unit: e.target.value === "lbs" ? "lbs" : "kg" })}
-                  className={inputClass}
-                >
-                  <option value="kg">kg</option>
-                  <option value="lbs">lbs</option>
-                </select>
-              </div>
+              <Select<"kg" | "lbs">
+                id={`${ids}-unit`}
+                label="Unit"
+                size="sm"
+                options={UNIT_OPTIONS}
+                value={proposal.unit}
+                onChange={(unit) => set({ unit })}
+              />
             </>
           )}
-          <div>
-            <label htmlFor={`${ids}-date`} className={labelClass}>
-              Date
-            </label>
-            <input
-              id={`${ids}-date`}
-              type="date"
-              min={minDate}
-              max={today}
-              value={proposal.date}
-              onChange={(e) => e.target.value && set({ date: e.target.value })}
-              className={inputClass}
-            />
-          </div>
+          <Input
+            id={`${ids}-date`}
+            label="Date"
+            size="sm"
+            type="date"
+            min={minDate}
+            max={today}
+            value={proposal.date}
+            isInvalid={dateInvalid}
+            onChange={(e) => e.target.value && set({ date: e.target.value })}
+          />
         </div>
       )}
 

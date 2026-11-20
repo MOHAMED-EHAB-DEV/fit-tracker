@@ -4,7 +4,8 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
-import { AUTH_INPUT_CLASS, AUTH_LINK_CLASS, AuthCard, FormError } from "@/components/auth/AuthCard";
+import { Input } from "@/components/ui/Input";
+import { AUTH_LINK_CLASS, AuthCard, FormError } from "@/components/auth/AuthCard";
 import { PasswordField } from "@/components/auth/PasswordField";
 import { api, errorMessage } from "@/lib/client/api";
 import { detectDeviceTimeZone } from "@/lib/time";
@@ -76,40 +77,30 @@ export function SignupForm() {
       <form onSubmit={handleSubmit} className="space-y-4">
         <FormError message={error} />
 
-        <div className="space-y-1.5">
-          <label htmlFor="signup-name" className="block text-sm font-medium text-zinc-200">
-            Name
-          </label>
-          <input
-            id="signup-name"
-            type="text"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            autoComplete="name"
-            required
-            maxLength={80}
-            className={AUTH_INPUT_CLASS}
-          />
-        </div>
+        <Input
+          id="signup-name"
+          label="Name"
+          type="text"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          autoComplete="name"
+          required
+          maxLength={80}
+        />
 
-        <div className="space-y-1.5">
-          <label htmlFor="signup-email" className="block text-sm font-medium text-zinc-200">
-            Email
-          </label>
-          <input
-            id="signup-email"
-            type="email"
-            inputMode="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            autoComplete="email"
-            autoCapitalize="none"
-            spellCheck={false}
-            required
-            maxLength={254}
-            className={AUTH_INPUT_CLASS}
-          />
-        </div>
+        <Input
+          id="signup-email"
+          label="Email"
+          type="email"
+          inputMode="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          autoComplete="email"
+          autoCapitalize="none"
+          spellCheck={false}
+          required
+          maxLength={254}
+        />
 
         <PasswordField
           label="Password"

@@ -20,6 +20,8 @@ import { MEAL_TYPE_OPTIONS } from "@/constants/nutrition";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
+import { Select } from "@/components/ui/Select";
+import { Textarea } from "@/components/ui/Textarea";
 import { MealFormDialog } from "@/components/nutrition/MealFormDialog";
 import { MacroSplitBar } from "@/components/nutrition/MealForm";
 import { todayInZone, useUserTimeZone } from "@/components/nutrition/useUserTimeZone";
@@ -393,43 +395,25 @@ export function PhotoAnalyzer() {
           )}
 
           <div className="space-y-4">
-            <div>
-              <label htmlFor="analyze-meal-type" className="block text-sm font-semibold text-zinc-300 mb-1">
-                Meal
-              </label>
-              <select
-                id="analyze-meal-type"
-                value={mealType}
-                disabled={analyzing}
-                onChange={(event) => setMealType(event.target.value as MealType)}
-                className="w-full min-h-11 px-3 py-2 bg-zinc-950/80 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 cursor-pointer"
-              >
-                {MEAL_TYPE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value} className="bg-zinc-900">
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label htmlFor="analyze-description" className="block text-sm font-semibold text-zinc-300 mb-1">
-                Description (optional)
-              </label>
-              <textarea
-                id="analyze-description"
-                rows={3}
-                maxLength={MEAL_LIMITS.aiDescriptionMax}
-                value={description}
-                disabled={analyzing}
-                onChange={(event) => setDescription(event.target.value)}
-                placeholder="e.g. 200 g grilled chicken, 1 cup rice, broccoli with 1 tbsp olive oil"
-                className="w-full min-h-11 px-3 py-2 bg-zinc-950/80 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 resize-y"
-                aria-describedby="analyze-description-help"
-              />
-              <p id="analyze-description-help" className="text-xs text-zinc-400 mt-1">
-                Weights, oils and sauces you mention make the estimate more accurate.
-              </p>
-            </div>
+            <Select<MealType>
+              id="analyze-meal-type"
+              label="Meal"
+              options={MEAL_TYPE_OPTIONS}
+              value={mealType}
+              disabled={analyzing}
+              onChange={(value) => setMealType(value)}
+            />
+            <Textarea
+              id="analyze-description"
+              label="Description (optional)"
+              description="Weights, oils and sauces you mention make the estimate more accurate."
+              rows={3}
+              maxLength={MEAL_LIMITS.aiDescriptionMax}
+              value={description}
+              disabled={analyzing}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="e.g. 200 g grilled chicken, 1 cup rice, broccoli with 1 tbsp olive oil"
+            />
           </div>
 
           {review && !reviewOpen && (

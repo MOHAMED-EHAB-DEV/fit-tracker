@@ -7,8 +7,10 @@ import { Download, ExternalLink, LogOut, RefreshCw, ShieldCheck } from "lucide-r
 import versionData from "@/version.json";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Input } from "@/components/ui/Input";
 import { NumberField } from "@/components/ui/NumberField";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/Toast";
 import { useUnsavedChanges } from "@/components/admin/useUnsavedChanges";
 import { useUser, type ClientUser } from "@/context/UserContext";
@@ -80,7 +82,6 @@ const WEEK_START_OPTIONS: Array<{ value: WeekdayKey; label: string }> = [
 
 const REST_OPTIONS = [0, 30, 45, 60, 90, 120, 150, 180, 240, 300];
 
-const FIELD_CLASS = "w-full min-h-12 rounded-xl border border-line bg-surface-2 px-3.5 text-base text-white";
 const LABEL_CLASS = "block text-sm font-medium text-zinc-200";
 const HELP_CLASS = "text-sm text-zinc-400";
 
@@ -366,18 +367,13 @@ export function SettingsClient() {
 
       <form onSubmit={save} className="space-y-6" noValidate>
         <Section title="About you" description="Used to estimate how many calories you burn.">
-          <div className="space-y-1.5">
-            <label htmlFor="settings-name" className={LABEL_CLASS}>
-              Name
-            </label>
-            <input
-              id="settings-name"
-              value={form.name}
-              onChange={(event) => set("name", event.target.value.slice(0, 80))}
-              autoComplete="name"
-              className={FIELD_CLASS}
-            />
-          </div>
+          <Input
+            id="settings-name"
+            label="Name"
+            value={form.name}
+            onChange={(event) => set("name", event.target.value.slice(0, 80))}
+            autoComplete="name"
+          />
 
           <div className="space-y-1.5">
             <p className={LABEL_CLASS}>Sex</p>
@@ -394,20 +390,15 @@ export function SettingsClient() {
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <label htmlFor="settings-birth-date" className={LABEL_CLASS}>
-                Date of birth
-              </label>
-              <input
-                id="settings-birth-date"
-                type="date"
-                value={form.birthDate}
-                max={today}
-                autoComplete="bday"
-                onChange={(event) => set("birthDate", event.target.value)}
-                className={FIELD_CLASS}
-              />
-            </div>
+            <Input
+              id="settings-birth-date"
+              label="Date of birth"
+              type="date"
+              value={form.birthDate}
+              max={today}
+              autoComplete="bday"
+              onChange={(event) => set("birthDate", event.target.value)}
+            />
             {!form.birthDate && (
               <div className="space-y-1.5">
                 <p className={LABEL_CLASS}>Age</p>
@@ -470,24 +461,14 @@ export function SettingsClient() {
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label htmlFor="settings-activity" className={LABEL_CLASS}>
-              Activity level
-            </label>
-            <select
-              id="settings-activity"
-              value={form.activityLevel ?? ""}
-              onChange={(event) => set("activityLevel", (event.target.value || null) as ActivityLevel | null)}
-              className={FIELD_CLASS}
-            >
-              {!form.activityLevel && <option value="">Choose…</option>}
-              {ACTIVITY_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <Select<ActivityLevel>
+            id="settings-activity"
+            label="Activity level"
+            value={form.activityLevel}
+            onChange={(value) => set("activityLevel", value)}
+            options={ACTIVITY_OPTIONS}
+            placeholder="Choose…"
+          />
 
           <div className="space-y-1.5">
             <p className={LABEL_CLASS}>Goal</p>
@@ -597,21 +578,14 @@ export function SettingsClient() {
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="settings-timezone" className={LABEL_CLASS}>
-              Time zone
-            </label>
-            <select
+            <Select<string>
               id="settings-timezone"
+              label="Time zone"
               value={form.timezone}
-              onChange={(event) => set("timezone", event.target.value)}
-              className={FIELD_CLASS}
-            >
-              {timeZones.map((zone) => (
-                <option key={zone} value={zone}>
-                  {zone.replace(/_/g, " ")}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => set("timezone", value)}
+              options={timeZones.map((zone) => ({ value: zone, label: zone.replace(/_/g, " ") }))}
+              searchable
+            />
             <p className={HELP_CLASS}>Decides when your day starts and ends.</p>
             {form.timezone !== deviceZone && (
               <Button type="button" variant="bordered" size="sm" onClick={() => set("timezone", deviceZone)}>
@@ -621,46 +595,30 @@ export function SettingsClient() {
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <label htmlFor="settings-week-start" className={LABEL_CLASS}>
-                Week starts on
-              </label>
-              <select
-                id="settings-week-start"
-                value={form.weekStartDay}
-                onChange={(event) => set("weekStartDay", event.target.value as WeekdayKey)}
-                className={FIELD_CLASS}
-              >
-                {WEEK_START_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <label htmlFor="settings-rest" className={LABEL_CLASS}>
-                Rest timer after a set
-              </label>
-              <select
-                id="settings-rest"
-                value={form.restTimerDefaultSec}
-                onChange={(event) => set("restTimerDefaultSec", Number(event.target.value))}
-                className={FIELD_CLASS}
-              >
-                {Array.from(new Set([...REST_OPTIONS, form.restTimerDefaultSec]))
-                  .sort((a, b) => a - b)
-                  .map((seconds) => (
-                    <option key={seconds} value={seconds}>
-                      {seconds === 0
-                        ? "Off"
-                        : seconds < 60
-                          ? `${seconds} seconds`
-                          : `${Math.floor(seconds / 60)} min${seconds % 60 ? ` ${seconds % 60} s` : ""}`}
-                    </option>
-                  ))}
-              </select>
-            </div>
+            <Select<WeekdayKey>
+              id="settings-week-start"
+              label="Week starts on"
+              value={form.weekStartDay}
+              onChange={(value) => set("weekStartDay", value)}
+              options={WEEK_START_OPTIONS}
+            />
+            <Select<number>
+              id="settings-rest"
+              label="Rest timer after a set"
+              value={form.restTimerDefaultSec}
+              onChange={(value) => set("restTimerDefaultSec", value)}
+              options={Array.from(new Set([...REST_OPTIONS, form.restTimerDefaultSec]))
+                .sort((a, b) => a - b)
+                .map((seconds) => ({
+                  value: seconds,
+                  label:
+                    seconds === 0
+                      ? "Off"
+                      : seconds < 60
+                        ? `${seconds} seconds`
+                        : `${Math.floor(seconds / 60)} min${seconds % 60 ? ` ${seconds % 60} s` : ""}`,
+                }))}
+            />
           </div>
         </Section>
 
@@ -671,27 +629,20 @@ export function SettingsClient() {
           <p className="text-base text-zinc-300">
             {hasSavedKey ? "Your own key is saved and in use." : "Using the shared key, with a daily limit."}
           </p>
-          <div className="space-y-1.5">
-            <label htmlFor="settings-gemini-key" className={LABEL_CLASS}>
-              {hasSavedKey ? "Replace your key" : "Your Gemini API key (optional)"}
-            </label>
-            <input
-              id="settings-gemini-key"
-              type="password"
-              value={newKey}
-              onChange={(event) => {
-                setError(null);
-                setNewKey(event.target.value.slice(0, 200));
-              }}
-              autoComplete="off"
-              spellCheck={false}
-              placeholder={hasSavedKey ? "Paste a new key to replace it" : "Paste your key"}
-              className={FIELD_CLASS}
-            />
-            <p className={HELP_CLASS}>
-              The key is stored encrypted and is never shown again or sent back to your browser.
-            </p>
-          </div>
+          <Input
+            id="settings-gemini-key"
+            label={hasSavedKey ? "Replace your key" : "Your Gemini API key (optional)"}
+            description="The key is stored encrypted and is never shown again or sent back to your browser."
+            type="password"
+            value={newKey}
+            onChange={(event) => {
+              setError(null);
+              setNewKey(event.target.value.slice(0, 200));
+            }}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={hasSavedKey ? "Paste a new key to replace it" : "Paste your key"}
+          />
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"

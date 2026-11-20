@@ -6,7 +6,15 @@ import { CATEGORY_CONFIG, HabitOption, PlannedEventItem, RECURRENCE_OPTIONS, Rec
 import type { AiPlanEvent } from "@/lib/planner/ai-plan";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { Select, type SelectOption } from "@/components/ui/Select";
+import { Textarea } from "@/components/ui/Textarea";
 import { formatDateString } from "@/lib/time";
+
+const AI_RECURRENCE_OPTIONS: SelectOption<RecurrenceType>[] = RECURRENCE_OPTIONS.map((opt) => ({
+  value: opt.value,
+  label: opt.value === "once" ? "Only this day" : opt.label,
+}));
 
 interface AIPlannerModalProps {
   isOpen: boolean;
@@ -177,20 +185,15 @@ export default function AIPlannerModal({
       size="lg"
     >
       <div className="space-y-4">
-        <div>
-          <label htmlFor="ai-plan-notes" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
-            Anything to plan around? (optional)
-          </label>
-          <textarea
-            id="ai-plan-notes"
-            rows={2}
-            maxLength={500}
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="e.g. Leg day in the afternoon, team call at 15:00, in bed by 22:30"
-            className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-emerald-500 text-sm resize-y"
-          />
-        </div>
+        <Textarea
+          id="ai-plan-notes"
+          label="Anything to plan around? (optional)"
+          rows={2}
+          maxLength={500}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="e.g. Leg day in the afternoon, team call at 15:00, in bed by 22:30"
+        />
 
         {error && (
           <div role="alert" className="flex items-start gap-2 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-sm">
@@ -289,18 +292,15 @@ export default function AIPlannerModal({
                         <label htmlFor={`ai-recur-${index}`} className="text-xs text-zinc-400">
                           Repeats
                         </label>
-                        <select
+                        <Select<RecurrenceType>
                           id={`ai-recur-${index}`}
+                          ariaLabel="Repeats"
+                          options={AI_RECURRENCE_OPTIONS}
                           value={event.recurrence}
-                          onChange={(e) => setRecurrence(index, e.target.value as RecurrenceType)}
-                          className="min-h-11 px-2 bg-zinc-950 border border-zinc-700 rounded-lg text-sm text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-                        >
-                          {RECURRENCE_OPTIONS.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                              {opt.value === "once" ? "Only this day" : opt.label}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={(value) => setRecurrence(index, value)}
+                          size="sm"
+                          className="w-44"
+                        />
                       </div>
                     )}
                   </li>
@@ -310,30 +310,28 @@ export default function AIPlannerModal({
 
             {replaceable.length > 0 && (
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-3 space-y-2">
-                <label className="flex items-center gap-3 min-h-11 text-sm text-zinc-200 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={replace}
-                    onChange={(e) => toggleReplace(e.target.checked)}
-                    className="w-5 h-5 rounded bg-zinc-900 border-zinc-700 accent-rose-500"
-                  />
-                  Remove some of my one-time events for this day
-                </label>
+                <Checkbox
+                  checked={replace}
+                  onChange={(e) => toggleReplace(e.target.checked)}
+                  label="Remove some of my one-time events for this day"
+                  className="flex"
+                />
                 {replace && (
                   <ul className="space-y-1" aria-label="Events that will be removed">
                     {replaceable.map((event) => (
                       <li key={event._id}>
-                        <label className="flex items-center gap-3 min-h-11 px-2 rounded-lg text-sm text-zinc-300 hover:bg-zinc-900 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={replaceIds.has(event._id)}
-                            onChange={() => toggleReplaceId(event._id)}
-                            className="w-5 h-5 accent-rose-500"
-                          />
-                          <Trash2 className="w-3.5 h-3.5 text-rose-400 shrink-0" aria-hidden="true" />
-                          <span className="font-mono text-xs text-zinc-400">{event.startTime}</span>
-                          <span className="truncate">{event.title}</span>
-                        </label>
+                        <Checkbox
+                          checked={replaceIds.has(event._id)}
+                          onChange={() => toggleReplaceId(event._id)}
+                          className="flex px-2 rounded-lg hover:bg-zinc-900"
+                          label={
+                            <span className="flex items-center gap-3 min-w-0">
+                              <Trash2 className="w-3.5 h-3.5 text-rose-400 shrink-0" aria-hidden="true" />
+                              <span className="font-mono text-xs text-zinc-400">{event.startTime}</span>
+                              <span className="truncate">{event.title}</span>
+                            </span>
+                          }
+                        />
                       </li>
                     ))}
                     <li className="text-xs text-zinc-400 px-2 pt-1">

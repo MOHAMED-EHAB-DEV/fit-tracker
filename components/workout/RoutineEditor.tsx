@@ -20,6 +20,8 @@ import { Button } from "@/components/ui/Button";
 import { Drawer } from "@/components/ui/Drawer";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { NumberField } from "@/components/ui/NumberField";
+import { Select } from "@/components/ui/Select";
+import { Textarea } from "@/components/ui/Textarea";
 import { useToast } from "@/components/ui/Toast";
 import { ExercisePicker } from "@/components/workout/ExercisePicker";
 import { ExerciseDetailSheet } from "@/components/workout/ExerciseDetailSheet";
@@ -438,19 +440,16 @@ export function RoutineEditor({ initialRoutine, active }: RoutineEditorProps) {
       </header>
 
       <div className="mt-4 space-y-3 pb-28">
-        <label className="block space-y-1.5">
-          <span className="text-sm text-zinc-300">Note (optional)</span>
-          <textarea
-            value={state.notes}
-            onChange={(event) => {
-              const notes = event.target.value.slice(0, 1000);
-              change((current) => ({ ...current, notes }));
-            }}
-            rows={2}
-            placeholder="Anything to remember about this routine"
-            className="w-full px-3 py-2.5 rounded-xl bg-surface border border-line text-white placeholder:text-zinc-500"
-          />
-        </label>
+        <Textarea
+          label="Note (optional)"
+          value={state.notes}
+          onChange={(event) => {
+            const notes = event.target.value.slice(0, 1000);
+            change((current) => ({ ...current, notes }));
+          }}
+          rows={2}
+          placeholder="Anything to remember about this routine"
+        />
 
         {state.exercises.length === 0 ? (
           <div className="rounded-3xl border border-dashed border-line px-4 py-10 text-center">
@@ -580,37 +579,28 @@ export function RoutineEditor({ initialRoutine, active }: RoutineEditorProps) {
               </div>
             )}
 
-            <label className="block space-y-1.5">
-              <span className="text-sm text-zinc-300">Rest after each set</span>
-              <select
-                value={menuExercise.restSec ?? defaultRestSec}
-                onChange={(event) => {
-                  const restSec = Number(event.target.value);
-                  updateExercise(menuExercise.id, (exercise) => ({ ...exercise, restSec }));
-                }}
-                className="w-full min-h-12 px-3 rounded-xl bg-surface-2 border border-line text-white"
-              >
-                {restChoicesWith(menuExercise.restSec ?? defaultRestSec).map((seconds) => (
-                  <option key={seconds} value={seconds}>
-                    {formatRestTime(seconds)}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <Select<number>
+              label="Rest after each set"
+              options={restChoicesWith(menuExercise.restSec ?? defaultRestSec).map((seconds) => ({
+                value: seconds,
+                label: formatRestTime(seconds),
+              }))}
+              value={menuExercise.restSec ?? defaultRestSec}
+              onChange={(restSec) => {
+                updateExercise(menuExercise.id, (exercise) => ({ ...exercise, restSec }));
+              }}
+            />
 
-            <label className="block space-y-1.5">
-              <span className="text-sm text-zinc-300">Note</span>
-              <textarea
-                value={menuExercise.notes}
-                onChange={(event) => {
-                  const notes = event.target.value.slice(0, 500);
-                  updateExercise(menuExercise.id, (exercise) => ({ ...exercise, notes }));
-                }}
-                rows={2}
-                placeholder="Seat height, grip, tempo…"
-                className="w-full px-3 py-2.5 rounded-xl bg-surface-2 border border-line text-white placeholder:text-zinc-500"
-              />
-            </label>
+            <Textarea
+              label="Note"
+              value={menuExercise.notes}
+              onChange={(event) => {
+                const notes = event.target.value.slice(0, 500);
+                updateExercise(menuExercise.id, (exercise) => ({ ...exercise, notes }));
+              }}
+              rows={2}
+              placeholder="Seat height, grip, tempo…"
+            />
 
             <div className="grid grid-cols-2 gap-2">
               <Button

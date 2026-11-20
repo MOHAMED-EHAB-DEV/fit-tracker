@@ -3,6 +3,7 @@
 import { useId } from "react";
 import { CheckCircle2, Circle, Repeat, Info } from "lucide-react";
 import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
 import {
   CATEGORY_CONFIG,
   EventCategory,
@@ -49,8 +50,6 @@ interface EventFormProps {
   autoFocusTitle?: boolean;
 }
 
-const fieldClass =
-  "w-full px-3.5 min-h-11 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-emerald-500 focus-visible:ring-2 focus-visible:ring-emerald-500/30 text-sm";
 const labelClass = "block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5";
 
 export default function EventForm({
@@ -126,31 +125,21 @@ export default function EventForm({
       </fieldset>
 
       <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label htmlFor={`${ids}-start`} className={labelClass}>
-            Start time
-          </label>
-          <input
-            id={`${ids}-start`}
-            type="time"
-            required
-            value={values.startTime}
-            onChange={(e) => set("startTime", e.target.value)}
-            className={fieldClass}
-          />
-        </div>
-        <div>
-          <label htmlFor={`${ids}-end`} className={labelClass}>
-            End time (optional)
-          </label>
-          <input
-            id={`${ids}-end`}
-            type="time"
-            value={values.endTime}
-            onChange={(e) => set("endTime", e.target.value)}
-            className={fieldClass}
-          />
-        </div>
+        <Input
+          id={`${ids}-start`}
+          label="Start time"
+          type="time"
+          required
+          value={values.startTime}
+          onChange={(e) => set("startTime", e.target.value)}
+        />
+        <Input
+          id={`${ids}-end`}
+          label="End time (optional)"
+          type="time"
+          value={values.endTime}
+          onChange={(e) => set("endTime", e.target.value)}
+        />
       </div>
 
       <fieldset>
@@ -180,20 +169,15 @@ export default function EventForm({
         </div>
       </fieldset>
 
-      <div>
-        <label htmlFor={`${ids}-notes`} className={labelClass}>
-          Notes
-        </label>
-        <textarea
-          id={`${ids}-notes`}
-          rows={2}
-          maxLength={1000}
-          value={values.description}
-          onChange={(e) => set("description", e.target.value)}
-          className={`${fieldClass} resize-y`}
-          placeholder="Optional details or targets"
-        />
-      </div>
+      <Textarea
+        id={`${ids}-notes`}
+        label="Notes"
+        rows={2}
+        maxLength={1000}
+        value={values.description}
+        onChange={(e) => set("description", e.target.value)}
+        placeholder="Optional details or targets"
+      />
 
       {availableHabits.length > 0 && (
         <fieldset>

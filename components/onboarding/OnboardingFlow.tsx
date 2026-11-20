@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Check } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { NumberField } from "@/components/ui/NumberField";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { api, errorMessage } from "@/lib/client/api";
@@ -292,21 +293,16 @@ export function OnboardingFlow({ userName, initialWeightUnit }: OnboardingFlowPr
                   ))}
                 </div>
               </fieldset>
-              <div className="space-y-1.5">
-                <label htmlFor="onboarding-birth-date" className="block text-sm font-medium text-zinc-200">
-                  Date of birth
-                </label>
-                <input
-                  id="onboarding-birth-date"
-                  type="date"
-                  value={answers.birthDate}
-                  min={oldest}
-                  max={youngest}
-                  autoComplete="bday"
-                  onChange={(event) => update({ birthDate: event.target.value })}
-                  className="w-full min-h-12 rounded-xl border border-line bg-surface-2 px-3.5 text-base text-white"
-                />
-              </div>
+              <Input
+                id="onboarding-birth-date"
+                label="Date of birth"
+                type="date"
+                value={answers.birthDate}
+                min={oldest}
+                max={youngest}
+                autoComplete="bday"
+                onChange={(event) => update({ birthDate: event.target.value })}
+              />
             </>
           )}
 

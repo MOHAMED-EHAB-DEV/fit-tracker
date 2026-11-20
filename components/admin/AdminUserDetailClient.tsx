@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useId, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -22,6 +22,9 @@ import {
 } from "lucide-react";
 import { ConfirmModal } from "@/components/admin/ConfirmModal";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { FIELD_LABEL } from "@/components/ui/field-styles";
 import { useToast } from "@/components/ui/Toast";
 import { apiRequest, errorMessage } from "@/components/admin/api";
 import { formatAdminDate, formatAdminDateTime, useAdminZone } from "@/components/admin/AdminZone";
@@ -148,56 +151,31 @@ interface FieldProps {
 
 /** One labelled input or select. Defined at module level so typing never remounts it. */
 function Field({ label, value, onChange, error, options, rule, hint }: FieldProps) {
-  const id = useId();
-  const describedBy = error ? `${id}-error` : hint ? `${id}-hint` : undefined;
-  const control =
-    "w-full bg-zinc-900 border rounded-lg px-3 min-h-11 text-sm text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 transition";
+  if (options) {
+    return (
+      <Select<string>
+        label={label}
+        options={[{ value: "", label: "Not set" }, ...options]}
+        value={value}
+        onChange={(next) => onChange(next ?? "")}
+        error={error}
+      />
+    );
+  }
   return (
-    <div>
-      <label htmlFor={id} className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
-        {label}
-      </label>
-      {options ? (
-        <select
-          id={id}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          aria-invalid={Boolean(error)}
-          aria-describedby={describedBy}
-          className={`${control} cursor-pointer ${error ? "border-red-500/70" : "border-zinc-800"}`}
-        >
-          <option value="">Not set</option>
-          {options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      ) : (
-        <input
-          id={id}
-          type={rule ? "number" : "text"}
-          inputMode={rule ? (rule.integer ? "numeric" : "decimal") : undefined}
-          min={rule?.min}
-          max={rule?.max}
-          step={rule ? (rule.integer ? 1 : 0.1) : undefined}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          aria-invalid={Boolean(error)}
-          aria-describedby={describedBy}
-          className={`${control} ${error ? "border-red-500/70" : "border-zinc-800"}`}
-        />
-      )}
-      {error ? (
-        <p id={`${id}-error`} className="text-xs text-red-300 mt-1">
-          {error}
-        </p>
-      ) : hint ? (
-        <p id={`${id}-hint`} className="text-xs text-zinc-400 mt-1">
-          {hint}
-        </p>
-      ) : null}
-    </div>
+    <Input
+      label={label}
+      type={rule ? "number" : "text"}
+      inputMode={rule ? (rule.integer ? "numeric" : "decimal") : undefined}
+      min={rule?.min}
+      max={rule?.max}
+      step={rule ? (rule.integer ? 1 : 0.1) : undefined}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      isInvalid={Boolean(error)}
+      errorMessage={error}
+      description={hint}
+    />
   );
 }
 
@@ -454,16 +432,17 @@ export function AdminUserDetailClient({ initial }: { initial: Detail }) {
         </div>
         {resetLink && (
           <div className="space-y-2">
-            <label htmlFor="reset-link" className="block text-xs font-bold uppercase tracking-wider text-zinc-400">
+            <label htmlFor="reset-link" className={FIELD_LABEL}>
               Link (shown only now)
             </label>
             <div className="flex flex-col sm:flex-row gap-2">
-              <input
+              <Input
                 id="reset-link"
                 readOnly
                 value={resetLink.link}
                 onFocus={(e) => e.currentTarget.select()}
-                className="flex-1 min-h-11 bg-zinc-950 border border-zinc-800 rounded-lg px-3 text-sm font-mono text-zinc-100"
+                containerClassName="flex-1"
+                inputClassName="font-mono"
               />
               <Button
                 type="button"

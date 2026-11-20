@@ -21,6 +21,9 @@ import { Drawer } from "@/components/ui/Drawer";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { NumberField } from "@/components/ui/NumberField";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Textarea } from "@/components/ui/Textarea";
 import { useToast } from "@/components/ui/Toast";
 import { ExerciseCard } from "@/components/workout/session/ExerciseCard";
 import { RestTimerBar, type RestState } from "@/components/workout/session/RestTimerBar";
@@ -532,21 +535,18 @@ export function SessionScreen({ initialSession, initialPrevious }: SessionScreen
       {/* Date and duration for past / edited workouts */}
       {!isLive && (
         <section className="mt-4 grid grid-cols-1 gap-3 rounded-3xl border border-line bg-surface p-4 sm:grid-cols-2">
-          <label className="block space-y-1.5">
-            <span className="text-sm text-zinc-300">Started</span>
-            <input
-              type="datetime-local"
-              value={toDateTimeLocalValue(session.startedAt)}
-              max={toDateTimeLocalValue(new Date())}
-              onChange={(event) => {
-                const parsed = new Date(event.target.value);
-                if (!Number.isNaN(parsed.getTime())) {
-                  dispatch({ type: "meta", patch: { startedAt: parsed.toISOString() } });
-                }
-              }}
-              className="w-full min-h-12 px-3 rounded-xl bg-surface-2 border border-line text-white"
-            />
-          </label>
+          <Input
+            label="Started"
+            type="datetime-local"
+            value={toDateTimeLocalValue(session.startedAt)}
+            max={toDateTimeLocalValue(new Date())}
+            onChange={(event) => {
+              const parsed = new Date(event.target.value);
+              if (!Number.isNaN(parsed.getTime())) {
+                dispatch({ type: "meta", patch: { startedAt: parsed.toISOString() } });
+              }
+            }}
+          />
           <div className="space-y-1.5">
             <span className="block text-sm text-zinc-300">Duration</span>
             <NumberField
@@ -781,44 +781,36 @@ export function SessionScreen({ initialSession, initialPrevious }: SessionScreen
             )}
 
             {isLive && (
-              <label className="block space-y-1.5">
-                <span className="text-sm text-zinc-300">Rest after each set</span>
-                <select
-                  value={menuExercise.restSec ?? defaultRestSec}
-                  onChange={(event) =>
-                    dispatch({
-                      type: "exercise/update",
-                      exerciseId: menuExercise.id,
-                      patch: { restSec: Number(event.target.value) },
-                    })
-                  }
-                  className="w-full min-h-12 px-3 rounded-xl bg-surface-2 border border-line text-white"
-                >
-                  {restChoicesWith(menuExercise.restSec ?? defaultRestSec).map((seconds) => (
-                    <option key={seconds} value={seconds}>
-                      {formatRestTime(seconds)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-
-            <label className="block space-y-1.5">
-              <span className="text-sm text-zinc-300">Note</span>
-              <textarea
-                value={menuExercise.notes}
-                onChange={(event) =>
+              <Select<number>
+                label="Rest after each set"
+                options={restChoicesWith(menuExercise.restSec ?? defaultRestSec).map((seconds) => ({
+                  value: seconds,
+                  label: formatRestTime(seconds),
+                }))}
+                value={menuExercise.restSec ?? defaultRestSec}
+                onChange={(restSec) =>
                   dispatch({
                     type: "exercise/update",
                     exerciseId: menuExercise.id,
-                    patch: { notes: event.target.value.slice(0, 500) },
+                    patch: { restSec },
                   })
                 }
-                rows={2}
-                placeholder="Seat height, grip, how it felt…"
-                className="w-full px-3 py-2.5 rounded-xl bg-surface-2 border border-line text-white placeholder:text-zinc-500"
               />
-            </label>
+            )}
+
+            <Textarea
+              label="Note"
+              value={menuExercise.notes}
+              onChange={(event) =>
+                dispatch({
+                  type: "exercise/update",
+                  exerciseId: menuExercise.id,
+                  patch: { notes: event.target.value.slice(0, 500) },
+                })
+              }
+              rows={2}
+              placeholder="Seat height, grip, how it felt…"
+            />
 
             <div className="grid grid-cols-2 gap-2">
               <Button

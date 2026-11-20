@@ -3,7 +3,8 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
-import { AUTH_INPUT_CLASS, AUTH_LINK_CLASS, AuthCard, FormError } from "@/components/auth/AuthCard";
+import { Input } from "@/components/ui/Input";
+import { AUTH_LINK_CLASS, AuthCard, FormError } from "@/components/auth/AuthCard";
 import { api, errorMessage } from "@/lib/client/api";
 
 export function ForgotPasswordForm() {
@@ -54,24 +55,19 @@ export function ForgotPasswordForm() {
     <AuthCard title="Reset your password" subtitle="We will email you a link to choose a new one" footer={footer}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <FormError message={error} />
-        <div className="space-y-1.5">
-          <label htmlFor="forgot-email" className="block text-sm font-medium text-zinc-200">
-            Email
-          </label>
-          <input
-            id="forgot-email"
-            type="email"
-            inputMode="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            autoComplete="email"
-            autoCapitalize="none"
-            spellCheck={false}
-            required
-            maxLength={254}
-            className={AUTH_INPUT_CLASS}
-          />
-        </div>
+        <Input
+          id="forgot-email"
+          label="Email"
+          type="email"
+          inputMode="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          autoComplete="email"
+          autoCapitalize="none"
+          spellCheck={false}
+          required
+          maxLength={254}
+        />
         <Button type="submit" size="lg" className="w-full" isLoading={isLoading}>
           Send reset link
         </Button>

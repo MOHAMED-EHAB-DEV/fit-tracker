@@ -4,6 +4,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Info, Plus, Search, X } from "lucide-react";
 import { Drawer } from "@/components/ui/Drawer";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select, type SelectOption } from "@/components/ui/Select";
 import { api, errorMessage } from "@/lib/client/api";
 import { cn } from "@/lib/utils";
 import {
@@ -24,6 +26,10 @@ import {
 } from "@/lib/workouts/taxonomy";
 import type { ExerciseDTO } from "@/lib/workouts/types";
 import { ExerciseDetailSheet } from "@/components/workout/ExerciseDetailSheet";
+
+const EQUIPMENT_OPTIONS: SelectOption<string>[] = EQUIPMENT.map((item) => ({ value: item, label: EQUIPMENT_LABELS[item] }));
+const EQUIPMENT_FILTER_OPTIONS: SelectOption<string>[] = [{ value: "all", label: "Any" }, ...EQUIPMENT_OPTIONS];
+const PRIMARY_MUSCLE_OPTIONS: SelectOption<string>[] = PRIMARY_MUSCLES.map((muscle) => ({ value: muscle, label: muscle }));
 
 interface ExercisePickerProps {
   isOpen: boolean;
@@ -165,36 +171,35 @@ export function ExercisePicker({ isOpen, onClose, onAdd, mode = "multi", title }
           />
         ) : (
           <div className="flex flex-col gap-3">
-            <div className="sticky top-0 z-10 -mt-5 sm:-mt-6 pt-5 sm:pt-6 pb-2 bg-zinc-900 flex flex-col gap-3">
-            <div className="relative">
-              <Search className="pointer-events-none absolute start-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" aria-hidden="true" />
-              <input
-                type="search"
-                value={query}
-                onChange={(event) => {
-                  setQuery(event.target.value);
-                  resetScroll();
-                }}
-                placeholder="Search exercises"
-                aria-label="Search exercises"
-                autoComplete="off"
-                enterKeyHint="search"
-                className="w-full min-h-12 ps-11 pe-11 rounded-xl bg-surface-2 border border-line text-base text-white placeholder:text-zinc-500 [&::-webkit-search-cancel-button]:appearance-none"
-              />
-              {query && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQuery("");
-                    resetScroll();
-                  }}
-                  aria-label="Clear search"
-                  className="absolute end-1 top-1/2 -translate-y-1/2 grid place-items-center w-10 h-10 rounded-full text-zinc-400 cursor-pointer"
-                >
-                  <X className="w-5 h-5" aria-hidden="true" />
-                </button>
-              )}
-            </div>
+            <div className="sticky -top-5 sm:-top-6 z-10 -mt-5 sm:-mt-6 pt-5 sm:pt-6 pb-2 bg-zinc-900 flex flex-col gap-3">
+            <Input
+              type="search"
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                resetScroll();
+              }}
+              placeholder="Search exercises"
+              aria-label="Search exercises"
+              autoComplete="off"
+              enterKeyHint="search"
+              startContent={<Search className="w-5 h-5" />}
+              endContent={
+                query ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuery("");
+                      resetScroll();
+                    }}
+                    aria-label="Clear search"
+                    className="grid place-items-center w-10 h-10 rounded-full text-zinc-400 cursor-pointer"
+                  >
+                    <X className="w-5 h-5" aria-hidden="true" />
+                  </button>
+                ) : undefined
+              }
+            />
 
             <div role="group" aria-label="Muscle group" className="flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1">
               {(["all", ...MUSCLE_GROUPS.filter((group) => group !== "other")] as const).map((group) => (
@@ -218,24 +223,20 @@ export function ExercisePicker({ isOpen, onClose, onAdd, mode = "multi", title }
               ))}
             </div>
 
-            <label className="flex items-center gap-2 text-sm text-zinc-400">
+            <div className="flex items-center gap-2 text-sm text-zinc-400">
               <span className="shrink-0">Equipment</span>
-              <select
+              <Select<string>
+                ariaLabel="Equipment"
+                options={EQUIPMENT_FILTER_OPTIONS}
                 value={equipment}
-                onChange={(event) => {
-                  setEquipment(event.target.value);
+                onChange={(value) => {
+                  setEquipment(value);
                   resetScroll();
                 }}
-                className="flex-1 min-h-11 px-3 rounded-xl bg-surface-2 border border-line text-white"
-              >
-                <option value="all">Any</option>
-                {EQUIPMENT.map((item) => (
-                  <option key={item} value={item}>
-                    {EQUIPMENT_LABELS[item]}
-                  </option>
-                ))}
-              </select>
-            </label>
+                size="sm"
+                className="flex-1 min-w-0"
+              />
+            </div>
             </div>
 
             <div ref={listRef} className="-mx-2">
@@ -383,42 +384,29 @@ function CustomExerciseForm({
     }
   };
 
-  const field = "w-full min-h-12 px-3 rounded-xl bg-surface-2 border border-line text-base text-white";
-
   return (
     <form onSubmit={submit} className="space-y-4">
       <h3 className="text-base font-semibold text-white">New custom exercise</h3>
-      <label className="block space-y-1.5">
-        <span className="text-sm text-zinc-300">Name</span>
-        <input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          maxLength={80}
-          data-autofocus
-          className={field}
-          placeholder="e.g. Landmine press"
-        />
-      </label>
-      <label className="block space-y-1.5">
-        <span className="text-sm text-zinc-300">Main muscle</span>
-        <select value={primaryMuscle} onChange={(event) => setPrimaryMuscle(event.target.value)} className={field}>
-          {PRIMARY_MUSCLES.map((muscle) => (
-            <option key={muscle} value={muscle}>
-              {muscle}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="block space-y-1.5">
-        <span className="text-sm text-zinc-300">Equipment</span>
-        <select value={equipment} onChange={(event) => setEquipment(event.target.value)} className={field}>
-          {EQUIPMENT.map((item) => (
-            <option key={item} value={item}>
-              {EQUIPMENT_LABELS[item]}
-            </option>
-          ))}
-        </select>
-      </label>
+      <Input
+        label="Name"
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        maxLength={80}
+        data-autofocus
+        placeholder="e.g. Landmine press"
+      />
+      <Select<string>
+        label="Main muscle"
+        options={PRIMARY_MUSCLE_OPTIONS}
+        value={primaryMuscle}
+        onChange={(value) => setPrimaryMuscle(value)}
+      />
+      <Select<string>
+        label="Equipment"
+        options={EQUIPMENT_OPTIONS}
+        value={equipment}
+        onChange={(value) => setEquipment(value)}
+      />
       {error && (
         <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
           {error}

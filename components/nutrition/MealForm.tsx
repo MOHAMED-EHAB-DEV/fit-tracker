@@ -15,6 +15,9 @@ import {
 } from "@/lib/nutrition/draft";
 import { MACRO_KEYS, energySplit, formatAmount, type MacroKey, type Macros } from "@/lib/nutrition/totals";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Textarea } from "@/components/ui/Textarea";
 import type { MealType } from "@/types/fitness";
 
 const UNIT: Record<MacroKey, string> = { calories: "kcal", protein: "g", carbs: "g", fat: "g", fiber: "g" };
@@ -25,9 +28,6 @@ const ACCENT: Record<MacroKey, string> = {
   fat: "text-rose-300",
   fiber: "text-teal-300",
 };
-
-const inputClass =
-  "w-full min-h-11 px-3 py-2 bg-zinc-950/80 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 disabled:opacity-60";
 
 /** Protein / carbs / fat share of energy; hidden when there is nothing to split. */
 export function MacroSplitBar({ macros }: { macros: Partial<Macros> }) {
@@ -75,24 +75,22 @@ function AmountInput({
   accent?: string;
 }) {
   return (
-    <div className="min-w-0">
-      <label htmlFor={id} className={cn("block text-xs font-semibold mb-1 truncate", accent || "text-zinc-300")}>
-        {label}
-      </label>
-      <input
-        id={id}
-        type="number"
-        inputMode="decimal"
-        min={0}
-        max={max}
-        step="any"
-        value={value}
-        required={required}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-        className={cn(inputClass, "px-2.5 tabular-nums")}
-      />
-    </div>
+    <Input
+      id={id}
+      label={<span className={cn("block truncate", accent)}>{label}</span>}
+      type="number"
+      inputMode="decimal"
+      min={0}
+      max={max}
+      step="any"
+      value={value}
+      required={required}
+      disabled={disabled}
+      onChange={(event) => onChange(event.target.value)}
+      containerClassName="min-w-0"
+      className="px-2.5"
+      inputClassName="tabular-nums"
+    />
   );
 }
 
@@ -118,47 +116,43 @@ function ItemEditor({
   return (
     <li className={cn("p-3 rounded-2xl bg-zinc-950/60 border space-y-2.5", isNew ? "border-teal-500/40" : "border-white/8")}>
       <div className="flex items-end gap-2">
-        <div className="flex-1 min-w-0">
-          <label htmlFor={`${base}-name`} className="flex items-center gap-2 text-xs font-semibold text-zinc-300 mb-1">
-            <span>Ingredient {index + 1}</span>
-            {isNew && (
-              <span className="px-1.5 py-0.5 rounded-md bg-teal-500/15 text-teal-300 border border-teal-500/30 text-xs">
-                New
-              </span>
-            )}
-          </label>
-          <input
-            id={`${base}-name`}
-            type="text"
-            value={item.name}
-            maxLength={MEAL_LIMITS.itemNameMax}
-            disabled={disabled}
-            placeholder="e.g. Grilled chicken breast"
-            onChange={(event) => onChange({ ...item, name: event.target.value })}
-            className={inputClass}
-          />
-        </div>
-        <div className="w-28 sm:w-36 shrink-0">
-          <label htmlFor={`${base}-qty`} className="block text-xs font-semibold text-zinc-300 mb-1">
-            Portion
-          </label>
-          <input
-            id={`${base}-qty`}
-            type="text"
-            value={item.quantity}
-            maxLength={MEAL_LIMITS.quantityMax}
-            disabled={disabled}
-            placeholder="150 g"
-            onChange={(event) => onChange({ ...item, quantity: event.target.value })}
-            className={inputClass}
-          />
-        </div>
+        <Input
+          id={`${base}-name`}
+          label={
+            <span className="flex items-center gap-2">
+              <span>Ingredient {index + 1}</span>
+              {isNew && (
+                <span className="px-1.5 py-0.5 rounded-md bg-teal-500/15 text-teal-300 border border-teal-500/30 text-xs">
+                  New
+                </span>
+              )}
+            </span>
+          }
+          type="text"
+          value={item.name}
+          maxLength={MEAL_LIMITS.itemNameMax}
+          disabled={disabled}
+          placeholder="e.g. Grilled chicken breast"
+          onChange={(event) => onChange({ ...item, name: event.target.value })}
+          containerClassName="flex-1 min-w-0"
+        />
+        <Input
+          id={`${base}-qty`}
+          label="Portion"
+          type="text"
+          value={item.quantity}
+          maxLength={MEAL_LIMITS.quantityMax}
+          disabled={disabled}
+          placeholder="150 g"
+          onChange={(event) => onChange({ ...item, quantity: event.target.value })}
+          containerClassName="w-28 sm:w-36 shrink-0"
+        />
         <button
           type="button"
           onClick={onRemove}
           disabled={disabled}
           aria-label={`Remove ${label}`}
-          className="shrink-0 w-11 h-11 rounded-xl flex items-center justify-center bg-zinc-900 border border-white/10 text-zinc-300 hover:text-red-300 hover:border-red-500/40 transition cursor-pointer disabled:opacity-50"
+          className="shrink-0 w-12 h-12 rounded-xl flex items-center justify-center bg-zinc-900 border border-white/10 text-zinc-300 hover:text-red-300 hover:border-red-500/40 transition cursor-pointer disabled:opacity-50"
         >
           <Trash2 className="w-4 h-4" aria-hidden="true" />
         </button>
@@ -228,70 +222,48 @@ export function MealForm({
       {headerSlot}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="sm:col-span-2">
-          <label htmlFor={`${idPrefix}-description`} className="block text-xs font-semibold text-zinc-300 mb-1">
-            What did you eat?
-          </label>
-          <input
-            id={`${idPrefix}-description`}
-            type="text"
-            value={draft.description}
-            maxLength={MEAL_LIMITS.descriptionMax}
-            disabled={disabled}
-            placeholder="e.g. Chicken rice bowl"
-            onChange={(event) => update({ description: event.target.value })}
-            className={inputClass}
-          />
-        </div>
-        <div>
-          <label htmlFor={`${idPrefix}-type`} className="block text-xs font-semibold text-zinc-300 mb-1">
-            Meal
-          </label>
-          <select
-            id={`${idPrefix}-type`}
-            value={draft.mealType}
-            disabled={disabled}
-            onChange={(event) => update({ mealType: event.target.value as MealType })}
-            className={cn(inputClass, "cursor-pointer")}
-          >
-            {MEAL_TYPE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value} className="bg-zinc-900">
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <Input
+          id={`${idPrefix}-description`}
+          label="What did you eat?"
+          type="text"
+          value={draft.description}
+          maxLength={MEAL_LIMITS.descriptionMax}
+          disabled={disabled}
+          placeholder="e.g. Chicken rice bowl"
+          onChange={(event) => update({ description: event.target.value })}
+          containerClassName="sm:col-span-2"
+        />
+        <Select<MealType>
+          id={`${idPrefix}-type`}
+          label="Meal"
+          options={MEAL_TYPE_OPTIONS}
+          value={draft.mealType}
+          disabled={disabled}
+          onChange={(value) => update({ mealType: value })}
+        />
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label htmlFor={`${idPrefix}-date`} className="block text-xs font-semibold text-zinc-300 mb-1">
-              Day
-            </label>
-            <input
-              id={`${idPrefix}-date`}
-              type="date"
-              value={draft.dateString}
-              max={maxDate}
-              min="2000-01-01"
-              required
-              disabled={disabled}
-              onChange={(event) => update({ dateString: event.target.value })}
-              className={cn(inputClass, "px-2.5 scheme-dark")}
-            />
-          </div>
-          <div>
-            <label htmlFor={`${idPrefix}-time`} className="block text-xs font-semibold text-zinc-300 mb-1">
-              Time
-            </label>
-            <input
-              id={`${idPrefix}-time`}
-              type="time"
-              value={draft.time}
-              required
-              disabled={disabled}
-              onChange={(event) => update({ time: event.target.value })}
-              className={cn(inputClass, "px-2.5 scheme-dark")}
-            />
-          </div>
+          <Input
+            id={`${idPrefix}-date`}
+            label="Day"
+            type="date"
+            value={draft.dateString}
+            max={maxDate}
+            min="2000-01-01"
+            required
+            disabled={disabled}
+            onChange={(event) => update({ dateString: event.target.value })}
+            className="px-2.5"
+          />
+          <Input
+            id={`${idPrefix}-time`}
+            label="Time"
+            type="time"
+            value={draft.time}
+            required
+            disabled={disabled}
+            onChange={(event) => update({ time: event.target.value })}
+            className="px-2.5"
+          />
         </div>
       </div>
 
@@ -380,21 +352,16 @@ export function MealForm({
         )}
       </section>
 
-      <div>
-        <label htmlFor={`${idPrefix}-notes`} className="block text-xs font-semibold text-zinc-300 mb-1">
-          Your notes (optional)
-        </label>
-        <textarea
-          id={`${idPrefix}-notes`}
-          value={draft.notes}
-          maxLength={MEAL_LIMITS.notesMax}
-          rows={2}
-          disabled={disabled}
-          placeholder="e.g. Cooked with 1 tbsp olive oil"
-          onChange={(event) => update({ notes: event.target.value })}
-          className={cn(inputClass, "resize-y")}
-        />
-      </div>
+      <Textarea
+        id={`${idPrefix}-notes`}
+        label="Your notes (optional)"
+        value={draft.notes}
+        maxLength={MEAL_LIMITS.notesMax}
+        rows={2}
+        disabled={disabled}
+        placeholder="e.g. Cooked with 1 tbsp olive oil"
+        onChange={(event) => update({ notes: event.target.value })}
+      />
     </div>
   );
 }

@@ -21,6 +21,8 @@ import { Button } from "@/components/ui/Button";
 import { Drawer } from "@/components/ui/Drawer";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/Toast";
 import { announceActiveSessionChange } from "@/components/workout/ActiveSessionBar";
 import { ExercisePicker } from "@/components/workout/ExercisePicker";
@@ -685,16 +687,13 @@ export function TrainHub({
             void createRoutine({ name }, "create");
           }}
         >
-          <label className="block space-y-1.5">
-            <span className="text-sm text-zinc-300">Name</span>
-            <input
-              value={newName}
-              onChange={(event) => setNewName(event.target.value.slice(0, 80))}
-              placeholder="Push day"
-              autoComplete="off"
-              className="w-full min-h-12 rounded-xl border border-line bg-surface-2 px-3 text-white placeholder:text-zinc-500"
-            />
-          </label>
+          <Input
+            label="Name"
+            value={newName}
+            onChange={(event) => setNewName(event.target.value.slice(0, 80))}
+            placeholder="Push day"
+            autoComplete="off"
+          />
           {dialogError && (
             <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
               {dialogError}
@@ -751,35 +750,28 @@ export function TrainHub({
         }
       >
         <div className="space-y-4">
-          <label className="block space-y-1.5">
-            <span className="flex items-center gap-2 text-sm text-zinc-300">
-              <CalendarDays className="h-4 w-4" aria-hidden="true" />
-              When did it start?
-            </span>
-            <input
-              type="datetime-local"
-              value={pastStart}
-              max={toDateTimeLocalValue(new Date())}
-              onChange={(event) => setPastStart(event.target.value)}
-              className="w-full min-h-12 rounded-xl border border-line bg-surface-2 px-3 text-white"
-            />
-          </label>
+          <Input
+            label={
+              <span className="flex items-center gap-2">
+                <CalendarDays className="h-4 w-4" aria-hidden="true" />
+                When did it start?
+              </span>
+            }
+            type="datetime-local"
+            value={pastStart}
+            max={toDateTimeLocalValue(new Date())}
+            onChange={(event) => setPastStart(event.target.value)}
+          />
           {routines.length > 0 && (
-            <label className="block space-y-1.5">
-              <span className="text-sm text-zinc-300">Routine (optional)</span>
-              <select
-                value={pastRoutineId}
-                onChange={(event) => setPastRoutineId(event.target.value)}
-                className="w-full min-h-12 rounded-xl border border-line bg-surface-2 px-3 text-white"
-              >
-                <option value="">No routine: I will add the exercises</option>
-                {routines.map((routine) => (
-                  <option key={routine.id} value={routine.id}>
-                    {routine.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <Select<string>
+              label="Routine (optional)"
+              options={[
+                { value: "", label: "No routine: I will add the exercises" },
+                ...routines.map((routine) => ({ value: routine.id, label: routine.name })),
+              ]}
+              value={pastRoutineId}
+              onChange={(value) => setPastRoutineId(value)}
+            />
           )}
           {dialogError && (
             <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">

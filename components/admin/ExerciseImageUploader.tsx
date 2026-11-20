@@ -16,6 +16,8 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { FIELD_LABEL } from "@/components/ui/field-styles";
 import { Modal } from "@/components/ui/Modal";
 import { cn } from "@/lib/utils";
 import { readApi, errorMessage } from "@/components/admin/api";
@@ -410,11 +412,11 @@ export function ExerciseImageUploader({ images, setImages, className }: Exercise
 
       {showUrlInput && (
         <div className="space-y-2 p-3 bg-zinc-950/80 border border-white/10 rounded-2xl">
-          <label htmlFor="exercise-image-url" className="block text-xs font-bold uppercase tracking-wider text-zinc-400">
+          <label htmlFor="exercise-image-url" className={FIELD_LABEL}>
             Image link
           </label>
           <div className="flex flex-col sm:flex-row gap-2">
-            <input
+            <Input
               id="exercise-image-url"
               type="url"
               inputMode="url"
@@ -428,7 +430,7 @@ export function ExerciseImageUploader({ images, setImages, className }: Exercise
                   addUrl();
                 }
               }}
-              className="flex-1 min-h-11 bg-zinc-900 border border-white/10 rounded-xl px-3 text-sm text-zinc-100 placeholder-zinc-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+              containerClassName="flex-1"
             />
             <Button type="button" variant="solid" size="md" onClick={addUrl} disabled={full} className="min-h-11">
               Add link

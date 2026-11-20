@@ -28,9 +28,6 @@ export function AuthCard({ title, subtitle, children, footer }: AuthCardProps) {
 export const AUTH_LINK_CLASS =
   "inline-flex min-h-11 items-center font-semibold text-emerald-300 underline underline-offset-4 hover:text-emerald-200";
 
-export const AUTH_INPUT_CLASS =
-  "w-full min-h-12 rounded-xl border border-line bg-surface-2 px-3.5 text-base text-white placeholder:text-zinc-500 aria-[invalid=true]:border-red-500";
-
 export function FormError({ message }: { message: string | null }) {
   if (!message) return null;
   return (
