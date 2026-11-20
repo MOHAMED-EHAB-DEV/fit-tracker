@@ -1,62 +1,87 @@
 name: Keep Supabase Alive
 
+# Supabase pauses a free project after about a week without activity. This
+# sends a few requests every 5 days so the image cache keeps working.
+
 on:
   schedule:
-    # Runs at 00:00 UTC every 5 days
+    # 00:00 UTC on days 1, 6, 11, 16, 21, 26 and 31 of each month.
     - cron: '0 0 */5 * *'
   workflow_dispatch:
+
+permissions: {}
 
 jobs:
   ping:
     name: Ping Supabase Services
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Ping Supabase Public Endpoints
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://dbaromujzfbwadzugpwn.supabase.co' }}
-          BUCKET_NAME: ${{ secrets.SUPABASE_STORAGE_BUCKET || 'fit-tracker' }}
+          RAW_SUPABASE_URL: ${{ secrets.SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          DEFAULT_SUPABASE_URL: https://dbaromujzfbwadzugpwn.supabase.co
+          RAW_BUCKET_NAME: ${{ secrets.SUPABASE_STORAGE_BUCKET }}
           OPTIONAL_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || secrets.SUPABASE_ANON_KEY || '' }}
         run: |
-          BASE_URL="${SUPABASE_URL%/}"
-          echo "Target Supabase URL: $BASE_URL"
-          echo "Target Public Bucket: $BUCKET_NAME"
+          # Secrets are often pasted with quotes, spaces or a line break around
+          # them. curl rejects such a URL at once, which made every run fail
+          # with "Could not reach Supabase". Clean the values first.
+          clean() {
+            printf '%s' "$1" | tr -d '\r\n\t "'"'"
+          }
+
+          BASE_URL="$(clean "$RAW_SUPABASE_URL")"
+          BASE_URL="${BASE_URL%/}"
+          case "$BASE_URL" in
+            "") BASE_URL="$DEFAULT_SUPABASE_URL" ;;
+            http://*|https://*) ;;
+            *) BASE_URL="https://$BASE_URL" ;;
+          esac
+          if ! printf '%s' "$BASE_URL" | grep -Eq '^https?://[A-Za-z0-9.-]+(:[0-9]+)?$'; then
+            echo "::warning::The Supabase URL secret is not a plain address like https://<project>.supabase.co. Using the default project address instead. Fix the SUPABASE_URL / NEXT_PUBLIC_SUPABASE_URL repository secret."
+            BASE_URL="$DEFAULT_SUPABASE_URL"
+          fi
+
+          BUCKET_NAME="$(clean "$RAW_BUCKET_NAME")"
+          [ -n "$BUCKET_NAME" ] || BUCKET_NAME="fit-tracker"
 
           HEADERS=()
           if [ -n "$OPTIONAL_KEY" ]; then
             HEADERS=(-H "apikey: $OPTIONAL_KEY" -H "Authorization: Bearer $OPTIONAL_KEY")
-            echo "API Key provided. Using authenticated headers."
+            echo "API key provided. Using authenticated headers."
           else
             echo "No API key provided. Using public endpoints."
           fi
 
-          # 1. Public Storage Endpoint (activates storage & database)
-          echo ""
-          echo "--- 1. Pinging Public Storage ---"
-          STORAGE_OUT=$(curl -s -i "${HEADERS[@]}" "$BASE_URL/storage/v1/object/public/$BUCKET_NAME/keepalive" || true)
-          STORAGE_STATUS=$(echo "$STORAGE_OUT" | grep -m1 "HTTP/" | awk '{print $2}')
-          echo "Storage HTTP status: $STORAGE_STATUS"
+          # Prints the HTTP status, or "000" with curl's reason when no answer came back.
+          ping() {
+            local label="$1" url="$2" status
+            status=$(curl -sS -o /dev/null -m 30 --retry 2 --retry-delay 5 -w '%{http_code}' "${HEADERS[@]}" "$url" 2>curl-error.txt) || true
+            [ -n "$status" ] || status="000"
+            echo "$label: HTTP $status" >&2
+            if [ "$status" = "000" ] && [ -s curl-error.txt ]; then
+              echo "  curl: $(head -c 300 curl-error.txt)" >&2
+            fi
+            printf '%s' "$status"
+          }
 
-          # 2. PostgREST API Endpoint
-          echo ""
-          echo "--- 2. Pinging PostgREST API ---"
-          REST_OUT=$(curl -s -i "${HEADERS[@]}" "$BASE_URL/rest/v1/" || true)
-          REST_STATUS=$(echo "$REST_OUT" | grep -m1 "HTTP/" | awk '{print $2}')
-          echo "PostgREST HTTP status: $REST_STATUS"
-
-          # 3. Auth Health Endpoint
-          echo ""
-          echo "--- 3. Pinging Auth Health ---"
-          AUTH_OUT=$(curl -s -i "${HEADERS[@]}" "$BASE_URL/auth/v1/health" || true)
-          AUTH_STATUS=$(echo "$AUTH_OUT" | grep -m1 "HTTP/" | awk '{print $2}')
-          echo "Auth HTTP status: $AUTH_STATUS"
+          STORAGE_STATUS=$(ping "1. Public storage" "$BASE_URL/storage/v1/object/public/$BUCKET_NAME/keepalive")
+          REST_STATUS=$(ping "2. PostgREST API" "$BASE_URL/rest/v1/")
+          AUTH_STATUS=$(ping "3. Auth health" "$BASE_URL/auth/v1/health")
 
           echo ""
-          # Check for database paused state (544 DatabaseTimeout)
-          if [ "$STORAGE_STATUS" = "544" ] || [ "$REST_STATUS" = "544" ]; then
-            echo "::warning::Supabase project returned 544 DatabaseTimeout. The project is currently paused. Please unpause it manually in the Supabase Dashboard. Once unpaused, this workflow will keep it active."
-          elif [ -n "$STORAGE_STATUS" ] || [ -n "$REST_STATUS" ] || [ -n "$AUTH_STATUS" ]; then
-            echo "Supabase successfully pinged. Activity recorded."
-          else
-            echo "::error::Could not reach Supabase. Check the URL."
+          if [ "$STORAGE_STATUS" = "000" ] && [ "$REST_STATUS" = "000" ] && [ "$AUTH_STATUS" = "000" ]; then
+            echo "::error::Could not reach Supabase at all. Check the SUPABASE_URL / NEXT_PUBLIC_SUPABASE_URL repository secret (it must look like https://<project>.supabase.co)."
             exit 1
           fi
+
+          # 540 = project paused, 544 = its database did not answer (paused or still waking up).
+          for status in "$STORAGE_STATUS" "$REST_STATUS" "$AUTH_STATUS"; do
+            if [ "$status" = "540" ] || [ "$status" = "544" ]; then
+              echo "::error::Supabase answered $status: the project is paused or its database is not responding. Open the Supabase dashboard and restore the project. Pings cannot wake a paused project."
+              exit 1
+            fi
+          done
+
+          echo "Supabase answered. Activity recorded."
