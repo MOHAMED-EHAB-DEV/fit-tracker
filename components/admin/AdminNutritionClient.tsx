@@ -16,7 +16,7 @@ import type { AdminPlanRow } from "@/lib/admin/nutrition-plans";
 const PAGE_SIZE = 20;
 
 const actionClass =
-  "min-h-11 min-w-11 flex items-center justify-center rounded-xl text-zinc-300 transition cursor-pointer focus:outline-none focus-visible:ring-2";
+  "min-h-11 min-w-11 flex items-center justify-center rounded-xl text-zinc-300 transition cursor-pointer";
 
 export function AdminNutritionClient() {
   const { toast } = useToast();
@@ -64,7 +64,7 @@ export function AdminNutritionClient() {
       render: (row) => (
         <Link
           href={`/admin/nutrition/${row.id}`}
-          className="block min-h-11 py-1 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          className="block min-h-11 py-1 rounded"
         >
           <span className="block font-semibold text-zinc-200 text-sm">{row.name}</span>
           {row.description && <span className="block text-xs text-zinc-400 truncate max-w-xs">{row.description}</span>}
@@ -136,7 +136,7 @@ export function AdminNutritionClient() {
         </div>
         <Link
           href="/admin/nutrition/new"
-          className="inline-flex items-center justify-center gap-2 min-h-11 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-bold self-start sm:self-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+          className="inline-flex items-center justify-center gap-2 min-h-11 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-bold self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" aria-hidden="true" /> New plan
         </Link>
@@ -184,7 +184,7 @@ export function AdminNutritionClient() {
               href={`/admin/nutrition/${row.id}`}
               aria-label={`Edit ${row.name}`}
               title="Edit"
-              className={`${actionClass} hover:text-violet-300 hover:bg-violet-500/10 focus-visible:ring-violet-400`}
+              className={`${actionClass} hover:text-violet-300 hover:bg-violet-500/10`}
             >
               <Pencil className="w-4 h-4" aria-hidden="true" />
             </Link>
@@ -196,7 +196,7 @@ export function AdminNutritionClient() {
                 setDeleteError(null);
                 setToDelete(row);
               }}
-              className={`${actionClass} hover:text-red-300 hover:bg-red-500/10 focus-visible:ring-red-400`}
+              className={`${actionClass} hover:text-red-300 hover:bg-red-500/10`}
             >
               <Trash2 className="w-4 h-4" aria-hidden="true" />
             </button>

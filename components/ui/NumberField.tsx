@@ -98,7 +98,7 @@ export function NumberField({
           if (event.key === "Enter") (event.target as HTMLInputElement).blur();
         }}
         className={cn(
-          "w-full min-h-12 rounded-xl bg-surface-2 border border-line text-center text-base font-semibold text-white tabular-nums placeholder:text-zinc-500 placeholder:font-normal disabled:opacity-60",
+          "w-full min-h-12 rounded-xl bg-surface-2 border border-line text-center text-base font-semibold text-white tabular-nums placeholder:text-zinc-500 placeholder:font-normal transition-colors hover:not-focus:border-white/20 focus:outline-none focus:border-emerald-500/80 disabled:opacity-60",
           suffix ? "ps-2 pe-9" : "px-2",
           inputClassName
         )}

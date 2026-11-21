@@ -17,7 +17,7 @@ import type { AdminUserRow } from "@/lib/admin/users";
 const PAGE_SIZE = 20;
 
 const actionButton =
-  "min-h-11 min-w-11 flex items-center justify-center rounded-lg text-zinc-300 transition cursor-pointer focus:outline-none focus-visible:ring-2 disabled:opacity-40 disabled:cursor-not-allowed";
+  "min-h-11 min-w-11 flex items-center justify-center rounded-lg text-zinc-300 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed";
 
 export function AdminUsersClient({ currentAdminId }: { currentAdminId: string }) {
   const { toast } = useToast();
@@ -82,7 +82,7 @@ export function AdminUsersClient({ currentAdminId }: { currentAdminId: string })
       render: (row) => (
         <Link
           href={`/admin/users/${row.id}`}
-          className="flex items-center gap-3 min-h-11 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          className="flex items-center gap-3 min-h-11 rounded"
         >
           <span className="w-8 h-8 rounded-full bg-violet-500/20 border border-violet-500/30 text-violet-300 flex items-center justify-center font-bold text-xs shrink-0" aria-hidden="true">
             {row.name?.charAt(0).toUpperCase() || "?"}
@@ -202,7 +202,7 @@ export function AdminUsersClient({ currentAdminId }: { currentAdminId: string })
             <div className="flex items-center justify-end gap-1">
               <Link
                 href={`/admin/users/${row.id}`}
-                className={`${actionButton} hover:text-white hover:bg-zinc-800/60 focus-visible:ring-violet-400`}
+                className={`${actionButton} hover:text-white hover:bg-zinc-800/60`}
                 aria-label={`Open ${row.name}`}
                 title="Open user"
               >
@@ -212,7 +212,7 @@ export function AdminUsersClient({ currentAdminId }: { currentAdminId: string })
                 type="button"
                 disabled={Boolean(locked)}
                 onClick={() => openModal(row.role === "admin" ? "demote" : "promote", row)}
-                className={`${actionButton} hover:text-violet-300 hover:bg-violet-500/10 focus-visible:ring-violet-400`}
+                className={`${actionButton} hover:text-violet-300 hover:bg-violet-500/10`}
                 title={locked || (row.role === "admin" ? "Remove admin rights" : "Make admin")}
                 aria-label={row.role === "admin" ? `Remove admin rights from ${row.name}` : `Make ${row.name} an admin`}
               >
@@ -222,7 +222,7 @@ export function AdminUsersClient({ currentAdminId }: { currentAdminId: string })
                 type="button"
                 disabled={Boolean(locked)}
                 onClick={() => openModal(row.isBanned ? "unban" : "ban", row)}
-                className={`${actionButton} hover:text-amber-300 hover:bg-amber-500/10 focus-visible:ring-amber-400`}
+                className={`${actionButton} hover:text-amber-300 hover:bg-amber-500/10`}
                 title={locked || (row.isBanned ? "Unban" : "Ban")}
                 aria-label={row.isBanned ? `Unban ${row.name}` : `Ban ${row.name}`}
               >
@@ -232,7 +232,7 @@ export function AdminUsersClient({ currentAdminId }: { currentAdminId: string })
                 type="button"
                 disabled={Boolean(locked)}
                 onClick={() => openModal("delete", row)}
-                className={`${actionButton} hover:text-red-300 hover:bg-red-500/10 focus-visible:ring-red-400`}
+                className={`${actionButton} hover:text-red-300 hover:bg-red-500/10`}
                 title={locked || "Delete user"}
                 aria-label={`Delete ${row.name}`}
               >

@@ -264,7 +264,7 @@ function AssigneesPanel({ planId, assigned, onChange }: { planId: string; assign
                 type="button"
                 onClick={() => change(user, "remove")}
                 disabled={busyId !== null}
-                className="min-h-11 min-w-11 flex items-center justify-center text-zinc-300 hover:text-red-300 transition cursor-pointer disabled:opacity-40 rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                className="min-h-11 min-w-11 flex items-center justify-center text-zinc-300 hover:text-red-300 transition cursor-pointer disabled:opacity-40 rounded-xl"
                 aria-label={`Unassign ${user.name || user.email}`}
               >
                 <X className="w-4 h-4" aria-hidden="true" />
@@ -419,7 +419,7 @@ export function NutritionPlanForm({ initialPlan = null }: { initialPlan?: AdminP
       <div className="flex flex-wrap items-center gap-3">
         <Link
           href="/admin/nutrition"
-          className="min-h-11 min-w-11 flex items-center justify-center text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-xl transition focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          className="min-h-11 min-w-11 flex items-center justify-center text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-xl transition"
           aria-label="Back to nutrition plans"
         >
           <ArrowLeft className="w-5 h-5" aria-hidden="true" />
@@ -432,7 +432,7 @@ export function NutritionPlanForm({ initialPlan = null }: { initialPlan?: AdminP
               setDeleteError(null);
               setDeleteOpen(true);
             }}
-            className="min-h-11 min-w-11 flex items-center justify-center text-zinc-300 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+            className="min-h-11 min-w-11 flex items-center justify-center text-zinc-300 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition cursor-pointer"
             aria-label="Delete plan"
             title="Delete plan"
           >
@@ -506,7 +506,7 @@ export function NutritionPlanForm({ initialPlan = null }: { initialPlan?: AdminP
               <button
                 type="button"
                 onClick={() => setForm((current) => ({ ...current, meals: current.meals.filter((_, i) => i !== index) }))}
-                className="min-h-11 min-w-11 flex items-center justify-center text-zinc-300 hover:text-red-300 transition cursor-pointer rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                className="min-h-11 min-w-11 flex items-center justify-center text-zinc-300 hover:text-red-300 transition cursor-pointer rounded-xl"
                 aria-label={`Remove meal ${index + 1}`}
               >
                 <Trash2 className="w-4 h-4" aria-hidden="true" />
@@ -537,7 +537,7 @@ export function NutritionPlanForm({ initialPlan = null }: { initialPlan?: AdminP
       <div className="flex flex-wrap justify-end gap-3 pb-8">
         <Link
           href="/admin/nutrition"
-          className="inline-flex items-center px-4 min-h-11 text-sm text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-xl transition focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+          className="inline-flex items-center px-4 min-h-11 text-sm text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-xl transition"
         >
           Cancel
         </Link>

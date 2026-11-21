@@ -27,7 +27,7 @@ import type { AdminExerciseRow, ExerciseUsage } from "@/lib/admin/exercises";
 const PAGE_SIZE = 30;
 
 const actionClass =
-  "min-h-11 min-w-11 flex items-center justify-center rounded-lg text-zinc-300 transition cursor-pointer focus:outline-none focus-visible:ring-2";
+  "min-h-11 min-w-11 flex items-center justify-center rounded-lg text-zinc-300 transition cursor-pointer";
 
 const label = (map: Record<string, string>, value: string) => map[value] || value;
 
@@ -125,7 +125,7 @@ export function AdminExercisesClient() {
       render: (row) => (
         <Link
           href={`/admin/exercises/${row.id}`}
-          className="flex items-center gap-3 min-h-11 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          className="flex items-center gap-3 min-h-11 rounded"
         >
           <span className="w-9 h-9 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0">
             <TrackingIcon type={row.trackingType} />
@@ -207,7 +207,7 @@ export function AdminExercisesClient() {
         </div>
         <Link
           href="/admin/exercises/new"
-          className="inline-flex items-center justify-center gap-2 min-h-11 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-bold self-start sm:self-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+          className="inline-flex items-center justify-center gap-2 min-h-11 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-bold self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" aria-hidden="true" /> Add exercise
         </Link>
@@ -279,7 +279,7 @@ export function AdminExercisesClient() {
           <div className="flex items-center justify-end gap-1">
             <Link
               href={`/admin/exercises/${row.id}`}
-              className={`${actionClass} hover:text-white hover:bg-zinc-800/60 focus-visible:ring-violet-400`}
+              className={`${actionClass} hover:text-white hover:bg-zinc-800/60`}
               title="Edit"
               aria-label={`Edit ${row.name}`}
             >
@@ -292,7 +292,7 @@ export function AdminExercisesClient() {
                   setModalError(null);
                   setTarget({ row, action: "restore" });
                 }}
-                className={`${actionClass} hover:text-emerald-300 hover:bg-emerald-500/10 focus-visible:ring-emerald-400`}
+                className={`${actionClass} hover:text-emerald-300 hover:bg-emerald-500/10`}
                 title="Restore"
                 aria-label={`Restore ${row.name}`}
               >
@@ -302,7 +302,7 @@ export function AdminExercisesClient() {
               <button
                 type="button"
                 onClick={() => void openArchive(row)}
-                className={`${actionClass} hover:text-amber-300 hover:bg-amber-500/10 focus-visible:ring-amber-400`}
+                className={`${actionClass} hover:text-amber-300 hover:bg-amber-500/10`}
                 title="Archive"
                 aria-label={`Archive ${row.name}`}
               >

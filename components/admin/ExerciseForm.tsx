@@ -353,7 +353,7 @@ export function ExerciseForm({ mode, initialExercise = null }: ExerciseFormProps
         <Link
           href="/admin/exercises"
           aria-label="Back to exercises"
-          className="min-h-11 min-w-11 flex items-center justify-center text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-xl transition focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          className="min-h-11 min-w-11 flex items-center justify-center text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-xl transition"
         >
           <ArrowLeft className="w-5 h-5" aria-hidden="true" />
         </Link>
@@ -513,7 +513,7 @@ export function ExerciseForm({ mode, initialExercise = null }: ExerciseFormProps
                 aria-pressed={selected}
                 disabled={isPrimary}
                 onClick={() => toggleSecondary(muscle)}
-                className={`min-h-11 px-3 rounded-full text-sm font-semibold border transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 ${
+                className={`min-h-11 px-3 rounded-full text-sm font-semibold border transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
                   selected ? "bg-violet-600 border-violet-500 text-white" : "bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500"
                 }`}
               >
@@ -563,7 +563,7 @@ export function ExerciseForm({ mode, initialExercise = null }: ExerciseFormProps
                   onClick={() => moveStep(index, -1)}
                   disabled={index === 0}
                   aria-label={`Move step ${index + 1} up`}
-                  className="min-h-11 min-w-11 flex items-center justify-center rounded-xl text-zinc-300 hover:text-white disabled:opacity-30 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+                  className="min-h-11 min-w-11 flex items-center justify-center rounded-xl text-zinc-300 hover:text-white disabled:opacity-30 cursor-pointer"
                 >
                   <ChevronUp className="w-4 h-4" aria-hidden="true" />
                 </button>
@@ -572,7 +572,7 @@ export function ExerciseForm({ mode, initialExercise = null }: ExerciseFormProps
                   onClick={() => moveStep(index, 1)}
                   disabled={index === form.instructions.length - 1}
                   aria-label={`Move step ${index + 1} down`}
-                  className="min-h-11 min-w-11 flex items-center justify-center rounded-xl text-zinc-300 hover:text-white disabled:opacity-30 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+                  className="min-h-11 min-w-11 flex items-center justify-center rounded-xl text-zinc-300 hover:text-white disabled:opacity-30 cursor-pointer"
                 >
                   <ChevronDown className="w-4 h-4" aria-hidden="true" />
                 </button>
@@ -587,7 +587,7 @@ export function ExerciseForm({ mode, initialExercise = null }: ExerciseFormProps
                       current.instructions.length > 1 ? current.instructions.filter((s) => s.key !== step.key) : [newStep()],
                   }))
                 }
-                className="mt-1 min-h-11 min-w-11 flex items-center justify-center rounded-xl text-zinc-300 hover:text-red-300 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                className="mt-1 min-h-11 min-w-11 flex items-center justify-center rounded-xl text-zinc-300 hover:text-red-300 cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" aria-hidden="true" />
               </button>
@@ -610,7 +610,7 @@ export function ExerciseForm({ mode, initialExercise = null }: ExerciseFormProps
         )}
         <Link
           href="/admin/exercises"
-          className="inline-flex items-center justify-center px-4 min-h-11 text-sm text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-xl transition focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+          className="inline-flex items-center justify-center px-4 min-h-11 text-sm text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-xl transition"
         >
           Cancel
         </Link>

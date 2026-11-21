@@ -75,20 +75,26 @@
 }
 
 /* ---------------------------------------------------------------------------
+ * Focus. One slim keyboard ring for every control, set here only: components
+ * do not add their own rings. It sits in the base layer so a text field can
+ * turn it off (focus:outline-none) and show focus with its border instead.
+ * ------------------------------------------------------------------------- */
+@layer base {
+  :focus-visible {
+    outline: 1.5px solid rgb(52 211 153 / 0.8);
+    outline-offset: 2px;
+  }
+  /* Headings, dialogs and the main region receive focus from code only (to
+   * move screen readers along); they are not controls, so they show no ring. */
+  [tabindex="-1"]:focus-visible {
+    outline: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
  * Accessibility floor. These rules are deliberately outside Tailwind's layers
  * so they win over utility classes everywhere in the app.
  * ------------------------------------------------------------------------- */
-
-/* A focus ring that is visible on every surface, including brand buttons. */
-:focus-visible {
-  outline: 2px solid #6ee7b7;
-  outline-offset: 2px;
-}
-/* Headings, dialogs and the main region receive focus from code only (to move
- * screen readers along); they are not controls, so they show no ring. */
-[tabindex="-1"]:focus-visible {
-  outline: none;
-}
 
 /* Nothing smaller than 12px. */
 .text-\[9px\],

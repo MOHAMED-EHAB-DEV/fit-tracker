@@ -35,7 +35,7 @@ export default function EventCard({ event, onToggleComplete, onSelect, isTogglin
         type="button"
         onClick={() => onSelect(event)}
         aria-label={`${event.title}, ${timeLabel}. Open details`}
-        className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3.5 p-4 text-start rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 cursor-pointer"
+        className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3.5 p-4 text-start rounded-2xl cursor-pointer"
       >
         <div className="flex sm:flex-col items-center sm:items-start gap-1.5 shrink-0 flex-wrap">
           <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-zinc-950/80 border border-zinc-800/60 text-xs font-mono font-medium text-zinc-300">
@@ -91,7 +91,7 @@ export default function EventCard({ event, onToggleComplete, onSelect, isTogglin
           aria-checked={event.isCompleted}
           aria-busy={isToggling}
           aria-label={`Done: ${event.title}`}
-          className={`w-11 h-11 rounded-full border-2 flex items-center justify-center transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:cursor-wait ${
+          className={`w-11 h-11 rounded-full border-2 flex items-center justify-center transition-all disabled:cursor-wait ${
             event.isCompleted
               ? "bg-emerald-500 border-emerald-400 text-zinc-950"
               : "border-zinc-600 bg-zinc-800/60 text-zinc-500 hover:border-emerald-500"

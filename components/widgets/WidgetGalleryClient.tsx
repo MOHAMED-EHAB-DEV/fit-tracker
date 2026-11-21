@@ -256,7 +256,7 @@ export function WidgetGalleryClient() {
               <button
                 type="button"
                 onClick={() => handleAddWidget(w.id)}
-                className="w-full min-h-11 py-3 px-4 rounded-xl bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-black text-sm transition shadow-md shadow-emerald-500/20 active:scale-95 flex items-center justify-center gap-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                className="w-full min-h-11 py-3 px-4 rounded-xl bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-black text-sm transition shadow-md shadow-emerald-500/20 active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Plus className="w-4 h-4" aria-hidden="true" />
                 <span>{isNative ? `Add ${w.gridSize} widget` : "Available in the Android app"}</span>

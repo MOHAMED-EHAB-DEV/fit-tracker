@@ -363,7 +363,7 @@ export function PhotoAnalyzer() {
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={analyzing || isResizing}
-                      className="w-full h-full min-h-28 rounded-2xl border-2 border-dashed border-white/15 hover:border-emerald-500/50 bg-zinc-950/40 flex flex-col items-center justify-center gap-2 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:opacity-50"
+                      className="w-full h-full min-h-28 rounded-2xl border-2 border-dashed border-white/15 hover:border-emerald-500/50 bg-zinc-950/40 flex flex-col items-center justify-center gap-2 transition cursor-pointer disabled:opacity-50"
                     >
                       <Plus className="w-5 h-5 text-emerald-300" aria-hidden="true" />
                       <span className="text-sm font-semibold text-zinc-300">Add photo</span>

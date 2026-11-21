@@ -27,7 +27,7 @@ export function Card({
         variant === "flat" &&
           "bg-zinc-900/40 border border-white/5",
         variant === "interactive" &&
-          "bg-zinc-900/80 border border-white/10 hover:border-emerald-500/50 shadow-lg hover:shadow-emerald-500/10 cursor-pointer active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-emerald-500/50",
+          "bg-zinc-900/80 border border-white/10 hover:border-emerald-500/50 shadow-lg hover:shadow-emerald-500/10 cursor-pointer active:scale-[0.99]",
         className
       )}
       {...props}

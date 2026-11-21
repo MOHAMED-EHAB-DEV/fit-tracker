@@ -393,7 +393,7 @@ export function RoutineEditor({ initialRoutine, active }: RoutineEditorProps) {
               aria-label="Routine name"
               aria-invalid={nameMissing}
               placeholder="Routine name"
-              className="w-full bg-transparent text-lg font-bold text-white truncate rounded-md px-1 -mx-1 placeholder:text-zinc-500"
+              className="w-full bg-transparent text-lg font-bold text-white truncate rounded-md px-1 -mx-1 placeholder:text-zinc-500 transition-colors hover:bg-white/5 focus:outline-none focus:bg-white/5"
             />
             <p className="px-0.5 text-xs" aria-live="polite">
               {nameMissing ? (

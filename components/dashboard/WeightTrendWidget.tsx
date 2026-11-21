@@ -203,7 +203,7 @@ export function WeightTrendWidget({ history, currentWeightKg, goal }: WeightTren
         </div>
         <Link
           href="/body-comp"
-          className="min-h-11 flex items-center gap-1 px-2 text-sm font-semibold text-emerald-400 hover:text-emerald-300 transition rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+          className="min-h-11 flex items-center gap-1 px-2 text-sm font-semibold text-emerald-400 hover:text-emerald-300 transition rounded"
         >
           <span>Check-ins</span>
           <ChevronRight aria-hidden="true" className="w-4 h-4" />

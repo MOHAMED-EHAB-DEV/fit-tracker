@@ -151,7 +151,7 @@ export function TodayWorkoutCard({
                     : day.routineName
                       ? "border-emerald-500/60 bg-transparent"
                       : "border-line bg-transparent",
-                  day.isToday && !day.trained && "ring-2 ring-emerald-400/50"
+                  day.isToday && !day.trained && "ring-1 ring-emerald-400/60"
                 )}
               >
                 {day.trained && <Check className="h-4 w-4" aria-hidden="true" />}

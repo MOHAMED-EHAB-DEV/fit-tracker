@@ -51,7 +51,7 @@ export function HabitCard({
         aria-describedby={description ? descriptionId : undefined}
         disabled={disabled}
         onClick={() => onToggle(habit._id, !isChecked)}
-        className="flex-1 min-w-0 flex items-center gap-3.5 p-3.5 sm:p-4 text-start rounded-s-2xl cursor-pointer disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+        className="flex-1 min-w-0 flex items-center gap-3.5 p-3.5 sm:p-4 text-start rounded-s-2xl cursor-pointer disabled:cursor-not-allowed"
       >
         <span
           aria-hidden="true"
@@ -102,7 +102,7 @@ export function HabitCard({
               type="button"
               onClick={() => onEdit(habit)}
               aria-label={`Edit ${habit.name}`}
-              className="w-11 h-11 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-xl transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+              className="w-11 h-11 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-xl transition cursor-pointer"
             >
               <Pencil className="w-4 h-4" aria-hidden="true" />
             </button>
@@ -112,7 +112,7 @@ export function HabitCard({
               type="button"
               onClick={() => onArchive(habit)}
               aria-label={`Archive ${habit.name}`}
-              className="w-11 h-11 flex items-center justify-center text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+              className="w-11 h-11 flex items-center justify-center text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition cursor-pointer"
             >
               <Archive className="w-4 h-4" aria-hidden="true" />
             </button>

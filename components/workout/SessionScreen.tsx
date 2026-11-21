@@ -488,7 +488,7 @@ export function SessionScreen({ initialSession, initialPrevious }: SessionScreen
               value={session.name}
               onChange={(event) => dispatch({ type: "meta", patch: { name: event.target.value.slice(0, 80) } })}
               aria-label="Workout name"
-              className="w-full bg-transparent text-lg font-bold text-white truncate rounded-md px-1 -mx-1"
+              className="w-full bg-transparent text-lg font-bold text-white truncate rounded-md px-1 -mx-1 transition-colors hover:bg-white/5 focus:outline-none focus:bg-white/5"
             />
             <div className="flex items-center gap-3 px-0.5">
               {isLive && (

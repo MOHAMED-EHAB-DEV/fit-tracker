@@ -151,7 +151,7 @@ export function CheckInCard({ item, weightUnit, timeZone, onEdit, onDelete, onOp
                 type="button"
                 key={index}
                 onClick={() => photo.url && onOpenPhoto(photo.url)}
-                className="relative w-28 h-36 sm:w-32 sm:h-40 rounded-2xl overflow-hidden border border-white/10 bg-zinc-950 shrink-0 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                className="relative w-28 h-36 sm:w-32 sm:h-40 rounded-2xl overflow-hidden border border-white/10 bg-zinc-950 shrink-0 cursor-pointer"
                 aria-label={`View ${photo.angle} photo from ${dateLabel} full size`}
               >
                 <Image

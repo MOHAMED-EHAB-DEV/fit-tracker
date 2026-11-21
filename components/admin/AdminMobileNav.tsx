@@ -47,7 +47,7 @@ export function AdminMobileNav({ adminName, adminEmail }: AdminMobileNavProps) {
           <Link
             href="/"
             aria-label="Back to app"
-            className="p-2 rounded-xl text-zinc-400 hover:text-zinc-200 bg-zinc-900/80 border border-zinc-800 text-xs flex items-center gap-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+            className="p-2 rounded-xl text-zinc-400 hover:text-zinc-200 bg-zinc-900/80 border border-zinc-800 text-xs flex items-center gap-1"
           >
             <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
             <span>App</span>
@@ -58,7 +58,7 @@ export function AdminMobileNav({ adminName, adminEmail }: AdminMobileNavProps) {
             onClick={() => setIsOpen((prev) => !prev)}
             aria-label={isOpen ? "Close admin menu" : "Open admin menu"}
             aria-expanded={isOpen}
-            className="p-2 min-h-10 min-w-10 rounded-xl bg-violet-500/15 border border-violet-500/30 text-violet-300 flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+            className="p-2 min-h-10 min-w-10 rounded-xl bg-violet-500/15 border border-violet-500/30 text-violet-300 flex items-center justify-center"
           >
             {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>

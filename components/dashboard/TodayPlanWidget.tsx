@@ -26,7 +26,7 @@ interface TodayPlanWidgetProps {
 }
 
 const linkButtonClass =
-  "inline-flex items-center justify-center gap-1.5 px-3 min-h-11 rounded-xl text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400";
+  "inline-flex items-center justify-center gap-1.5 px-3 min-h-11 rounded-xl text-sm font-semibold transition-colors";
 
 export function TodayPlanWidget({ initialEvents, todayStr }: TodayPlanWidgetProps) {
   const router = useRouter();
@@ -173,7 +173,7 @@ export function TodayPlanWidget({ initialEvents, todayStr }: TodayPlanWidgetProp
                   aria-busy={isPending}
                   disabled={isPending}
                   onClick={() => handleToggle(event)}
-                  className={`w-11 h-11 rounded-full border-2 flex items-center justify-center shrink-0 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:cursor-wait ${
+                  className={`w-11 h-11 rounded-full border-2 flex items-center justify-center shrink-0 transition-all disabled:cursor-wait ${
                     event.isCompleted
                       ? "bg-emerald-500 border-emerald-400 text-zinc-950"
                       : "border-zinc-600 bg-zinc-900 text-zinc-500 hover:border-emerald-500"

@@ -527,7 +527,7 @@ export function CoachClient() {
       }}
       className={cn(
         "flex flex-col h-[calc(100dvh-8rem)] max-w-4xl mx-auto rounded-3xl bg-zinc-900/80 border border-zinc-800/80 overflow-hidden shadow-2xl relative",
-        isDragging && "ring-2 ring-emerald-500"
+        isDragging && "ring-1 ring-emerald-500/70"
       )}
     >
       <input
@@ -562,7 +562,7 @@ export function CoachClient() {
             onClick={() => setConfirmClear(true)}
             disabled={messages.length === 0}
             aria-label="Clear chat"
-            className="flex items-center gap-1.5 px-3 min-h-11 rounded-xl text-xs text-zinc-300 border border-zinc-700/70 hover:bg-zinc-800 disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+            className="flex items-center gap-1.5 px-3 min-h-11 rounded-xl text-xs text-zinc-300 border border-zinc-700/70 hover:bg-zinc-800 disabled:opacity-40"
           >
             <Trash2 className="w-4 h-4" aria-hidden="true" />
             <span className="hidden sm:inline">Clear chat</span>
@@ -645,7 +645,7 @@ export function CoachClient() {
                               type="button"
                               onClick={() => setPreviewUrl(url)}
                               aria-label={`View ${att.name}`}
-                              className="block rounded-xl overflow-hidden border border-zinc-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                              className="block rounded-xl overflow-hidden border border-zinc-700"
                             >
                               {/* eslint-disable-next-line @next/next/no-img-element -- local object URL preview */}
                               <img src={url} alt={att.name} className="w-28 h-20 object-cover" />
@@ -723,7 +723,7 @@ export function CoachClient() {
                       aria-pressed={isQuoted}
                       aria-label={isQuoted ? "Remove quote" : "Quote this message in your reply"}
                       className={cn(
-                        "flex items-center gap-1 px-2.5 min-h-11 rounded-lg text-xs font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
+                        "flex items-center gap-1 px-2.5 min-h-11 rounded-lg text-xs font-semibold",
                         isQuoted ? "text-emerald-400" : "text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800"
                       )}
                     >
@@ -744,7 +744,7 @@ export function CoachClient() {
             <button
               type="button"
               onClick={stop}
-              className="flex items-center gap-1.5 px-3 min-h-11 rounded-xl border border-zinc-700 text-zinc-200 hover:bg-zinc-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+              className="flex items-center gap-1.5 px-3 min-h-11 rounded-xl border border-zinc-700 text-zinc-200 hover:bg-zinc-800"
             >
               <Square className="w-3.5 h-3.5" aria-hidden="true" />
               Stop
@@ -802,7 +802,7 @@ export function CoachClient() {
                     aria-checked={selectedDays === days}
                     onClick={() => setSelectedDays(days)}
                     className={cn(
-                      "px-3 min-h-11 rounded-lg font-semibold text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
+                      "px-3 min-h-11 rounded-lg font-semibold text-xs",
                       selectedDays === days ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40" : "bg-zinc-900 text-zinc-300 border border-zinc-800"
                     )}
                   >
@@ -818,7 +818,7 @@ export function CoachClient() {
               setActiveCommand(null);
               setSelectedDays(null);
             }}
-            className="px-3 min-h-11 text-zinc-300 hover:text-white rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+            className="px-3 min-h-11 text-zinc-300 hover:text-white rounded-lg"
           >
             Cancel command
           </button>
@@ -926,7 +926,7 @@ export function CoachClient() {
           onClick={() => fileInputRef.current?.click()}
           disabled={isLoading || attachments.length >= CHAT_LIMITS.attachments}
           aria-label="Attach photos or files"
-          className="min-w-11 min-h-11 rounded-2xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/60 text-zinc-300 hover:text-emerald-400 flex items-center justify-center disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+          className="min-w-11 min-h-11 rounded-2xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/60 text-zinc-300 hover:text-emerald-400 flex items-center justify-center disabled:opacity-50"
         >
           <Paperclip className="w-4 h-4" aria-hidden="true" />
         </button>
@@ -964,7 +964,7 @@ export function CoachClient() {
             type="button"
             onClick={stop}
             aria-label="Stop the reply"
-            className="min-w-11 min-h-11 rounded-2xl bg-zinc-800 border border-zinc-600 text-zinc-100 flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+            className="min-w-11 min-h-11 rounded-2xl bg-zinc-800 border border-zinc-600 text-zinc-100 flex items-center justify-center"
           >
             <Square className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -973,7 +973,7 @@ export function CoachClient() {
             type="submit"
             disabled={!canSend}
             aria-label="Send message"
-            className="min-w-11 min-h-11 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 disabled:opacity-50 flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+            className="min-w-11 min-h-11 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 disabled:opacity-50 flex items-center justify-center"
           >
             <Send className="w-4 h-4" aria-hidden="true" />
           </button>

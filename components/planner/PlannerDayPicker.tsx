@@ -32,7 +32,7 @@ export default function PlannerDayPicker({ selectedDate, today, onSelectDate }: 
         <button
           type="button"
           onClick={() => onSelectDate(addDays(selectedDate, -1))}
-          className="min-w-11 min-h-11 flex items-center justify-center rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+          className="min-w-11 min-h-11 flex items-center justify-center rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 transition-colors"
           aria-label="Previous day"
         >
           <ChevronLeft className="w-5 h-5 rtl:rotate-180" aria-hidden="true" />
@@ -52,7 +52,7 @@ export default function PlannerDayPicker({ selectedDate, today, onSelectDate }: 
         <button
           type="button"
           onClick={() => onSelectDate(addDays(selectedDate, 1))}
-          className="min-w-11 min-h-11 flex items-center justify-center rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+          className="min-w-11 min-h-11 flex items-center justify-center rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 transition-colors"
           aria-label="Next day"
         >
           <ChevronRight className="w-5 h-5 rtl:rotate-180" aria-hidden="true" />
@@ -64,7 +64,7 @@ export default function PlannerDayPicker({ selectedDate, today, onSelectDate }: 
           <button
             type="button"
             onClick={() => onSelectDate(today)}
-            className="flex items-center gap-1.5 px-3 min-h-11 text-xs font-medium rounded-xl text-zinc-300 bg-zinc-800/80 hover:bg-zinc-700/80 border border-zinc-700/60 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+            className="flex items-center gap-1.5 px-3 min-h-11 text-xs font-medium rounded-xl text-zinc-300 bg-zinc-800/80 hover:bg-zinc-700/80 border border-zinc-700/60 transition-all"
           >
             <SunMedium className="w-3.5 h-3.5 text-amber-400" aria-hidden="true" />
             Today
@@ -74,7 +74,7 @@ export default function PlannerDayPicker({ selectedDate, today, onSelectDate }: 
           <button
             type="button"
             onClick={() => onSelectDate(tomorrow)}
-            className="flex items-center gap-1.5 px-3.5 min-h-11 text-xs font-semibold rounded-xl text-emerald-950 bg-emerald-400 hover:bg-emerald-300 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200"
+            className="flex items-center gap-1.5 px-3.5 min-h-11 text-xs font-semibold rounded-xl text-emerald-950 bg-emerald-400 hover:bg-emerald-300 transition-all"
           >
             Plan tomorrow
             <ArrowRight className="w-3.5 h-3.5 rtl:rotate-180" aria-hidden="true" />

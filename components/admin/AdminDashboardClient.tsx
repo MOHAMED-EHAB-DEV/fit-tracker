@@ -214,7 +214,7 @@ export function AdminDashboardClient({ initialStats, initialRecentUsers }: Admin
           </h2>
           <Link
             href="/admin/users"
-            className="inline-flex items-center min-h-11 text-sm text-violet-400 hover:text-violet-300 transition font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 rounded"
+            className="inline-flex items-center min-h-11 text-sm text-violet-400 hover:text-violet-300 transition font-medium rounded"
           >
             View all users →
           </Link>
@@ -238,7 +238,7 @@ export function AdminDashboardClient({ initialStats, initialRecentUsers }: Admin
                     <td className="px-4 py-3">
                       <Link
                         href={`/admin/users/${u.id}`}
-                        className="flex items-center gap-3 min-h-11 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+                        className="flex items-center gap-3 min-h-11 rounded"
                       >
                         <span className="w-8 h-8 rounded-full bg-violet-500/20 border border-violet-500/30 text-violet-300 flex items-center justify-center font-bold text-xs shrink-0" aria-hidden="true">
                           {u.name?.charAt(0).toUpperCase() || "?"}

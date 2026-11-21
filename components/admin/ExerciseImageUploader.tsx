@@ -179,20 +179,20 @@ function Tile({
   const loadFailed = failedSrc === item.previewUrl;
   const isCover = index === 0;
   const button =
-    "min-h-11 min-w-11 flex items-center justify-center rounded-lg text-zinc-200 bg-zinc-900 border border-white/10 hover:bg-zinc-800 transition cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400";
+    "min-h-11 min-w-11 flex items-center justify-center rounded-lg text-zinc-200 bg-zinc-900 border border-white/10 hover:bg-zinc-800 transition cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed";
 
   return (
     <li
       className={cn(
         "rounded-2xl overflow-hidden bg-zinc-950 border flex flex-col",
-        isCover ? "border-violet-500 ring-2 ring-violet-500/30" : "border-white/10"
+        isCover ? "border-violet-500" : "border-white/10"
       )}
     >
       <button
         type="button"
         onClick={() => onPreview(item)}
         disabled={item.status !== "ready" || loadFailed}
-        className="relative aspect-4/3 w-full cursor-zoom-in disabled:cursor-default focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-400"
+        className="relative aspect-4/3 w-full cursor-zoom-in disabled:cursor-default focus-visible:-outline-offset-2"
         aria-label={`View image ${index + 1}`}
       >
         {!loadFailed ? (
@@ -403,7 +403,7 @@ export function ExerciseImageUploader({ images, setImages, className }: Exercise
           type="button"
           onClick={() => setShowUrlInput((value) => !value)}
           aria-expanded={showUrlInput}
-          className="inline-flex items-center gap-1.5 min-h-11 px-2 text-sm font-semibold text-violet-300 hover:text-violet-200 transition cursor-pointer rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          className="inline-flex items-center gap-1.5 min-h-11 px-2 text-sm font-semibold text-violet-300 hover:text-violet-200 transition cursor-pointer rounded-lg"
         >
           <LinkIcon className="w-4 h-4" aria-hidden="true" />
           <span>{showUrlInput ? "Hide link field" : "Add by link"}</span>

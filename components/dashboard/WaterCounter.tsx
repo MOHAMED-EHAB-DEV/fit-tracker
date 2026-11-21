@@ -83,7 +83,7 @@ export function WaterCounter({ initialWaterMl }: WaterCounterProps) {
             onClick={() => change(ml, false)}
             disabled={isPending}
             aria-label={`Add ${ml} millilitres of water`}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 min-h-11 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-200 text-sm font-semibold border border-cyan-500/30 transition active:scale-95 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 cursor-pointer"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 min-h-11 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-200 text-sm font-semibold border border-cyan-500/30 transition active:scale-95 disabled:opacity-50 cursor-pointer"
           >
             <Plus className="w-4 h-4" aria-hidden="true" />
             <span>{ml} ml</span>

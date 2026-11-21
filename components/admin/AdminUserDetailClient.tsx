@@ -182,7 +182,7 @@ function Field({ label, value, onChange, error, options, rule, hint }: FieldProp
 // ── Page ────────────────────────────────────────────────────────────────────
 
 const iconButton =
-  "min-h-11 min-w-11 flex items-center justify-center rounded-xl text-zinc-300 transition cursor-pointer focus:outline-none focus-visible:ring-2 disabled:opacity-40 disabled:cursor-not-allowed";
+  "min-h-11 min-w-11 flex items-center justify-center rounded-xl text-zinc-300 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed";
 
 export function AdminUserDetailClient({ initial }: { initial: Detail }) {
   const router = useRouter();
@@ -318,7 +318,7 @@ export function AdminUserDetailClient({ initial }: { initial: Detail }) {
       <div className="flex flex-wrap items-center gap-3">
         <Link
           href="/admin/users"
-          className={`${iconButton} hover:text-white hover:bg-zinc-900 focus-visible:ring-violet-400`}
+          className={`${iconButton} hover:text-white hover:bg-zinc-900`}
           aria-label="Back to users"
         >
           <ArrowLeft className="w-5 h-5" aria-hidden="true" />
@@ -338,7 +338,7 @@ export function AdminUserDetailClient({ initial }: { initial: Detail }) {
               setModalError(null);
               setModal(user.isBanned ? "unban" : "ban");
             }}
-            className={`${iconButton} hover:text-amber-300 hover:bg-amber-500/10 focus-visible:ring-amber-400`}
+            className={`${iconButton} hover:text-amber-300 hover:bg-amber-500/10`}
             title={lockReason || (user.isBanned ? "Unban" : "Ban")}
             aria-label={user.isBanned ? "Unban user" : "Ban user"}
           >
@@ -351,7 +351,7 @@ export function AdminUserDetailClient({ initial }: { initial: Detail }) {
               setModalError(null);
               setModal(user.role === "admin" ? "demote" : "promote");
             }}
-            className={`${iconButton} hover:text-violet-300 hover:bg-violet-500/10 focus-visible:ring-violet-400`}
+            className={`${iconButton} hover:text-violet-300 hover:bg-violet-500/10`}
             title={lockReason || (user.role === "admin" ? "Remove admin rights" : "Make admin")}
             aria-label={user.role === "admin" ? "Remove admin rights" : "Make admin"}
           >
@@ -364,7 +364,7 @@ export function AdminUserDetailClient({ initial }: { initial: Detail }) {
               setModalError(null);
               setModal("delete");
             }}
-            className={`${iconButton} hover:text-red-300 hover:bg-red-500/10 focus-visible:ring-red-400`}
+            className={`${iconButton} hover:text-red-300 hover:bg-red-500/10`}
             title={lockReason || "Delete user"}
             aria-label="Delete user"
           >

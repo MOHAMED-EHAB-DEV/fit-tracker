@@ -28,11 +28,11 @@ interface QuickLogModalProps {
 
 type TabType = "food" | "water" | "weight" | "steps";
 
-const TABS: Array<{ id: TabType; label: string; icon: React.ReactNode; ring: string; active: string }> = [
-  { id: "food", label: "Food", icon: <UtensilsCrossed className="w-4 h-4" aria-hidden="true" />, ring: "focus-visible:ring-emerald-400", active: "text-emerald-300" },
-  { id: "water", label: "Water", icon: <Droplets className="w-4 h-4" aria-hidden="true" />, ring: "focus-visible:ring-cyan-400", active: "text-cyan-300" },
-  { id: "weight", label: "Weight", icon: <Scale className="w-4 h-4" aria-hidden="true" />, ring: "focus-visible:ring-amber-400", active: "text-amber-300" },
-  { id: "steps", label: "Steps", icon: <Footprints className="w-4 h-4" aria-hidden="true" />, ring: "focus-visible:ring-blue-400", active: "text-blue-300" },
+const TABS: Array<{ id: TabType; label: string; icon: React.ReactNode; active: string }> = [
+  { id: "food", label: "Food", icon: <UtensilsCrossed className="w-4 h-4" aria-hidden="true" />, active: "text-emerald-300" },
+  { id: "water", label: "Water", icon: <Droplets className="w-4 h-4" aria-hidden="true" />, active: "text-cyan-300" },
+  { id: "weight", label: "Weight", icon: <Scale className="w-4 h-4" aria-hidden="true" />, active: "text-amber-300" },
+  { id: "steps", label: "Steps", icon: <Footprints className="w-4 h-4" aria-hidden="true" />, active: "text-blue-300" },
 ];
 
 /** Body weight bounds per display unit (kg 20-400). */
@@ -196,8 +196,7 @@ export function QuickLogModal({ isOpen, onClose, initialWaterMl }: QuickLogModal
                 setError(null);
               }}
               className={cn(
-                "min-h-11 px-1 rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer focus:outline-none focus-visible:ring-2",
-                tab.ring,
+                "min-h-11 px-1 rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer",
                 activeTab === tab.id ? cn("bg-zinc-800 shadow-sm", tab.active) : "text-zinc-400 hover:text-zinc-200"
               )}
             >
@@ -250,7 +249,7 @@ export function QuickLogModal({ isOpen, onClose, initialWaterMl }: QuickLogModal
                   onClick={() => changeWater(ml, false)}
                   disabled={busy}
                   aria-label={`Add ${ml} millilitres of water`}
-                  className="py-3 px-3 min-h-14 rounded-2xl bg-zinc-950 border border-cyan-500/20 hover:border-cyan-500/60 hover:bg-cyan-500/10 font-bold transition flex flex-col items-center gap-1 active:scale-95 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:opacity-50"
+                  className="py-3 px-3 min-h-14 rounded-2xl bg-zinc-950 border border-cyan-500/20 hover:border-cyan-500/60 hover:bg-cyan-500/10 font-bold transition flex flex-col items-center gap-1 active:scale-95 cursor-pointer disabled:opacity-50"
                 >
                   <span className="text-base text-white tabular-nums">+{ml} ml</span>
                   <span className="text-xs text-zinc-400 font-medium">
@@ -342,7 +341,7 @@ export function QuickLogModal({ isOpen, onClose, initialWaterMl }: QuickLogModal
                   <button
                     type="button"
                     onClick={() => setSteps(String(nativeSteps))}
-                    className="min-h-11 px-2 text-sm font-semibold text-blue-300 hover:text-blue-200 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 rounded-lg"
+                    className="min-h-11 px-2 text-sm font-semibold text-blue-300 hover:text-blue-200 transition cursor-pointer rounded-lg"
                   >
                     Use phone count ({nativeSteps.toLocaleString("en-US")})
                   </button>

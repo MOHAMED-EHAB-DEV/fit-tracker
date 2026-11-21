@@ -53,7 +53,7 @@ export function AdminSidebar({ adminName, adminEmail }: AdminSidebarProps) {
       <Link
         href="/"
         aria-label="Back to FitTracker App"
-        className="flex items-center gap-2 px-3 py-2 mb-4 rounded-xl text-xs text-zinc-500 hover:text-violet-400 hover:bg-violet-500/5 transition-all group focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+        className="flex items-center gap-2 px-3 py-2 mb-4 rounded-xl text-xs text-zinc-500 hover:text-violet-400 hover:bg-violet-500/5 transition-all group"
       >
         <ChevronRight className="w-3.5 h-3.5 rotate-180 group-hover:-translate-x-0.5 transition-transform" aria-hidden="true" />
         <span>Back to App</span>
@@ -71,7 +71,7 @@ export function AdminSidebar({ adminName, adminEmail }: AdminSidebarProps) {
               href={item.href}
               aria-current={isActive ? "page" : undefined}
               className={cn(
-                "flex items-center gap-3.5 px-3.5 py-3 rounded-xl font-medium text-sm transition-all duration-200 group relative focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500",
+                "flex items-center gap-3.5 px-3.5 py-3 rounded-xl font-medium text-sm transition-all duration-200 group relative",
                 isActive
                   ? "bg-violet-500/10 text-violet-400 font-semibold shadow-sm border border-violet-500/20"
                   : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900/80"
@@ -109,7 +109,7 @@ export function AdminSidebar({ adminName, adminEmail }: AdminSidebarProps) {
             onClick={handleLogout}
             title="Log Out"
             aria-label="Log Out"
-            className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 cursor-pointer"
+            className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition cursor-pointer"
           >
             <LogOut className="w-4 h-4" aria-hidden="true" />
           </button>

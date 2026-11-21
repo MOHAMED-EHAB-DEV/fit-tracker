@@ -201,13 +201,13 @@ export function Select<T = string | number>({
         onClick={() => !disabled && setIsOpen((prev) => !prev)}
         onKeyDown={handleKeyDown}
         className={cn(
-          "w-full ps-3.5 pe-3 bg-surface-2 border rounded-xl text-start flex items-center justify-between gap-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/25 cursor-pointer select-none",
+          "w-full ps-3.5 pe-3 bg-surface-2 border rounded-xl text-start flex items-center justify-between gap-2 transition-colors focus:outline-none cursor-pointer select-none",
           FIELD_SIZE[size],
           error
-            ? "border-red-500/80 focus-visible:border-red-500"
+            ? "border-red-500/70 focus-visible:border-red-500"
             : isOpen
-            ? "border-emerald-500 ring-2 ring-emerald-500/25"
-            : "border-line hover:border-white/20 focus-visible:border-emerald-500",
+            ? "border-emerald-500/80"
+            : "border-line hover:not-focus-visible:border-white/20 focus-visible:border-emerald-500/80",
           disabled && FIELD_BOX_DISABLED,
           triggerClassName
         )}
@@ -288,7 +288,7 @@ export function Select<T = string | number>({
                     aria-controls={`${selectId}-listbox`}
                     aria-activedescendant={highlightedIndex >= 0 ? `${selectId}-opt-${highlightedIndex}` : undefined}
                     placeholder="Search..."
-                    className="w-full pl-9 pr-3 py-2 min-h-10 bg-zinc-950/90 border border-white/10 rounded-xl text-white text-base placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    className="w-full pl-9 pr-3 py-2 min-h-10 bg-zinc-950/90 border border-white/10 rounded-xl text-white text-base placeholder-zinc-500 transition-colors focus:outline-none focus:border-emerald-500/80"
                   />
                 </div>
               </div>

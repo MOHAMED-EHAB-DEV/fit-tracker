@@ -12,13 +12,16 @@ export const FIELD_DESCRIPTION = "text-xs text-zinc-400";
 /** Error text under a field. */
 export const FIELD_ERROR = "text-xs font-medium text-red-400";
 
-/** The field box itself: raised surface, thin line, brand focus ring. */
+/**
+ * The field box itself: raised surface, thin line. Focus is shown by the 1px
+ * border turning brand-coloured, with no ring or outline around it.
+ */
 export const FIELD_BOX =
-  "bg-surface-2 border border-line rounded-xl text-white transition-colors hover:border-white/20 focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/25";
+  "bg-surface-2 border border-line rounded-xl text-white transition-colors hover:not-focus-within:border-white/20 focus-within:border-emerald-500/80";
 
 /** Added to FIELD_BOX when the value is invalid. */
 export const FIELD_BOX_INVALID =
-  "border-red-500/80 hover:border-red-500/80 focus-within:border-red-500 focus-within:ring-red-500/25";
+  "border-red-500/70 hover:not-focus-within:border-red-500/70 focus-within:border-red-500";
 
 /** Added to FIELD_BOX when the field is disabled. */
 export const FIELD_BOX_DISABLED = "opacity-50 cursor-not-allowed pointer-events-none";

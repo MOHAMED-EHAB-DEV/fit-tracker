@@ -39,7 +39,7 @@ export default function AdminError({
           <button
             type="button"
             onClick={() => retry()}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 min-h-11 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-sm transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 min-h-11 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-sm transition cursor-pointer"
           >
             <RotateCcw className="w-4 h-4" aria-hidden="true" />
             <span>Try again</span>

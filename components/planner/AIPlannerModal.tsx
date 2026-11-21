@@ -233,7 +233,7 @@ export default function AIPlannerModal({
               <button
                 type="button"
                 onClick={() => setSelected(selected.size === plan.length ? new Set() : new Set(plan.map((_, i) => i)))}
-                className="min-h-11 px-2 text-emerald-400 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 rounded-lg"
+                className="min-h-11 px-2 text-emerald-400 hover:underline rounded-lg"
               >
                 {selected.size === plan.length ? "Deselect all" : "Select all"}
               </button>
@@ -255,7 +255,7 @@ export default function AIPlannerModal({
                       role="checkbox"
                       aria-checked={isSelected}
                       onClick={() => toggleSelected(index)}
-                      className="w-full flex items-start gap-3 p-3 text-start rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                      className="w-full flex items-start gap-3 p-3 text-start rounded-xl"
                     >
                       <span
                         className={`w-6 h-6 rounded-md border flex items-center justify-center mt-0.5 shrink-0 ${

@@ -436,7 +436,7 @@ export function BodyCompClient({ initialCheckIns, initialHasMore, todayStr, time
           type="submit"
           disabled={busy || isEstimating}
           aria-busy={isSubmitting}
-          className="w-full min-h-12 px-4 bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-extrabold rounded-2xl transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+          className="w-full min-h-12 px-4 bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-extrabold rounded-2xl transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
         >
           {busy ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Plus className="w-4 h-4" aria-hidden="true" />}
           <span>{submitLabel}</span>

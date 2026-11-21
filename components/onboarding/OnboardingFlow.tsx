@@ -481,7 +481,7 @@ function ChoiceButton({
   return (
     <label
       className={cn(
-        "flex min-h-14 cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-emerald-400",
+        "flex min-h-14 cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 has-focus-visible:outline-[1.5px] has-focus-visible:outline-offset-2 has-focus-visible:outline-emerald-400/80",
         selected ? "border-emerald-500 bg-emerald-500/15" : "border-line bg-surface"
       )}
     >

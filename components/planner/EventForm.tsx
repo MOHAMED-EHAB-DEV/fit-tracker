@@ -111,7 +111,7 @@ export default function EventForm({
                 type="button"
                 aria-pressed={isSelected}
                 onClick={() => onChange({ ...values, category: cat, color: cfg.defaultColor })}
-                className={`px-3 min-h-11 rounded-xl text-sm font-medium border transition-all text-center focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
+                className={`px-3 min-h-11 rounded-xl text-sm font-medium border transition-all text-center ${
                   isSelected
                     ? `${cfg.badgeBg} ${cfg.badgeText} ${cfg.borderCol} ring-1 ring-emerald-500/50`
                     : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200"
@@ -156,7 +156,7 @@ export default function EventForm({
                 type="button"
                 aria-pressed={isSelected}
                 onClick={() => set("recurrence", opt.value)}
-                className={`min-h-11 px-2 rounded-xl text-xs sm:text-sm font-semibold border transition-all text-center focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
+                className={`min-h-11 px-2 rounded-xl text-xs sm:text-sm font-semibold border transition-all text-center ${
                   isSelected
                     ? "bg-emerald-500/15 border-emerald-500/50 text-emerald-300 ring-1 ring-emerald-500/30"
                     : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200"
@@ -196,7 +196,7 @@ export default function EventForm({
                   role="checkbox"
                   aria-checked={isLinked}
                   onClick={() => toggleHabit(habit._id)}
-                  className={`flex items-center justify-between px-3 min-h-11 rounded-xl text-sm border text-start transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
+                  className={`flex items-center justify-between px-3 min-h-11 rounded-xl text-sm border text-start transition-colors ${
                     isLinked
                       ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-300"
                       : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200"

@@ -180,7 +180,7 @@ export function HabitsWidget({ habits, initialCompletedHabitIds, todayStr, timeZ
                     aria-label={`${habit.name}: ${isChecked ? "completed" : "not completed"}`}
                     disabled={pending || dayIsStale}
                     onClick={() => handleToggle(habit._id, !isChecked)}
-                    className="flex-1 min-w-0 min-h-11 flex items-center gap-2.5 ps-3 pe-2 text-start cursor-pointer disabled:cursor-wait rounded-s-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                    className="flex-1 min-w-0 min-h-11 flex items-center gap-2.5 ps-3 pe-2 text-start cursor-pointer disabled:cursor-wait rounded-s-xl"
                   >
                     <span
                       aria-hidden="true"
@@ -207,7 +207,7 @@ export function HabitsWidget({ habits, initialCompletedHabitIds, todayStr, timeZ
                     type="button"
                     onClick={() => setEditing(habit)}
                     aria-label={`Edit ${habit.name}`}
-                    className="w-11 shrink-0 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-700/60 rounded-e-xl transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                    className="w-11 shrink-0 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-700/60 rounded-e-xl transition cursor-pointer"
                   >
                     <Pencil className="w-4 h-4" aria-hidden="true" />
                   </button>

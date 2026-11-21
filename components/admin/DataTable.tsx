@@ -78,7 +78,7 @@ export function DataTable<T extends object>({
       <button
         type="button"
         onClick={() => onSort?.(col.key, nextDir)}
-        className="inline-flex items-center gap-1.5 min-h-11 uppercase tracking-wider cursor-pointer hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 rounded"
+        className="inline-flex items-center gap-1.5 min-h-11 uppercase tracking-wider cursor-pointer hover:text-zinc-100 rounded"
       >
         {col.label}
         {sortIcon(active, sortDir)}

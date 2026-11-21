@@ -199,7 +199,7 @@ export function ProposalCard({ state, today, onChange, onConfirm, onDismiss }: P
             type="button"
             onClick={onConfirm}
             disabled={isBusy || !validation.success || dateInvalid}
-            className="inline-flex items-center gap-1.5 px-4 min-h-11 rounded-xl bg-emerald-500 text-zinc-950 font-semibold hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+            className="inline-flex items-center gap-1.5 px-4 min-h-11 rounded-xl bg-emerald-500 text-zinc-950 font-semibold hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isBusy ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Check className="w-4 h-4" aria-hidden="true" />}
             {status === "error" ? "Try again" : "Log it"}
@@ -209,7 +209,7 @@ export function ProposalCard({ state, today, onChange, onConfirm, onDismiss }: P
             onClick={() => setIsEditing((value) => !value)}
             disabled={isBusy}
             aria-expanded={isEditing}
-            className="inline-flex items-center gap-1.5 px-3 min-h-11 rounded-xl border border-zinc-700 text-zinc-200 hover:bg-zinc-800 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+            className="inline-flex items-center gap-1.5 px-3 min-h-11 rounded-xl border border-zinc-700 text-zinc-200 hover:bg-zinc-800 disabled:opacity-50"
           >
             <Pencil className="w-4 h-4" aria-hidden="true" />
             {isEditing ? "Done editing" : "Edit"}
@@ -219,7 +219,7 @@ export function ProposalCard({ state, today, onChange, onConfirm, onDismiss }: P
             onClick={onDismiss}
             disabled={isBusy}
             aria-label={`Don't log ${describeProposal(proposal)}`}
-            className="inline-flex items-center gap-1.5 px-3 min-h-11 rounded-xl text-zinc-300 hover:bg-zinc-800 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+            className="inline-flex items-center gap-1.5 px-3 min-h-11 rounded-xl text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
           >
             <X className="w-4 h-4" aria-hidden="true" />
             Remove

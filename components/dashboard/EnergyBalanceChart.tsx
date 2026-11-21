@@ -304,7 +304,7 @@ export function EnergyBalanceChart({ data, goal, targetCalories, tdee }: EnergyB
               type="button"
               aria-pressed={viewMode === mode}
               onClick={() => setViewMode(mode)}
-              className={`min-h-11 px-3 rounded-lg transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
+              className={`min-h-11 px-3 rounded-lg transition cursor-pointer ${
                 viewMode === mode ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-zinc-200"
               }`}
             >

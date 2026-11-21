@@ -49,7 +49,7 @@ export function SetRow({
   const badgeText = set.type === "working" ? String(ordinal) : typeLabel.short;
   const setName = `${typeLabel.label} ${ordinal}`;
   const ring = (field: "weight" | "reps" | "duration") =>
-    missing === field ? "ring-2 ring-amber-400 rounded-xl" : undefined;
+    missing === field ? "ring-1 ring-amber-400 rounded-xl" : undefined;
 
   return (
     <div

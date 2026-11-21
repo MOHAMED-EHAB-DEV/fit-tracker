@@ -300,7 +300,7 @@ function HabitFormModalInner({ isOpen, habit, onClose, onSaved, onRequestArchive
                   aria-pressed={selected}
                   className={cn(
                     "w-11 h-11 rounded-xl transition-transform cursor-pointer",
-                    selected ? "ring-2 ring-white ring-offset-2 ring-offset-zinc-900" : "opacity-85 hover:opacity-100"
+                    selected ? "ring-[1.5px] ring-white ring-offset-2 ring-offset-zinc-900" : "opacity-85 hover:opacity-100"
                   )}
                   style={{ backgroundColor: preset }}
                 />
