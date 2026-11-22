@@ -22,7 +22,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  Sparkles,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -223,20 +222,20 @@ export function Calendar({
   return (
     <div
       className={cn(
-        "w-72 sm:w-80 select-none p-4 rounded-3xl bg-zinc-900/95 border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.8),0_0_1px_1px_rgba(255,255,255,0.08)] backdrop-blur-2xl text-zinc-100",
+        "w-72 select-none text-ink",
         className
       )}
     >
       {viewMode === "days" ? (
         <>
           {/* Days View Header with Clickable Month Title */}
-          <div className="flex items-center justify-between pb-3 border-b border-white/10">
+          <div className="flex items-center justify-between border-b border-line pb-2">
             <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={() => setCurrentMonth((prev) => subMonths(prev, 1))}
                 disabled={!canGoPrev}
-                className="p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 disabled:opacity-20 disabled:pointer-events-none transition cursor-pointer active:scale-95"
+                className="grid h-9 w-9 place-items-center rounded-chip text-ink-2 transition-colors hover:bg-elevated hover:text-ink disabled:pointer-events-none disabled:opacity-30 cursor-pointer"
                 title="Previous month"
                 aria-label="Previous month"
               >
@@ -250,18 +249,18 @@ export function Calendar({
                   setViewingYear(getYear(currentMonth));
                   setViewMode("months");
                 }}
-                className="flex items-center gap-1 font-extrabold text-sm tracking-tight text-white hover:text-emerald-400 hover:bg-zinc-800/80 px-2 py-1 rounded-xl transition cursor-pointer group"
+                className="group flex min-h-9 items-center gap-1 rounded-chip px-2 text-sm font-semibold text-ink transition-colors hover:bg-elevated cursor-pointer"
                 title="Click to choose from all months of the year"
               >
                 <span>{format(currentMonth, "MMMM yyyy")}</span>
-                <ChevronDown className="w-3.5 h-3.5 text-zinc-400 group-hover:text-emerald-400 transition" />
+                <ChevronDown className="h-3.5 w-3.5 text-ink-3 transition-colors group-hover:text-ink" />
               </button>
 
               <button
                 type="button"
                 onClick={() => setCurrentMonth((prev) => addMonths(prev, 1))}
                 disabled={!canGoNext}
-                className="p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 disabled:opacity-20 disabled:pointer-events-none transition cursor-pointer active:scale-95"
+                className="grid h-9 w-9 place-items-center rounded-chip text-ink-2 transition-colors hover:bg-elevated hover:text-ink disabled:pointer-events-none disabled:opacity-30 cursor-pointer"
                 title="Next month"
                 aria-label="Next month"
               >
@@ -273,7 +272,7 @@ export function Calendar({
               <button
                 type="button"
                 onClick={onClose}
-                className="p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition cursor-pointer"
+                className="grid h-9 w-9 place-items-center rounded-chip text-ink-2 transition-colors hover:bg-elevated hover:text-ink disabled:pointer-events-none disabled:opacity-30 cursor-pointer"
                 title="Close calendar"
                 aria-label="Close"
               >
@@ -283,9 +282,9 @@ export function Calendar({
           </div>
 
           {/* Weekday headers */}
-          <div className="grid grid-cols-7 gap-1 pt-3 pb-1 text-center">
+          <div className="grid grid-cols-7 gap-1 pt-2.5 pb-1 text-center">
             {weekDayLabels.map((lbl) => (
-              <span key={lbl} className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider">
+              <span key={lbl} className="text-xs font-medium text-ink-3">
                 {lbl}
               </span>
             ))}
@@ -308,23 +307,23 @@ export function Calendar({
                   disabled={isDisabled}
                   onClick={() => handleSelectDay(day)}
                   className={cn(
-                    "relative h-8 sm:h-9 flex flex-col items-center justify-center rounded-xl text-xs font-semibold transition cursor-pointer active:scale-90",
+                    "relative flex h-9 flex-col items-center justify-center rounded-chip font-mono text-[13px] tabular-nums transition-colors cursor-pointer",
                     isSelected
-                      ? "bg-emerald-500 text-zinc-950 font-black shadow-md shadow-emerald-500/35"
+                      ? "bg-ink font-semibold text-ink-inverse"
                       : isDisabled
-                      ? "opacity-25 pointer-events-none text-zinc-600"
+                      ? "pointer-events-none text-ink-3 opacity-40"
                       : isCurrentToday
-                      ? "text-emerald-400 border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20"
+                      ? "border border-accent font-semibold text-accent hover:bg-accent-soft"
                       : isCurrentMonth
-                      ? "text-zinc-200 hover:bg-zinc-800 hover:text-white"
-                      : "text-zinc-600 hover:bg-zinc-800/40"
+                      ? "text-ink hover:bg-elevated"
+                      : "text-ink-3 hover:bg-elevated/60"
                   )}
                 >
                   <span>{format(day, "d")}</span>
 
                   {/* Indicator dot */}
                   {hasIndicator && !isSelected && (
-                    <span className="w-1 h-1 rounded-full bg-emerald-400 absolute bottom-1" />
+                    <span className="absolute bottom-1 h-1 w-1 rounded-full bg-ink-2" />
                   )}
                 </button>
               );
@@ -334,20 +333,20 @@ export function Calendar({
       ) : (
         <>
           {/* Months View: Year Header & 12 Months Grid */}
-          <div className="flex items-center justify-between pb-3 border-b border-white/10">
-            <div className="flex items-center gap-1.5">
+          <div className="flex items-center justify-between border-b border-line pb-2">
+            <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={() => setViewingYear((y) => y - 1)}
                 disabled={!canGoPrevYear}
-                className="p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 disabled:opacity-20 disabled:pointer-events-none transition cursor-pointer active:scale-95"
+                className="grid h-9 w-9 place-items-center rounded-chip text-ink-2 transition-colors hover:bg-elevated hover:text-ink disabled:pointer-events-none disabled:opacity-30 cursor-pointer"
                 title="Previous year"
                 aria-label="Previous year"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
 
-              <span className="font-extrabold text-sm tracking-tight text-white px-2">
+              <span className="px-2 font-mono text-sm font-semibold tabular-nums text-ink">
                 {viewingYear}
               </span>
 
@@ -355,7 +354,7 @@ export function Calendar({
                 type="button"
                 onClick={() => setViewingYear((y) => y + 1)}
                 disabled={!canGoNextYear}
-                className="p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 disabled:opacity-20 disabled:pointer-events-none transition cursor-pointer active:scale-95"
+                className="grid h-9 w-9 place-items-center rounded-chip text-ink-2 transition-colors hover:bg-elevated hover:text-ink disabled:pointer-events-none disabled:opacity-30 cursor-pointer"
                 title="Next year"
                 aria-label="Next year"
               >
@@ -366,14 +365,14 @@ export function Calendar({
             <button
               type="button"
               onClick={() => setViewMode("days")}
-              className="text-xs font-bold text-zinc-400 hover:text-white hover:bg-zinc-800 px-2.5 py-1 rounded-xl transition cursor-pointer"
+              className="min-h-9 rounded-chip px-2.5 text-xs font-medium text-ink-2 transition-colors hover:bg-elevated hover:text-ink cursor-pointer"
             >
               Back to days
             </button>
           </div>
 
           {/* 12 Months Grid */}
-          <div className="grid grid-cols-3 gap-2 py-3">
+          <div className="grid grid-cols-3 gap-1.5 py-2.5">
             {MONTH_NAMES.map((mName, idx) => {
               const monthStartDate = new Date(viewingYear, idx, 1);
               const monthEndDate = endOfMonth(monthStartDate);
@@ -401,16 +400,16 @@ export function Calendar({
                   disabled={Boolean(isMonthDisabled)}
                   onClick={() => handleSelectMonth(idx)}
                   className={cn(
-                    "py-3 px-2 rounded-2xl text-xs font-bold transition cursor-pointer text-center active:scale-95",
+                    "min-h-11 rounded-control px-2 text-center text-[13px] font-medium transition-colors cursor-pointer",
                     isSelectedMonth
-                      ? "bg-emerald-500 text-zinc-950 font-black shadow-md shadow-emerald-500/35"
+                      ? "bg-ink font-semibold text-ink-inverse"
                       : isMonthDisabled
-                      ? "opacity-25 pointer-events-none text-zinc-600"
+                      ? "pointer-events-none text-ink-3 opacity-40"
                       : isTodayMonth
-                      ? "text-emerald-400 border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20"
+                      ? "border border-accent text-accent hover:bg-accent-soft"
                       : isViewingCurrent
-                      ? "text-white bg-zinc-800 border border-white/15"
-                      : "text-zinc-300 hover:text-white hover:bg-zinc-800/60"
+                      ? "border border-line-strong bg-elevated text-ink"
+                      : "text-ink-2 hover:bg-elevated hover:text-ink"
                   )}
                 >
                   {mName}
@@ -422,14 +421,14 @@ export function Calendar({
       )}
 
       {/* Footer info & shortcut */}
-      <div className="flex items-center justify-between pt-3 mt-3 border-t border-white/10 text-xs">
+      <div className="mt-2 flex items-center justify-between border-t border-line pt-2 text-xs">
         {indicatorSet && indicatorSet.size > 0 && viewMode === "days" ? (
-          <span className="text-[11px] text-zinc-400 flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+          <span className="flex items-center gap-1.5 text-xs text-ink-3">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-ink-2" />
             <span>{indicatorLabel}</span>
           </span>
         ) : (
-          <span className="text-[11px] text-zinc-500">
+          <span className="text-xs text-ink-3">
             {format(todayDate, "EEE, MMM d, yyyy")}
           </span>
         )}
@@ -439,10 +438,9 @@ export function Calendar({
             type="button"
             onClick={handleSelectToday}
             disabled={isDateDisabled(todayDate)}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 text-xs font-bold transition cursor-pointer active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
+            className="min-h-9 rounded-chip border border-line bg-elevated px-2.5 text-xs font-medium text-ink transition-colors hover:border-line-strong disabled:pointer-events-none disabled:opacity-30 cursor-pointer"
           >
-            <Sparkles className="w-3 h-3" />
-            <span>Today</span>
+            Today
           </button>
         )}
       </div>

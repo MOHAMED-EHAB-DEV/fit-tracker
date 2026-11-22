@@ -4,7 +4,7 @@ import React, { useRef, useState } from "react";
 import Link from "next/link";
 import { UtensilsCrossed, Plus, Pencil, Trash2, Users, BookOpen } from "lucide-react";
 import { DataTable, type Column } from "@/components/admin/DataTable";
-import { ConfirmModal } from "@/components/admin/ConfirmModal";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Select } from "@/components/ui/Select";
 import { Chip } from "@/components/ui/Chip";
 import { useToast } from "@/components/ui/Toast";
@@ -12,11 +12,12 @@ import { useAdminList } from "@/components/admin/useAdminList";
 import { apiRequest, errorMessage } from "@/components/admin/api";
 import { formatAdminDate, useAdminZone } from "@/components/admin/AdminZone";
 import type { AdminPlanRow } from "@/lib/admin/nutrition-plans";
+import { buttonClasses } from "@/components/ui/button-styles";
 
 const PAGE_SIZE = 20;
 
 const actionClass =
-  "min-h-11 min-w-11 flex items-center justify-center rounded-xl text-zinc-300 transition cursor-pointer";
+  "min-h-11 min-w-11 flex items-center justify-center rounded-control text-ink-2 transition cursor-pointer";
 
 export function AdminNutritionClient() {
   const { toast } = useToast();
@@ -66,8 +67,8 @@ export function AdminNutritionClient() {
           href={`/admin/nutrition/${row.id}`}
           className="block min-h-11 py-1 rounded"
         >
-          <span className="block font-semibold text-zinc-200 text-sm">{row.name}</span>
-          {row.description && <span className="block text-xs text-zinc-400 truncate max-w-xs">{row.description}</span>}
+          <span className="block font-semibold text-ink text-sm">{row.name}</span>
+          {row.description && <span className="block text-xs text-ink-2 truncate max-w-xs">{row.description}</span>}
         </Link>
       ),
     },
@@ -75,19 +76,19 @@ export function AdminNutritionClient() {
       key: "targetCalories",
       label: "Calories",
       sortable: true,
-      render: (row) => <span className="text-sm font-semibold text-zinc-300 tabular-nums">{row.targetCalories.toLocaleString()} kcal</span>,
+      render: (row) => <span className="text-sm font-semibold text-ink-2 tabular-nums">{row.targetCalories.toLocaleString()} kcal</span>,
     },
     {
       key: "targetProteinG",
       label: "Protein",
-      render: (row) => <span className="text-xs text-zinc-300 tabular-nums">{row.targetProteinG} g</span>,
+      render: (row) => <span className="text-xs text-ink-2 tabular-nums">{row.targetProteinG} g</span>,
     },
     {
       key: "meals",
       label: "Meals",
       render: (row) => (
-        <span className="flex items-center gap-1.5 text-xs text-zinc-300">
-          <BookOpen className="w-3.5 h-3.5 text-zinc-400" aria-hidden="true" />
+        <span className="flex items-center gap-1.5 text-xs text-ink-2">
+          <BookOpen className="w-3.5 h-3.5 text-ink-2" aria-hidden="true" />
           <span className="tabular-nums">{row.mealCount}</span>
         </span>
       ),
@@ -96,8 +97,8 @@ export function AdminNutritionClient() {
       key: "assigned",
       label: "Assigned",
       render: (row) => (
-        <span className="flex items-center gap-1.5 text-xs text-zinc-300">
-          <Users className="w-3.5 h-3.5 text-zinc-400" aria-hidden="true" />
+        <span className="flex items-center gap-1.5 text-xs text-ink-2">
+          <Users className="w-3.5 h-3.5 text-ink-2" aria-hidden="true" />
           <span className="tabular-nums">
             {row.assignedCount} user{row.assignedCount === 1 ? "" : "s"}
           </span>
@@ -108,7 +109,7 @@ export function AdminNutritionClient() {
       key: "isPublic",
       label: "Visibility",
       render: (row) => (
-        <Chip size="sm" variant="flat" color={row.isPublic ? "success" : "default"} className="text-xs">
+        <Chip size="sm" tone={row.isPublic ? "ok" : "neutral"} className="text-xs">
           {row.isPublic ? "Public" : "Private"}
         </Chip>
       ),
@@ -117,7 +118,7 @@ export function AdminNutritionClient() {
       key: "createdAt",
       label: "Created",
       sortable: true,
-      render: (row) => <span className="text-xs text-zinc-400 tabular-nums">{formatAdminDate(row.createdAt, timeZone)}</span>,
+      render: (row) => <span className="text-xs text-ink-2 tabular-nums">{formatAdminDate(row.createdAt, timeZone)}</span>,
     },
   ];
 
@@ -126,17 +127,17 @@ export function AdminNutritionClient() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <UtensilsCrossed className="w-5 h-5 text-violet-400" aria-hidden="true" />
-            <span className="text-xs font-bold uppercase tracking-widest text-violet-300">Nutrition</span>
+            <UtensilsCrossed className="w-5 h-5 text-ink-2" aria-hidden="true" />
+            <span className="text-xs font-semibold text-ink-2">Nutrition</span>
           </div>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight">Nutrition plans</h1>
-          <p className="text-zinc-400 text-sm mt-1 tabular-nums">
+          <h1 className="text-3xl font-semibold text-ink tracking-tight">Nutrition plans</h1>
+          <p className="text-ink-2 text-sm mt-1 tabular-nums">
             {list.pagination.total.toLocaleString()} plan{list.pagination.total === 1 ? "" : "s"} match these filters
           </p>
         </div>
         <Link
           href="/admin/nutrition/new"
-          className="inline-flex items-center justify-center gap-2 min-h-11 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-bold self-start sm:self-auto"
+          className={buttonClasses({ variant: "primary", className: "gap-2 self-start sm:self-auto" })}
         >
           <Plus className="w-4 h-4" aria-hidden="true" /> New plan
         </Link>
@@ -184,7 +185,7 @@ export function AdminNutritionClient() {
               href={`/admin/nutrition/${row.id}`}
               aria-label={`Edit ${row.name}`}
               title="Edit"
-              className={`${actionClass} hover:text-violet-300 hover:bg-violet-500/10`}
+              className={`${actionClass} hover:text-ink-2 hover:bg-elevated`}
             >
               <Pencil className="w-4 h-4" aria-hidden="true" />
             </Link>
@@ -196,7 +197,7 @@ export function AdminNutritionClient() {
                 setDeleteError(null);
                 setToDelete(row);
               }}
-              className={`${actionClass} hover:text-red-300 hover:bg-red-500/10`}
+              className={`${actionClass} hover:text-danger hover:bg-elevated`}
             >
               <Trash2 className="w-4 h-4" aria-hidden="true" />
             </button>
@@ -204,9 +205,9 @@ export function AdminNutritionClient() {
         )}
       />
 
-      <ConfirmModal
+      <ConfirmDialog
         isOpen={Boolean(toDelete)}
-        onClose={() => {
+        onCancel={() => {
           if (!deleteBusy) setToDelete(null);
         }}
         onConfirm={handleDelete}
@@ -217,8 +218,8 @@ export function AdminNutritionClient() {
             : ""
         }
         confirmLabel="Delete plan"
-        confirmVariant="danger"
-        isLoading={deleteBusy}
+        destructive
+        isWorking={deleteBusy}
         error={deleteError}
       />
     </div>

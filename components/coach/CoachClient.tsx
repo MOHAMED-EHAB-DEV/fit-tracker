@@ -1,12 +1,11 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Sparkles,
   Send,
   Loader2,
-  Bot,
-  User,
   UtensilsCrossed,
   Database,
   Dumbbell,
@@ -31,8 +30,10 @@ import {
   Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { IconButton } from "@/components/ui/IconButton";
+import { Sheet } from "@/components/ui/Sheet";
 import { Textarea } from "@/components/ui/Textarea";
 import { useToast } from "@/components/ui/Toast";
 import { useUser } from "@/context/UserContext";
@@ -116,6 +117,67 @@ function fileIcon(type: string, name: string) {
   return FileIcon;
 }
 
+export interface CoachChip {
+  label: string;
+  /** Sent at once (a command). */
+  send?: string;
+  /** Put in the message box to finish. */
+  prompt?: string;
+}
+
+const CHIPS: Record<string, CoachChip[]> = {
+  today: [
+    { label: "Today so far", send: "/summary" },
+    { label: "Log what I ate", prompt: "I had " },
+    { label: "Review my week", send: "/data all 7d" },
+  ],
+  train: [
+    { label: "Sets per muscle", send: "/volume 14d" },
+    { label: "My records", send: "/prs 30d" },
+    { label: "Review my training", send: "/data workouts 14d" },
+  ],
+  eat: [
+    { label: "Log what I ate", prompt: "I had " },
+    { label: "Protein and timing", send: "/macros 7d" },
+    { label: "Meals this week", send: "/data meals 7d" },
+  ],
+  plan: [
+    { label: "Today so far", send: "/summary" },
+    { label: "Plan around my training", prompt: "Help me plan tomorrow around my workout: " },
+    { label: "Review my week", send: "/data all 7d" },
+  ],
+  body: [
+    { label: "Log my weight", prompt: "I weigh " },
+    { label: "Weight trend", send: "/data bodycomp 30d" },
+    { label: "Am I stalling?", send: "/plateau" },
+    { label: "Recalculate targets", send: "/recalc" },
+  ],
+};
+
+/** Suggestion chips, the screen the Coach was opened from first. */
+export function chipsFor(from: string | null | undefined): CoachChip[] {
+  const path = from ?? "";
+  const first = path.startsWith("/workouts")
+    ? "train"
+    : path.startsWith("/nutrition")
+      ? "eat"
+      : path.startsWith("/planner") || path.startsWith("/habits")
+        ? "plan"
+        : path.startsWith("/body-comp")
+          ? "body"
+          : "today";
+  const seen = new Set<string>();
+  const ordered: CoachChip[] = [];
+  for (const key of [first, "today", "eat", "train", "body", "plan"]) {
+    for (const chip of CHIPS[key]) {
+      if (seen.has(chip.label)) continue;
+      seen.add(chip.label);
+      ordered.push(chip);
+    }
+  }
+  return ordered.slice(0, 6);
+}
+
 function helpText(): string {
   return [
     "### Commands",
@@ -128,7 +190,13 @@ function helpText(): string {
   ].join("\n");
 }
 
-export function CoachClient() {
+/**
+ * The Coach: a full-height chat (Close · Coach · New chat) with suggestion
+ * chips for the screen it was opened from; slash commands keep working and
+ * entries it prepares wait as Suggested cards until the user logs them.
+ */
+export function CoachClient({ from = null }: { from?: string | null }) {
+  const router = useRouter();
   const { user } = useUser();
   const { toast } = useToast();
   const userId = user?._id ? String(user._id) : null;
@@ -512,6 +580,28 @@ export function CoachClient() {
 
   const canSend = !isLoading && !isReadingFiles && (input.trim().length > 0 || !!activeCommand || attachments.length > 0);
   const lastMessage = messages[messages.length - 1];
+  const chips = chipsFor(from);
+  const showChips = !activeCommand && !isLoading && input.trim() === "" && quotes.length === 0;
+
+  const close = () => {
+    if (window.history.length > 1) router.back();
+    else router.push(from && from.startsWith("/") && !from.startsWith("//") ? from : "/dashboard");
+  };
+
+  const applyChip = (chip: CoachChip) => {
+    if (chip.send) {
+      const command = COMMAND_DEFINITIONS.find((item) => chip.send?.startsWith(item.name));
+      void sendMessage({ text: chip.send, command });
+      return;
+    }
+    setInput(chip.prompt ?? "");
+    window.setTimeout(() => {
+      const field = inputRef.current;
+      if (!field) return;
+      field.focus();
+      field.setSelectionRange(field.value.length, field.value.length);
+    }, 0);
+  };
 
   return (
     <div
@@ -525,107 +615,74 @@ export function CoachClient() {
         setIsDragging(false);
         void handleFiles(e.dataTransfer.files);
       }}
-      className={cn(
-        "flex flex-col h-[calc(100dvh-8rem)] max-w-4xl mx-auto rounded-3xl bg-zinc-900/80 border border-zinc-800/80 overflow-hidden shadow-2xl relative",
-        isDragging && "ring-1 ring-emerald-500/70"
-      )}
+      className="fixed inset-0 z-20 flex justify-center bg-canvas md:start-(--rail-width)"
     >
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept={ACCEPT}
-        className="hidden"
-        onChange={(e) => {
-          void handleFiles(e.target.files);
-          e.target.value = "";
-        }}
-      />
+      <div className={cn("relative flex h-full w-full max-w-[680px] flex-col", isDragging && "outline outline-1 outline-accent")}>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept={ACCEPT}
+          className="hidden"
+          onChange={(e) => {
+            void handleFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
 
-      {/* Header */}
-      <header className="p-3 sm:p-4 border-b border-zinc-800/80 bg-zinc-950/70 flex items-center justify-between gap-2 z-10">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0">
-            <Sparkles className="w-5 h-5 text-emerald-400" aria-hidden="true" />
+        <header className="shrink-0 border-b border-line px-1.5 pt-[env(safe-area-inset-top)]">
+          <div className="flex h-[52px] items-center justify-between gap-2">
+            <IconButton label="Close Coach" icon={<X className="h-5 w-5" />} onClick={close} />
+            <h1 className="text-[15px] font-semibold text-ink">Coach</h1>
+            <Button variant="ghost" size="sm" disabled={messages.length === 0} onClick={() => setConfirmClear(true)}>
+              New chat
+            </Button>
           </div>
-          <div className="min-w-0">
-            <h1 className="font-bold text-sm text-white">AI Coach</h1>
-            <p className="text-xs text-zinc-400 truncate">
-              Ask anything, type <span className="font-mono text-emerald-400">/</span> for commands, or tell me what you ate
-            </p>
-          </div>
-        </div>
+        </header>
 
-        <div className="flex items-center gap-1.5 shrink-0">
-          <button
-            type="button"
-            onClick={() => setConfirmClear(true)}
-            disabled={messages.length === 0}
-            aria-label="Clear chat"
-            className="flex items-center gap-1.5 px-3 min-h-11 rounded-xl text-xs text-zinc-300 border border-zinc-700/70 hover:bg-zinc-800 disabled:opacity-40"
-          >
-            <Trash2 className="w-4 h-4" aria-hidden="true" />
-            <span className="hidden sm:inline">Clear chat</span>
-          </button>
-        </div>
-      </header>
+        <div
+          ref={feedRef}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+          }}
+          role="log"
+          aria-live="polite"
+          aria-relevant="additions"
+          aria-label="Conversation with the Coach"
+          className="flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-4"
+        >
+          {hydrated && messages.length === 0 && (
+            <div className="mx-auto mt-4 max-w-md space-y-2 text-center">
+              <p className="text-section font-semibold text-ink">Ask the Coach</p>
+              <p className="text-sm leading-6 text-ink-2">
+                Ask about training or nutrition, run a command like <code className="rounded bg-elevated px-1 font-mono text-[13px] text-ink">/summary</code>, or tell
+                me what you ate. Entries I prepare wait for you to log them.
+              </p>
+              <p className="text-xs text-ink-3">This conversation stays on this device until you start a new chat.</p>
+            </div>
+          )}
 
-      {/* Messages */}
-      <div
-        ref={feedRef}
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-        }}
-        role="log"
-        aria-live="polite"
-        aria-relevant="additions"
-        aria-label="Conversation with the AI Coach"
-        className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-4"
-      >
-        {hydrated && messages.length === 0 && (
-          <div className="max-w-lg mx-auto mt-6 p-4 rounded-2xl bg-zinc-950/60 border border-zinc-800 text-sm text-zinc-300 space-y-2">
-            <p className="font-semibold text-white">Hi! I&apos;m your AI Coach.</p>
-            <p>Ask about training or nutrition, run a command like <code className="font-mono text-emerald-400">/summary</code>, or tell me what you ate. I&apos;ll prepare entries for you to check, and nothing is saved until you press Log it.</p>
-            <p className="text-xs text-zinc-400">This conversation is kept on this device until you clear it.</p>
-          </div>
-        )}
-
-        {messages.map((message) => {
-          const isUser = message.sender === "user";
-          const isQuoted = quotes.some((q) => q.id === message.id);
-          return (
-            <article
-              key={message.id}
-              aria-label={isUser ? "You" : "AI Coach"}
-              className={cn("flex gap-2 sm:gap-3 max-w-[95%] sm:max-w-[88%]", isUser ? "ms-auto flex-row-reverse" : "me-auto")}
-            >
-              <div
-                className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
-                  isUser ? "bg-zinc-800 text-zinc-200 border border-zinc-700" : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                )}
-                aria-hidden="true"
-              >
-                {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
-              </div>
-
-              <div className="space-y-2 flex-1 min-w-0">
+          {messages.map((message) => {
+            const isUser = message.sender === "user";
+            const isQuoted = quotes.some((q) => q.id === message.id);
+            return (
+              <article key={message.id} aria-label={isUser ? "You" : "Coach"} className={cn("flex flex-col gap-1.5", isUser ? "items-end" : "items-start")}>
                 {message.dataContext && (
-                  <div className="flex flex-wrap items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-medium w-fit">
-                    <Database className="w-3.5 h-3.5" aria-hidden="true" />
-                    <span>{message.dataContext.badgeLabel}</span>
-                    <span className="text-zinc-400 tabular-nums">(~{message.dataContext.tokensEstimated.toLocaleString("en-US")} tokens)</span>
-                  </div>
+                  <span className="inline-flex h-6 items-center gap-1.5 rounded-chip border border-line bg-elevated px-2 text-xs text-ink-2">
+                    <Database className="h-3.5 w-3.5" aria-hidden="true" />
+                    {message.dataContext.badgeLabel}
+                    <span className="font-mono tabular-nums text-ink-3">~{message.dataContext.tokensEstimated.toLocaleString("en-US")} tokens</span>
+                  </span>
                 )}
 
                 {message.quotes && message.quotes.length > 0 && (
-                  <div className="space-y-1.5">
+                  <div className="max-w-[88%] space-y-1">
                     {message.quotes.map((quote) => (
-                      <div key={quote.id} className="px-3 py-2 rounded-xl text-xs border-s-2 border-emerald-500 bg-zinc-950/60 text-zinc-300">
-                        <span className="flex items-center gap-1.5 font-semibold text-emerald-400">
-                          <Reply className="w-3 h-3" aria-hidden="true" />
-                          {quote.sender === "user" ? "You" : "AI Coach"}
+                      <div key={quote.id} className="rounded-control border-s-2 border-line-strong bg-surface px-3 py-1.5 text-xs text-ink-2">
+                        <span className="flex items-center gap-1.5 font-medium text-ink-3">
+                          <Reply className="h-3 w-3" aria-hidden="true" />
+                          {quote.sender === "user" ? "You" : "Coach"}
                         </span>
                         <p className="line-clamp-2 text-start">{quote.text}</p>
                       </div>
@@ -634,28 +691,23 @@ export function CoachClient() {
                 )}
 
                 {message.attachments && message.attachments.length > 0 && (
-                  <ul className="flex flex-wrap gap-2" aria-label="Attachments">
+                  <ul className="flex max-w-[88%] flex-wrap justify-end gap-2" aria-label="Attachments">
                     {message.attachments.map((att, index) => {
                       const url = previewUrls[`${att.name}:${att.size}`];
                       const Icon = fileIcon(att.type, att.name);
                       return (
                         <li key={`${att.name}-${index}`}>
                           {url ? (
-                            <button
-                              type="button"
-                              onClick={() => setPreviewUrl(url)}
-                              aria-label={`View ${att.name}`}
-                              className="block rounded-xl overflow-hidden border border-zinc-700"
-                            >
+                            <button type="button" onClick={() => setPreviewUrl(url)} aria-label={`View ${att.name}`} className="block overflow-hidden rounded-control border border-line">
                               {/* eslint-disable-next-line @next/next/no-img-element -- local object URL preview */}
-                              <img src={url} alt={att.name} className="w-28 h-20 object-cover" />
+                              <img src={url} alt={att.name} className="h-20 w-28 object-cover" />
                             </button>
                           ) : (
-                            <span className="flex items-center gap-2 px-3 py-2 rounded-xl bg-zinc-950/80 border border-zinc-800 text-zinc-300 text-xs">
-                              <Icon className="w-4 h-4 text-emerald-400 shrink-0" aria-hidden="true" />
+                            <span className="flex items-center gap-2 rounded-control border border-line bg-surface px-3 py-2 text-xs text-ink-2">
+                              <Icon className="h-4 w-4 shrink-0 text-ink-3" aria-hidden="true" />
                               <span className="min-w-0">
-                                <span className="block font-semibold text-white truncate max-w-40">{att.name}</span>
-                                <span className="block text-zinc-400">{formatFileSize(att.size)}</span>
+                                <span className="block max-w-40 truncate font-medium text-ink">{att.name}</span>
+                                <span className="block font-mono tabular-nums text-ink-3">{formatFileSize(att.size)}</span>
                               </span>
                             </span>
                           )}
@@ -667,40 +719,39 @@ export function CoachClient() {
 
                 <div
                   className={cn(
-                    "p-3 sm:p-4 rounded-3xl text-sm leading-relaxed",
+                    "text-[15px] leading-6",
                     isUser
-                      ? "bg-emerald-500 text-zinc-950 font-medium rounded-te-none"
+                      ? "max-w-[88%] rounded-card rounded-ee-chip border border-line bg-elevated px-3.5 py-2.5 text-ink"
                       : message.isError
-                        ? "bg-rose-500/10 border border-rose-500/30 text-rose-200 rounded-ts-none"
-                        : "bg-zinc-950/80 border border-zinc-800/80 text-zinc-200 rounded-ts-none"
+                        ? "max-w-[95%] rounded-control border border-line bg-surface px-3.5 py-2.5 text-danger"
+                        : "w-full text-ink"
                   )}
                 >
                   {isUser || message.isError ? (
                     <p className="whitespace-pre-wrap break-words text-start">
-                      {message.isError && <AlertCircle className="inline w-4 h-4 me-1.5 -mt-0.5" aria-hidden="true" />}
+                      {message.isError && <AlertCircle className="-mt-0.5 me-1.5 inline h-4 w-4" aria-hidden="true" />}
                       {message.text}
                     </p>
                   ) : (
-                    <Markdown text={message.text} />
+                    <Markdown text={message.text} className="space-y-2 text-[15px] leading-6 text-start text-ink" />
                   )}
                 </div>
 
                 {message.isError && message === lastMessage && canRetry && !isLoading && (
-                  <Button variant="bordered" size="md" onClick={retryLast} startContent={<RotateCw className="w-4 h-4" />}>
+                  <Button variant="secondary" size="sm" onClick={retryLast} startContent={<RotateCw className="h-3.5 w-3.5" />}>
                     Try again
                   </Button>
                 )}
 
                 {message.notice && (
-                  <p className="flex items-start gap-1.5 text-xs text-zinc-400 px-1">
-                    <Info className="w-3.5 h-3.5 shrink-0 mt-px" aria-hidden="true" />
+                  <p className="flex items-start gap-1.5 text-xs text-ink-3">
+                    <Info className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                     {message.notice}
                   </p>
                 )}
 
                 {message.proposals && message.proposals.length > 0 && (
-                  <section aria-label="Entries to confirm" className="space-y-2">
-                    <p className="text-xs text-zinc-400 px-1">Check these entries. Nothing is saved until you press Log it.</p>
+                  <section aria-label="Entries to log" className="w-full space-y-2">
                     {message.proposals.map((state, index) => (
                       <ProposalCard
                         key={state.proposal.id}
@@ -714,8 +765,10 @@ export function CoachClient() {
                   </section>
                 )}
 
-                <div className={cn("flex items-center gap-1 px-1 text-xs text-zinc-400", isUser && "justify-end")}>
-                  <time dateTime={message.createdAt}>{formatTimeInZone(message.createdAt, timeZone)}</time>
+                <div className="flex items-center gap-1 text-xs text-ink-3">
+                  <time dateTime={message.createdAt} className="font-mono tabular-nums">
+                    {formatTimeInZone(message.createdAt, timeZone)}
+                  </time>
                   {!message.isError && (
                     <button
                       type="button"
@@ -723,291 +776,264 @@ export function CoachClient() {
                       aria-pressed={isQuoted}
                       aria-label={isQuoted ? "Remove quote" : "Quote this message in your reply"}
                       className={cn(
-                        "flex items-center gap-1 px-2.5 min-h-11 rounded-lg text-xs font-semibold",
-                        isQuoted ? "text-emerald-400" : "text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800"
+                        "flex min-h-9 items-center gap-1 rounded-chip px-2 text-xs font-medium transition-colors cursor-pointer",
+                        isQuoted ? "text-ink" : "hover:bg-elevated hover:text-ink"
                       )}
                     >
-                      <Reply className="w-3.5 h-3.5" aria-hidden="true" />
+                      <Reply className="h-3.5 w-3.5" aria-hidden="true" />
                       {isQuoted ? "Quoted" : "Reply"}
                     </button>
                   )}
                 </div>
-              </div>
-            </article>
-          );
-        })}
+              </article>
+            );
+          })}
 
-        {isLoading && (
-          <div role="status" className="flex items-center gap-3 text-zinc-300 text-sm py-3 px-4 bg-zinc-950/60 rounded-2xl border border-zinc-800/80 w-fit">
-            <Loader2 className="w-4 h-4 animate-spin text-emerald-400" aria-hidden="true" />
-            <span>The coach is thinking...</span>
-            <button
-              type="button"
-              onClick={stop}
-              className="flex items-center gap-1.5 px-3 min-h-11 rounded-xl border border-zinc-700 text-zinc-200 hover:bg-zinc-800"
-            >
-              <Square className="w-3.5 h-3.5" aria-hidden="true" />
-              Stop
-            </button>
+          {isLoading && (
+            <div role="status" className="flex items-center gap-3 text-sm text-ink-2">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              <span>The Coach is thinking…</span>
+              <Button variant="secondary" size="sm" onClick={stop} startContent={<Square className="h-3 w-3" />}>
+                Stop
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {showPalette && filteredCommands.length > 0 && (
+          <div role="listbox" aria-label="Commands" className="glass-float absolute inset-x-3 bottom-28 z-40 max-h-72 space-y-0.5 overflow-y-auto rounded-card p-1.5">
+            {filteredCommands.map((command, index) => {
+              const Icon = command.icon;
+              const isSelected = index === paletteIndex;
+              return (
+                <button
+                  key={command.name}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => selectCommand(command)}
+                  className={cn(
+                    "flex min-h-11 w-full items-center gap-3 rounded-chip px-3 py-1.5 text-start transition-colors focus:outline-none cursor-pointer",
+                    isSelected ? "bg-elevated" : "hover:bg-elevated/60"
+                  )}
+                >
+                  <Icon className="h-4 w-4 shrink-0 text-ink-3" aria-hidden="true" />
+                  <span className="min-w-0">
+                    <span className="block font-mono text-[13px] font-medium text-ink">{command.name}</span>
+                    <span className="block truncate text-xs text-ink-3">{command.description}</span>
+                  </span>
+                </button>
+              );
+            })}
           </div>
         )}
+
+        <div className="shrink-0 border-t border-line">
+          {activeCommand && (
+            <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="inline-flex h-7 items-center rounded-chip bg-ink px-2 font-mono text-xs font-medium text-ink-inverse">{activeCommand.name}</span>
+                {activeCommand.dayOptions && (
+                  <div role="radiogroup" aria-label="Number of days" className="flex items-center gap-1">
+                    {activeCommand.dayOptions.map((days) => (
+                      <button
+                        key={days}
+                        type="button"
+                        role="radio"
+                        aria-checked={selectedDays === days}
+                        onClick={() => setSelectedDays(days)}
+                        className={cn(
+                          "min-h-9 rounded-chip border px-2.5 font-mono text-xs tabular-nums transition-colors cursor-pointer",
+                          selectedDays === days ? "border-ink bg-ink text-ink-inverse" : "border-line bg-surface text-ink-2 hover:text-ink"
+                        )}
+                      >
+                        {days}d
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setActiveCommand(null);
+                  setSelectedDays(null);
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          )}
+
+          {quotes.length > 0 && (
+            <div className="space-y-1 px-3 py-2">
+              <div className="flex items-center justify-between text-xs text-ink-3">
+                <span className="flex items-center gap-1.5 font-medium text-ink-2">
+                  <Reply className="h-3.5 w-3.5" aria-hidden="true" />
+                  Replying to {quotes.length} message{quotes.length > 1 ? "s" : ""}
+                </span>
+                <Button variant="ghost" size="sm" onClick={() => setQuotes([])}>
+                  Clear
+                </Button>
+              </div>
+              <ul className="flex items-center gap-2 overflow-x-auto pb-1">
+                {quotes.map((quote) => (
+                  <li key={quote.id} className="flex max-w-xs shrink-0 items-center gap-1 rounded-chip border border-line bg-surface ps-2.5 text-xs text-ink-2">
+                    <span className="max-w-48 truncate">{quote.text}</span>
+                    <button
+                      type="button"
+                      onClick={() => setQuotes((prev) => prev.filter((q) => q.id !== quote.id))}
+                      className="grid h-9 w-9 place-items-center text-ink-3 hover:text-ink cursor-pointer"
+                      aria-label="Remove quoted message"
+                    >
+                      <X className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {(attachments.length > 0 || isReadingFiles) && (
+            <ul className="flex items-center gap-2 overflow-x-auto px-3 py-2" aria-label="Files to send">
+              {attachments.map((att) => {
+                const Icon = fileIcon(att.type, att.name);
+                return (
+                  <li key={att.id} className="flex shrink-0 items-center gap-2 rounded-control border border-line bg-surface ps-2 text-xs text-ink-2">
+                    {att.previewUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- local object URL preview
+                      <img src={att.previewUrl} alt="" className="h-8 w-8 rounded-chip object-cover" />
+                    ) : (
+                      <Icon className="h-4 w-4 shrink-0 text-ink-3" aria-hidden="true" />
+                    )}
+                    <span className="min-w-0 max-w-32">
+                      <span className="block truncate font-medium text-ink">{att.name}</span>
+                      <span className="block font-mono tabular-nums text-ink-3">{formatFileSize(att.size)}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(att.id)}
+                      className="grid h-10 w-10 place-items-center text-ink-3 hover:text-ink cursor-pointer"
+                      aria-label={`Remove ${att.name}`}
+                    >
+                      <X className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </li>
+                );
+              })}
+              {isReadingFiles && (
+                <li role="status" className="flex items-center gap-2 text-xs text-ink-2">
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  Preparing files…
+                </li>
+              )}
+            </ul>
+          )}
+
+          {uploadErrors.length > 0 && (
+            <div role="alert" className="flex items-start justify-between gap-2 px-3 py-2 text-xs text-danger">
+              <ul className="space-y-0.5">
+                {uploadErrors.map((error, index) => (
+                  <li key={index} className="flex items-start gap-1.5">
+                    <AlertCircle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    {error}
+                  </li>
+                ))}
+              </ul>
+              <button type="button" onClick={() => setUploadErrors([])} className="grid h-9 w-9 place-items-center text-ink-3 hover:text-ink cursor-pointer" aria-label="Dismiss file errors">
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+          )}
+
+          {showChips && (
+            <div role="group" aria-label="Suggestions" className="no-scrollbar flex gap-1.5 overflow-x-auto px-3 pt-2.5">
+              {chips.map((chip) => (
+                <button
+                  key={chip.label}
+                  type="button"
+                  onClick={() => applyChip(chip)}
+                  className="inline-flex min-h-9 shrink-0 items-center rounded-chip border border-line bg-surface px-3 text-[13px] font-medium text-ink-2 transition-colors hover:border-line-strong hover:text-ink cursor-pointer"
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <form
+            className="flex items-end gap-2 px-3 pt-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void sendMessage();
+            }}
+          >
+            <IconButton
+              label="Attach photos or files"
+              icon={<Paperclip className="h-5 w-5" />}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isLoading || attachments.length >= CHAT_LIMITS.attachments}
+            />
+            <label htmlFor="coach-input" className="sr-only">
+              Message the Coach
+            </label>
+            <Textarea
+              id="coach-input"
+              ref={inputRef}
+              value={input}
+              rows={Math.min(6, Math.max(1, input.split("\n").length))}
+              maxLength={CHAT_LIMITS.messageChars}
+              onChange={(e) => {
+                const value = e.target.value;
+                setInput(value);
+                const opensPalette = value.startsWith("/") && !value.includes(" ") && !activeCommand;
+                setShowPalette(opensPalette);
+                if (opensPalette) setPaletteIndex(0);
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                activeCommand
+                  ? activeCommand.samplePrompt || "Add a question (optional) and press Enter"
+                  : quotes.length
+                    ? "Ask about the quoted messages…"
+                    : "Ask anything, or type /"
+              }
+              containerClassName="min-w-0 flex-1"
+              className="max-h-40 min-h-11 resize-none text-base leading-6"
+            />
+            {isLoading ? (
+              <Button variant="secondary" onClick={stop} aria-label="Stop the reply" className="w-11 px-0">
+                <Square className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            ) : (
+              <Button type="submit" disabled={!canSend} aria-label="Send message" className="w-11 px-0">
+                <Send className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            )}
+          </form>
+        </div>
       </div>
 
-      {/* Command palette */}
-      {showPalette && filteredCommands.length > 0 && (
-        <div
-          role="listbox"
-          aria-label="Commands"
-          className="absolute bottom-24 inset-s-3 inset-e-3 max-h-72 overflow-y-auto rounded-2xl bg-zinc-950/95 border border-zinc-800 shadow-2xl backdrop-blur-md p-2 z-40 space-y-1"
-        >
-          {filteredCommands.map((command, index) => {
-            const Icon = command.icon;
-            const isSelected = index === paletteIndex;
-            return (
-              <button
-                key={command.name}
-                type="button"
-                role="option"
-                aria-selected={isSelected}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => selectCommand(command)}
-                className={cn(
-                  "w-full text-start px-3 py-2 min-h-11 rounded-xl flex items-center gap-3 focus:outline-none",
-                  isSelected ? "bg-emerald-500/20 text-white border border-emerald-500/40" : "hover:bg-zinc-900 text-zinc-300"
-                )}
-              >
-                <Icon className="w-4 h-4 text-emerald-400 shrink-0" aria-hidden="true" />
-                <span className="min-w-0">
-                  <span className="block font-semibold text-sm text-white">{command.name}</span>
-                  <span className="block text-xs text-zinc-400 truncate">{command.description}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Active command options */}
-      {activeCommand && (
-        <div className="px-3 sm:px-4 py-2 bg-zinc-950 border-t border-zinc-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="px-2.5 py-1 rounded-lg bg-emerald-500 text-zinc-950 font-bold">{activeCommand.name}</span>
-            {activeCommand.dayOptions && (
-              <div role="radiogroup" aria-label="Number of days" className="flex items-center gap-1.5">
-                {activeCommand.dayOptions.map((days) => (
-                  <button
-                    key={days}
-                    type="button"
-                    role="radio"
-                    aria-checked={selectedDays === days}
-                    onClick={() => setSelectedDays(days)}
-                    className={cn(
-                      "px-3 min-h-11 rounded-lg font-semibold text-xs",
-                      selectedDays === days ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40" : "bg-zinc-900 text-zinc-300 border border-zinc-800"
-                    )}
-                  >
-                    {days} days
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              setActiveCommand(null);
-              setSelectedDays(null);
-            }}
-            className="px-3 min-h-11 text-zinc-300 hover:text-white rounded-lg"
-          >
-            Cancel command
-          </button>
-        </div>
-      )}
-
-      {/* Quotes tray */}
-      {quotes.length > 0 && (
-        <div className="px-3 sm:px-4 py-2 bg-zinc-950/90 border-t border-zinc-800/80 space-y-1.5">
-          <div className="flex items-center justify-between text-xs text-zinc-400">
-            <span className="font-semibold text-emerald-400 flex items-center gap-1.5">
-              <Reply className="w-3.5 h-3.5" aria-hidden="true" />
-              Replying to {quotes.length} message{quotes.length > 1 ? "s" : ""}
-            </span>
-            <button type="button" onClick={() => setQuotes([])} className="px-2 min-h-11 text-zinc-300 hover:text-white rounded-lg">
-              Clear quotes
-            </button>
-          </div>
-          <ul className="flex items-center gap-2 overflow-x-auto pb-1">
-            {quotes.map((quote) => (
-              <li key={quote.id} className="flex items-center gap-2 ps-3 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-zinc-200 shrink-0 max-w-xs">
-                <span className="truncate max-w-48">{quote.text}</span>
-                <button
-                  type="button"
-                  onClick={() => setQuotes((prev) => prev.filter((q) => q.id !== quote.id))}
-                  className="min-w-11 min-h-11 flex items-center justify-center text-zinc-400 hover:text-rose-400 rounded-xl"
-                  aria-label="Remove quoted message"
-                >
-                  <X className="w-4 h-4" aria-hidden="true" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Attachments tray */}
-      {(attachments.length > 0 || isReadingFiles) && (
-        <ul className="px-3 sm:px-4 py-2 bg-zinc-950/90 border-t border-zinc-800/80 flex items-center gap-2 overflow-x-auto" aria-label="Files to send">
-          {attachments.map((att) => {
-            const Icon = fileIcon(att.type, att.name);
-            return (
-              <li key={att.id} className="flex items-center gap-2 ps-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-zinc-200 shrink-0">
-                {att.previewUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- local object URL preview
-                  <img src={att.previewUrl} alt="" className="w-8 h-8 rounded-lg object-cover" />
-                ) : (
-                  <Icon className="w-4 h-4 text-emerald-400 shrink-0" aria-hidden="true" />
-                )}
-                <span className="min-w-0 max-w-32">
-                  <span className="block text-xs font-semibold text-white truncate">{att.name}</span>
-                  <span className="block text-xs text-zinc-400">{formatFileSize(att.size)}</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => removeAttachment(att.id)}
-                  className="min-w-11 min-h-11 flex items-center justify-center text-zinc-400 hover:text-rose-400 rounded-xl"
-                  aria-label={`Remove ${att.name}`}
-                >
-                  <X className="w-4 h-4" aria-hidden="true" />
-                </button>
-              </li>
-            );
-          })}
-          {isReadingFiles && (
-            <li role="status" className="flex items-center gap-2 text-xs text-zinc-300">
-              <Loader2 className="w-4 h-4 animate-spin text-emerald-400" aria-hidden="true" />
-              Preparing files...
-            </li>
-          )}
-        </ul>
-      )}
-
-      {uploadErrors.length > 0 && (
-        <div role="alert" className="px-3 sm:px-4 py-2 bg-rose-500/10 border-t border-rose-500/20 text-rose-300 text-xs flex items-start justify-between gap-2">
-          <ul className="space-y-0.5">
-            {uploadErrors.map((error, index) => (
-              <li key={index} className="flex items-start gap-1.5">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-px" aria-hidden="true" />
-                {error}
-              </li>
-            ))}
-          </ul>
-          <button
-            type="button"
-            onClick={() => setUploadErrors([])}
-            className="min-w-11 min-h-11 flex items-center justify-center text-rose-300 hover:text-rose-100 rounded-xl"
-            aria-label="Dismiss file errors"
-          >
-            <X className="w-4 h-4" aria-hidden="true" />
-          </button>
-        </div>
-      )}
-
-      {/* Composer */}
-      <form
-        className="p-2 sm:p-3 border-t border-zinc-800/80 bg-zinc-950 flex items-end gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void sendMessage();
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isLoading || attachments.length >= CHAT_LIMITS.attachments}
-          aria-label="Attach photos or files"
-          className="min-w-11 min-h-11 rounded-2xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/60 text-zinc-300 hover:text-emerald-400 flex items-center justify-center disabled:opacity-50"
-        >
-          <Paperclip className="w-4 h-4" aria-hidden="true" />
-        </button>
-
-        <label htmlFor="coach-input" className="sr-only">
-          Message the AI Coach
-        </label>
-        <Textarea
-          id="coach-input"
-          ref={inputRef}
-          value={input}
-          rows={Math.min(6, Math.max(1, input.split("\n").length))}
-          maxLength={CHAT_LIMITS.messageChars}
-          onChange={(e) => {
-            const value = e.target.value;
-            setInput(value);
-            const opensPalette = value.startsWith("/") && !value.includes(" ") && !activeCommand;
-            setShowPalette(opensPalette);
-            if (opensPalette) setPaletteIndex(0);
-          }}
-          onKeyDown={handleKeyDown}
-          placeholder={
-            activeCommand
-              ? activeCommand.samplePrompt || "Add a question (optional) and press Enter"
-              : quotes.length
-                ? "Ask about the quoted messages..."
-                : "Ask anything, or type / for commands (Shift+Enter for a new line)"
-          }
-          containerClassName="flex-1 min-w-0"
-          className="resize-none px-4 min-h-11 max-h-40 rounded-2xl leading-5"
-        />
-
-        {isLoading ? (
-          <button
-            type="button"
-            onClick={stop}
-            aria-label="Stop the reply"
-            className="min-w-11 min-h-11 rounded-2xl bg-zinc-800 border border-zinc-600 text-zinc-100 flex items-center justify-center"
-          >
-            <Square className="w-4 h-4" aria-hidden="true" />
-          </button>
-        ) : (
-          <button
-            type="submit"
-            disabled={!canSend}
-            aria-label="Send message"
-            className="min-w-11 min-h-11 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 disabled:opacity-50 flex items-center justify-center"
-          >
-            <Send className="w-4 h-4" aria-hidden="true" />
-          </button>
-        )}
-      </form>
-
-      <Modal isOpen={Boolean(previewUrl)} onClose={() => setPreviewUrl(null)} title="Attachment" size="lg">
+      <Sheet isOpen={Boolean(previewUrl)} onClose={() => setPreviewUrl(null)} title="Attachment" size="lg">
         {previewUrl && (
-          <div className="flex items-center justify-center p-2">
+          <div className="flex items-center justify-center">
             {/* eslint-disable-next-line @next/next/no-img-element -- local object URL preview */}
-            <img src={previewUrl} alt="Attachment preview" className="max-h-[70vh] rounded-xl object-contain" />
+            <img src={previewUrl} alt="Attachment preview" className="max-h-[70vh] rounded-control object-contain" />
           </div>
         )}
-      </Modal>
+      </Sheet>
 
-      <Modal
+      <ConfirmDialog
         isOpen={confirmClear}
-        onClose={() => setConfirmClear(false)}
-        title="Clear this chat?"
-        description="The conversation and any entries you have not logged are removed from this device. Logged entries stay in your diary."
-        size="sm"
-        footer={
-          <div className="flex items-center justify-end gap-2 w-full">
-            <Button variant="ghost" size="md" onClick={() => setConfirmClear(false)}>
-              Cancel
-            </Button>
-            <Button variant="danger" size="md" onClick={clearChat}>
-              Clear chat
-            </Button>
-          </div>
-        }
-      >
-        <p className="text-sm text-zinc-300">This cannot be undone.</p>
-      </Modal>
+        onCancel={() => setConfirmClear(false)}
+        onConfirm={clearChat}
+        title="Start a new chat?"
+        message="This conversation and any entries you have not logged are removed from this device. Logged entries stay in your diary."
+        confirmLabel="New chat"
+        destructive
+      />
     </div>
   );
 }

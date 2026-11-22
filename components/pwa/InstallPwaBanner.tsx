@@ -90,15 +90,15 @@ export function InstallPwaBanner() {
       aria-label="Add FitTracker to your home screen"
       className="fixed inset-x-0 bottom-above-nav z-30 px-3 pointer-events-none md:inset-x-auto md:end-6 md:px-0"
     >
-      <div className="pointer-events-auto mx-auto flex max-w-md items-center gap-3 rounded-2xl border border-line bg-zinc-900 px-4 py-3 shadow-xl shadow-black/50">
+      <div className="pointer-events-auto mx-auto flex max-w-md items-center gap-3 rounded-card border border-line bg-surface px-4 py-3">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-white">Add FitTracker to your home screen</p>
-          <p className="text-sm text-zinc-400">
+          <p className="text-sm font-semibold text-ink">Add FitTracker to your home screen</p>
+          <p className="text-sm text-ink-2">
             {installEvent ? (
               "It opens full screen, like an app."
             ) : (
               <>
-                Tap <Share className="mx-0.5 inline h-4 w-4 text-zinc-200" aria-label="Share" />, then &ldquo;Add to
+                Tap <Share className="mx-0.5 inline h-4 w-4 text-ink" aria-label="Share" />, then &ldquo;Add to
                 Home Screen&rdquo;.
               </>
             )}
@@ -113,7 +113,7 @@ export function InstallPwaBanner() {
           type="button"
           onClick={dismiss}
           aria-label="Dismiss"
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-zinc-400 active:bg-white/10 cursor-pointer"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-ink-2 active:bg-elevated cursor-pointer"
         >
           <X className="h-5 w-5" aria-hidden="true" />
         </button>

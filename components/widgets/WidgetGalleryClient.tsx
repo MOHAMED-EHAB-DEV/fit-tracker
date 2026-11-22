@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Smartphone, Check, Flame, Footprints, Plus, RefreshCw, Info, ExternalLink } from "lucide-react";
+import { buttonClasses } from "@/components/ui/button-styles";
 import {
   ANDROID_RELEASES_URL,
   isAndroidNativeApp,
@@ -99,13 +100,13 @@ export function WidgetGalleryClient() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-elevated text-ink border border-line flex items-center gap-1">
               <Smartphone className="w-3.5 h-3.5" aria-hidden="true" />
               Android app
             </span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">Home Screen Widgets</h1>
-          <p className="text-sm text-zinc-400 mt-1 max-w-xl">
+          <h2 className="text-xl font-semibold tracking-tight text-ink">Home screen widgets</h2>
+          <p className="text-sm text-ink-2 mt-1 max-w-xl">
             {isNative
               ? "Add FitTracker widgets to your home screen. Steps update while the app is open and when you tap Sync on a widget; the other numbers update each time you open the dashboard."
               : "These widgets are available in the FitTracker Android app. They cannot be added from a web browser."}
@@ -116,7 +117,7 @@ export function WidgetGalleryClient() {
           <button
             type="button"
             onClick={() => openExternalLink(ANDROID_RELEASES_URL)}
-            className="inline-flex items-center justify-center gap-2 min-h-11 px-4 py-2 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white text-sm font-bold transition shrink-0"
+            className="inline-flex items-center justify-center gap-2 min-h-11 px-4 py-2 rounded-control bg-surface border border-line hover:border-line-strong text-ink-2 hover:text-ink text-sm font-semibold transition shrink-0"
           >
             <span>Get the Android app</span>
             <ExternalLink className="w-4 h-4" aria-hidden="true" />
@@ -129,22 +130,22 @@ export function WidgetGalleryClient() {
           role={notice.kind === "success" ? "status" : "alert"}
           className={`p-4 rounded-2xl border text-sm flex items-start justify-between gap-3 ${
             notice.kind === "success"
-              ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-200"
-              : "bg-amber-500/10 border-amber-500/20 text-amber-100"
+              ? "bg-elevated border-line text-ink"
+              : "bg-elevated border-line text-warn"
           }`}
         >
           <div className="flex items-start gap-2">
             {notice.kind === "success" ? (
-              <Check className="w-4 h-4 mt-0.5 text-emerald-400 shrink-0" aria-hidden="true" />
+              <Check className="w-4 h-4 mt-0.5 text-ink shrink-0" aria-hidden="true" />
             ) : (
-              <Info className="w-4 h-4 mt-0.5 text-amber-400 shrink-0" aria-hidden="true" />
+              <Info className="w-4 h-4 mt-0.5 text-warn shrink-0" aria-hidden="true" />
             )}
             <span>{notice.text}</span>
           </div>
           <button
             type="button"
             onClick={() => setNotice(null)}
-            className="min-h-11 px-3 -my-3 -me-2 text-xs font-bold text-zinc-300 hover:text-white shrink-0"
+            className="min-h-11 px-3 -my-3 -me-2 text-xs font-semibold text-ink-2 hover:text-ink shrink-0"
           >
             Dismiss
           </button>
@@ -156,53 +157,53 @@ export function WidgetGalleryClient() {
         {WIDGETS_LIST.map((w) => (
           <div
             key={w.id}
-            className="p-5 sm:p-6 rounded-3xl bg-zinc-900/80 border border-zinc-800/80 flex flex-col justify-between space-y-6 shadow-lg"
+            className="p-5 sm:p-6 rounded-card bg-surface border border-line flex flex-col justify-between space-y-6"
           >
             <div className="space-y-4">
-              <span className="inline-block text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-elevated text-ink border border-line">
                 {w.gridSize}
               </span>
 
               <div>
-                <h2 className="text-lg font-black text-white">{w.name}</h2>
-                <p className="text-sm text-zinc-400 mt-1 leading-relaxed">{w.description}</p>
+                <h2 className="text-lg font-semibold text-ink">{w.name}</h2>
+                <p className="text-sm text-ink-2 mt-1 leading-relaxed">{w.description}</p>
               </div>
 
               {/* Example preview (sample numbers) */}
-              <figure className="p-4 rounded-2xl bg-zinc-950/80 border border-zinc-800/90 shadow-inner space-y-3 select-none">
+              <figure className="p-4 rounded-card bg-canvas border border-line space-y-3 select-none">
                 {w.id === "small" && (
                   <div className="space-y-2.5 text-center">
-                    <div className="flex items-center text-xs text-zinc-400 font-bold">STEPS</div>
+                    <div className="flex items-center text-xs text-ink-2 font-semibold">STEPS</div>
                     <div className="py-1">
-                      <div className="text-2xl font-black text-white tabular-nums tracking-tight">8,450</div>
-                      <div className="text-xs text-zinc-400">84% of 10k</div>
+                      <div className="text-2xl font-semibold text-ink tabular-nums tracking-tight">8,450</div>
+                      <div className="text-xs text-ink-2">84% of 10k</div>
                     </div>
-                    <div className="w-full h-1.5 rounded-full bg-zinc-800 overflow-hidden">
-                      <div className="w-[84%] h-full bg-emerald-500 rounded-full" />
+                    <div className="w-full h-1.5 rounded-full bg-elevated overflow-hidden">
+                      <div className="w-[84%] h-full bg-ink rounded-full" />
                     </div>
-                    <div className="text-xs text-zinc-400">6.3 km</div>
+                    <div className="text-xs text-ink-2">6.3 km</div>
                   </div>
                 )}
 
                 {w.id === "medium" && (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-1.5 font-bold text-white">
-                        <Footprints className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
+                      <div className="flex items-center gap-1.5 font-semibold text-ink">
+                        <Footprints className="w-3.5 h-3.5 text-ink" aria-hidden="true" />
                         <span>FIT TRACKER</span>
                       </div>
-                      <RefreshCw className="w-3.5 h-3.5 text-zinc-400" aria-hidden="true" />
+                      <RefreshCw className="w-3.5 h-3.5 text-ink-2" aria-hidden="true" />
                     </div>
                     <div>
                       <div className="flex items-baseline justify-between">
-                        <span className="text-xl font-black text-white tabular-nums">8,450</span>
-                        <span className="text-xs font-bold text-emerald-400">84%</span>
+                        <span className="text-xl font-semibold text-ink tabular-nums">8,450</span>
+                        <span className="text-xs font-semibold text-ink">84%</span>
                       </div>
-                      <div className="w-full h-2 rounded-full bg-zinc-800 mt-1.5 overflow-hidden">
-                        <div className="w-[84%] h-full bg-linear-to-r from-emerald-500 to-teal-400 rounded-full" />
+                      <div className="w-full h-2 rounded-full bg-elevated mt-1.5 overflow-hidden">
+                        <div className="w-[84%] h-full bg-ink rounded-full" />
                       </div>
                     </div>
-                    <div className="flex items-center justify-between text-xs text-zinc-400 pt-1 border-t border-zinc-800/60">
+                    <div className="flex items-center justify-between text-xs text-ink-2 pt-1 border-t border-line">
                       <span>6.3 km • 338 kcal</span>
                       <span>Synced 9:41 AM</span>
                     </div>
@@ -212,51 +213,51 @@ export function WidgetGalleryClient() {
                 {w.id === "large" && (
                   <div className="space-y-2.5">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="font-extrabold text-white">FIT TRACKER</span>
-                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-400 border border-orange-500/25 font-bold">
+                      <span className="font-semibold text-ink">FIT TRACKER</span>
+                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-elevated text-ink-2 border border-line font-semibold">
                         <Flame className="w-3 h-3" aria-hidden="true" />
                         7d Streak
                       </span>
                     </div>
-                    <div className="p-2 rounded-xl bg-zinc-900/60 border border-zinc-800/40">
-                      <div className="flex justify-between text-xs text-zinc-300 mb-1">
-                        <span className="font-bold text-emerald-400">8,450 steps</span>
+                    <div className="p-2 rounded-control bg-surface border border-line">
+                      <div className="flex justify-between text-xs text-ink-2 mb-1">
+                        <span className="font-semibold text-ink">8,450 steps</span>
                         <span>84%</span>
                       </div>
-                      <div className="w-full h-1.5 rounded-full bg-zinc-800 overflow-hidden">
-                        <div className="w-[84%] h-full bg-emerald-500 rounded-full" />
+                      <div className="w-full h-1.5 rounded-full bg-elevated overflow-hidden">
+                        <div className="w-[84%] h-full bg-ink rounded-full" />
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="p-2 rounded-xl bg-zinc-900/60 border border-zinc-800/40">
-                        <span className="text-orange-400 font-bold block">1,820</span>
-                        <span className="text-zinc-400">/ 2,400 kcal</span>
+                      <div className="p-2 rounded-control bg-surface border border-line">
+                        <span className="text-ink-2 font-semibold block">1,820</span>
+                        <span className="text-ink-2">/ 2,400 kcal</span>
                       </div>
-                      <div className="p-2 rounded-xl bg-zinc-900/60 border border-zinc-800/40">
-                        <span className="text-cyan-400 font-bold block">2,250</span>
-                        <span className="text-zinc-400">/ 3,000 ml</span>
+                      <div className="p-2 rounded-control bg-surface border border-line">
+                        <span className="text-ink-2 font-semibold block">2,250</span>
+                        <span className="text-ink-2">/ 3,000 ml</span>
                       </div>
                     </div>
                   </div>
                 )}
-                <figcaption className="text-xs text-zinc-400 text-center">Example with sample numbers</figcaption>
+                <figcaption className="text-xs text-ink-2 text-center">Example with sample numbers</figcaption>
               </figure>
 
-              <ul className="space-y-1.5 text-sm text-zinc-400 pt-1">
+              <ul className="space-y-1.5 text-sm text-ink-2 pt-1">
                 {w.features.map((feature) => (
                   <li key={feature} className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" aria-hidden="true" />
+                    <Check className="w-3.5 h-3.5 text-ink shrink-0" aria-hidden="true" />
                     <span>{feature}</span>
                   </li>
                 ))}
               </ul>
             </div>
 
-            <div className="pt-4 border-t border-zinc-800">
+            <div className="pt-4 border-t border-line">
               <button
                 type="button"
                 onClick={() => handleAddWidget(w.id)}
-                className="w-full min-h-11 py-3 px-4 rounded-xl bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-black text-sm transition shadow-md shadow-emerald-500/20 active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
+                className={buttonClasses({ variant: "primary", size: "lg", className: "w-full gap-2" })}
               >
                 <Plus className="w-4 h-4" aria-hidden="true" />
                 <span>{isNative ? `Add ${w.gridSize} widget` : "Available in the Android app"}</span>

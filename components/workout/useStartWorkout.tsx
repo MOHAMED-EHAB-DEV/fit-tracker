@@ -3,7 +3,7 @@
 import React, { useCallback, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
-import { Modal } from "@/components/ui/Modal";
+import { Sheet } from "@/components/ui/Sheet";
 import { useToast } from "@/components/ui/Toast";
 import { api, ApiError, errorMessage } from "@/lib/client/api";
 import { markDashboardStale } from "@/lib/dashboard/stale";
@@ -103,7 +103,7 @@ export function useStartWorkout(active: { id: string; name: string } | null) {
   };
 
   const dialog = (
-    <Modal
+    <Sheet
       isOpen={Boolean(conflict)}
       onClose={() => {
         if (!isBusy) setConflict(null);
@@ -114,8 +114,7 @@ export function useStartWorkout(active: { id: string; name: string } | null) {
       footer={
         <>
           <Button
-            variant="bordered"
-            className="text-red-300 border-red-500/30"
+            variant="danger"
             isLoading={busyKey === "replace"}
             disabled={isBusy}
             onClick={() => void discardAndStart()}
@@ -136,16 +135,16 @@ export function useStartWorkout(active: { id: string; name: string } | null) {
         </>
       }
     >
-      <p className="text-base text-zinc-300">
+      <p className="text-sm leading-5 text-ink-2">
         &ldquo;{conflict?.sessionName}&rdquo; is not finished yet. Only one workout can be open at a time: resume it,
         or discard it to start a new one.
       </p>
       {error && (
-        <p role="alert" className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+        <p role="alert" className="mt-3 rounded-control border border-line bg-surface px-3 py-2.5 text-sm text-danger">
           {error}
         </p>
       )}
-    </Modal>
+    </Sheet>
   );
 
   return { start, open, busyKey, isBusy, isNavigating, dialog };

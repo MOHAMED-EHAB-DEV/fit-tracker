@@ -66,7 +66,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
           aria-invalid={isInvalid || undefined}
           aria-describedby={describedBy}
           className={cn(
-            "block w-full px-3.5 py-3 text-base placeholder:text-zinc-500 focus:outline-none resize-y",
+            "block w-full px-3.5 py-3 text-base placeholder:text-ink-3 focus:outline-none resize-y",
             FIELD_BOX,
             isInvalid && FIELD_BOX_INVALID,
             disabled && FIELD_BOX_DISABLED,

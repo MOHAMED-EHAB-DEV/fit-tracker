@@ -20,7 +20,7 @@ import {
   Copy,
   Check,
 } from "lucide-react";
-import { ConfirmModal } from "@/components/admin/ConfirmModal";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -182,7 +182,7 @@ function Field({ label, value, onChange, error, options, rule, hint }: FieldProp
 // ── Page ────────────────────────────────────────────────────────────────────
 
 const iconButton =
-  "min-h-11 min-w-11 flex items-center justify-center rounded-xl text-zinc-300 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed";
+  "min-h-11 min-w-11 flex items-center justify-center rounded-control text-ink-2 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed";
 
 export function AdminUserDetailClient({ initial }: { initial: Detail }) {
   const router = useRouter();
@@ -318,17 +318,17 @@ export function AdminUserDetailClient({ initial }: { initial: Detail }) {
       <div className="flex flex-wrap items-center gap-3">
         <Link
           href="/admin/users"
-          className={`${iconButton} hover:text-white hover:bg-zinc-900`}
+          className={`${iconButton} hover:text-ink hover:bg-elevated`}
           aria-label="Back to users"
         >
           <ArrowLeft className="w-5 h-5" aria-hidden="true" />
         </Link>
         <div className="flex-1 min-w-48">
-          <h1 className="text-2xl font-extrabold text-white break-words">
+          <h1 className="text-2xl font-semibold text-ink break-words">
             {user.name}
-            {permissions.isSelf && <span className="ml-2 text-sm font-bold text-violet-300">(you)</span>}
+            {permissions.isSelf && <span className="ml-2 text-sm font-semibold text-ink-2">(you)</span>}
           </h1>
-          <p className="text-zinc-400 text-sm font-mono break-all">{user.email}</p>
+          <p className="text-ink-2 text-sm font-mono break-all">{user.email}</p>
         </div>
         <div className="flex items-center gap-1">
           <button
@@ -338,7 +338,7 @@ export function AdminUserDetailClient({ initial }: { initial: Detail }) {
               setModalError(null);
               setModal(user.isBanned ? "unban" : "ban");
             }}
-            className={`${iconButton} hover:text-amber-300 hover:bg-amber-500/10`}
+            className={`${iconButton} hover:text-warn hover:bg-elevated`}
             title={lockReason || (user.isBanned ? "Unban" : "Ban")}
             aria-label={user.isBanned ? "Unban user" : "Ban user"}
           >
@@ -351,7 +351,7 @@ export function AdminUserDetailClient({ initial }: { initial: Detail }) {
               setModalError(null);
               setModal(user.role === "admin" ? "demote" : "promote");
             }}
-            className={`${iconButton} hover:text-violet-300 hover:bg-violet-500/10`}
+            className={`${iconButton} hover:text-ink-2 hover:bg-elevated`}
             title={lockReason || (user.role === "admin" ? "Remove admin rights" : "Make admin")}
             aria-label={user.role === "admin" ? "Remove admin rights" : "Make admin"}
           >
@@ -364,7 +364,7 @@ export function AdminUserDetailClient({ initial }: { initial: Detail }) {
               setModalError(null);
               setModal("delete");
             }}
-            className={`${iconButton} hover:text-red-300 hover:bg-red-500/10`}
+            className={`${iconButton} hover:text-danger hover:bg-elevated`}
             title={lockReason || "Delete user"}
             aria-label="Delete user"
           >
@@ -374,7 +374,7 @@ export function AdminUserDetailClient({ initial }: { initial: Detail }) {
       </div>
 
       {lockReason && (
-        <p className="text-sm text-zinc-300 bg-zinc-900/60 border border-zinc-800 rounded-xl p-3">
+        <p className="text-sm text-ink-2 bg-surface border border-line rounded-control p-3">
           {permissions.isSelf
             ? "This is your account: you cannot change your own role, ban or delete yourself here. Ask another admin."
             : "This is the only admin who can sign in. Make another user an admin before demoting, banning or deleting this one."}
@@ -383,50 +383,50 @@ export function AdminUserDetailClient({ initial }: { initial: Detail }) {
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: "Completed workouts", value: stats.completedWorkouts.toLocaleString(), icon: Dumbbell, color: "text-orange-400", bg: "bg-orange-500/10" },
-          { label: "Meals logged", value: stats.meals.toLocaleString(), icon: UtensilsCrossed, color: "text-pink-400", bg: "bg-pink-500/10" },
-          { label: "Body check-ins", value: stats.checkIns.toLocaleString(), icon: Scale, color: "text-teal-400", bg: "bg-teal-500/10" },
-          { label: "BMR", value: user.computed.bmr ? `${Math.round(user.computed.bmr)} kcal` : "Not enough data", icon: Activity, color: "text-violet-400", bg: "bg-violet-500/10" },
+          { label: "Completed workouts", value: stats.completedWorkouts.toLocaleString(), icon: Dumbbell, color: "text-ink-2", bg: "bg-elevated" },
+          { label: "Meals logged", value: stats.meals.toLocaleString(), icon: UtensilsCrossed, color: "text-ink-2", bg: "bg-elevated" },
+          { label: "Body check-ins", value: stats.checkIns.toLocaleString(), icon: Scale, color: "text-ink-2", bg: "bg-elevated" },
+          { label: "BMR", value: user.computed.bmr ? `${Math.round(user.computed.bmr)} kcal` : "Not enough data", icon: Activity, color: "text-ink-2", bg: "bg-elevated" },
         ].map((card) => (
-          <div key={card.label} className="bg-zinc-900/60 border border-zinc-800/60 rounded-2xl p-4">
-            <div className={`w-8 h-8 rounded-lg ${card.bg} flex items-center justify-center mb-3`}>
+          <div key={card.label} className="bg-surface border border-line rounded-card p-4">
+            <div className={`w-8 h-8 rounded-chip ${card.bg} flex items-center justify-center mb-3`}>
               <card.icon className={`w-4 h-4 ${card.color}`} aria-hidden="true" />
             </div>
-            <p className="text-xl font-bold text-white tabular-nums">{card.value}</p>
-            <p className="text-xs text-zinc-400 mt-0.5">{card.label}</p>
+            <p className="text-xl font-semibold text-ink tabular-nums">{card.value}</p>
+            <p className="text-xs text-ink-2 mt-0.5">{card.label}</p>
           </div>
         ))}
       </div>
 
       <div className="flex flex-wrap gap-2 text-xs">
-        <span className="px-3 py-1 rounded-full font-bold uppercase border bg-violet-500/15 text-violet-300 border-violet-500/30">
+        <span className="px-3 py-1 rounded-full font-semibold border bg-elevated text-ink-2 border-line">
           {user.role}
         </span>
         {user.isBanned && (
-          <span className="px-3 py-1 rounded-full font-bold uppercase bg-red-500/10 text-red-300 border border-red-500/20">Banned</span>
+          <span className="px-3 py-1 rounded-full font-semibold bg-surface text-danger border border-line">Banned</span>
         )}
-        <span className="px-3 py-1 rounded-full font-bold uppercase bg-zinc-800 text-zinc-300 border border-zinc-700">
+        <span className="px-3 py-1 rounded-full font-semibold bg-elevated text-ink-2 border border-line-strong">
           {user.isProfileComplete ? "Profile complete" : "Profile incomplete"}
         </span>
-        <span className="px-3 py-1 rounded-full text-zinc-300 border border-zinc-800 tabular-nums">
+        <span className="px-3 py-1 rounded-full text-ink-2 border border-line tabular-nums">
           Joined {formatAdminDate(user.createdAt, timeZone)}
         </span>
-        <span className="px-3 py-1 rounded-full text-zinc-300 border border-zinc-800 tabular-nums">
+        <span className="px-3 py-1 rounded-full text-ink-2 border border-line tabular-nums">
           Last sign-in {formatAdminDateTime(user.lastLoginAt, timeZone)}
         </span>
       </div>
 
-      <section className="bg-zinc-900/60 border border-zinc-800/60 rounded-2xl p-6 space-y-3" aria-labelledby="reset-heading">
+      <section className="bg-surface border border-line rounded-card p-6 space-y-3" aria-labelledby="reset-heading">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 id="reset-heading" className="text-base font-bold text-white flex items-center gap-2">
-              <KeyRound className="w-4 h-4 text-violet-400" aria-hidden="true" /> Password reset link
+            <h2 id="reset-heading" className="text-base font-semibold text-ink flex items-center gap-2">
+              <KeyRound className="w-4 h-4 text-ink-2" aria-hidden="true" /> Password reset link
             </h2>
-            <p className="text-sm text-zinc-400">
+            <p className="text-sm text-ink-2">
               One-time link, valid for 30 minutes. Creating a new one cancels the previous link. Send it to the user yourself.
             </p>
           </div>
-          <Button type="button" variant="bordered" size="md" onClick={createResetLink} isLoading={resetBusy} disabled={user.isBanned} className="min-h-11">
+          <Button type="button" variant="secondary" size="md" onClick={createResetLink} isLoading={resetBusy} disabled={user.isBanned} className="min-h-11">
             {resetLink ? "Create a new link" : "Create reset link"}
           </Button>
         </div>
@@ -446,7 +446,7 @@ export function AdminUserDetailClient({ initial }: { initial: Detail }) {
               />
               <Button
                 type="button"
-                variant="solid"
+                variant="primary"
                 size="md"
                 onClick={copyResetLink}
                 startContent={copied ? <Check className="w-4 h-4" aria-hidden="true" /> : <Copy className="w-4 h-4" aria-hidden="true" />}
@@ -455,7 +455,7 @@ export function AdminUserDetailClient({ initial }: { initial: Detail }) {
                 {copied ? "Copied" : "Copy link"}
               </Button>
             </div>
-            <p className="text-xs text-zinc-400">Expires {formatAdminDateTime(resetLink.expiresAt, timeZone)}.</p>
+            <p className="text-xs text-ink-2">Expires {formatAdminDateTime(resetLink.expiresAt, timeZone)}.</p>
           </div>
         )}
       </section>
@@ -468,10 +468,10 @@ export function AdminUserDetailClient({ initial }: { initial: Detail }) {
         className="space-y-6"
         noValidate
       >
-        <section className="bg-zinc-900/60 border border-zinc-800/60 rounded-2xl p-6" aria-labelledby="profile-heading">
+        <section className="bg-surface border border-line rounded-card p-6" aria-labelledby="profile-heading">
           <div className="flex items-center gap-2 mb-5">
-            <User className="w-5 h-5 text-violet-400" aria-hidden="true" />
-            <h2 id="profile-heading" className="text-base font-bold text-white">Fitness profile</h2>
+            <User className="w-5 h-5 text-ink-2" aria-hidden="true" />
+            <h2 id="profile-heading" className="text-base font-semibold text-ink">Fitness profile</h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <Field label="Name" value={values.name} onChange={setField("name")} error={errors.name} />
@@ -499,8 +499,8 @@ export function AdminUserDetailClient({ initial }: { initial: Detail }) {
           </div>
         </section>
 
-        <section className="bg-zinc-900/60 border border-zinc-800/60 rounded-2xl p-6" aria-labelledby="prefs-heading">
-          <h2 id="prefs-heading" className="text-base font-bold text-white mb-5">Preferences</h2>
+        <section className="bg-surface border border-line rounded-card p-6" aria-labelledby="prefs-heading">
+          <h2 id="prefs-heading" className="text-base font-semibold text-ink mb-5">Preferences</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <Field label="Daily step goal" value={values.stepGoal} onChange={setField("stepGoal")} rule={NUMBER_RULES.stepGoal} error={errors.stepGoal} />
             <Field label="Daily water goal (ml)" value={values.waterGoalMl} onChange={setField("waterGoalMl")} rule={NUMBER_RULES.waterGoalMl} error={errors.waterGoalMl} />
@@ -509,7 +509,7 @@ export function AdminUserDetailClient({ initial }: { initial: Detail }) {
         </section>
 
         {saveError && (
-          <p role="alert" className="text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl p-3">
+          <p role="alert" className="text-sm text-danger bg-surface border border-line rounded-control p-3">
             {saveError}
           </p>
         )}
@@ -531,7 +531,7 @@ export function AdminUserDetailClient({ initial }: { initial: Detail }) {
           </Button>
           <Button
             type="submit"
-            variant="solid"
+            variant="primary"
             size="md"
             disabled={!dirty}
             isLoading={isSaving}
@@ -543,17 +543,17 @@ export function AdminUserDetailClient({ initial }: { initial: Detail }) {
         </div>
       </form>
 
-      <ConfirmModal
+      <ConfirmDialog
         isOpen={Boolean(modal)}
-        onClose={() => {
+        onCancel={() => {
           if (!modalBusy) setModal(null);
         }}
         onConfirm={runAction}
         title={copy?.title || ""}
         message={copy?.message || ""}
         confirmLabel={copy?.confirmLabel || "Confirm"}
-        confirmVariant={copy?.variant || "danger"}
-        isLoading={modalBusy}
+        destructive={(copy?.variant || "danger") === "danger"}
+        isWorking={modalBusy}
         error={modalError}
       />
     </div>

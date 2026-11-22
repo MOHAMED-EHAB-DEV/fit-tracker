@@ -8,7 +8,7 @@ export default function AppNotFound() {
       title="Not found"
       message="This page does not exist, or the item it showed has been deleted."
       primaryAction={
-        <Link href="/" className={STATUS_PRIMARY_CLASS}>
+        <Link href="/dashboard" className={STATUS_PRIMARY_CLASS}>
           Go to Today
         </Link>
       }

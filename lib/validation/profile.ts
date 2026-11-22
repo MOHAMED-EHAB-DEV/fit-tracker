@@ -1,13 +1,11 @@
 import { z } from "zod";
-import {
-  bodyWeightKg,
-  boundedInt,
-  dateString,
-  heightCm,
-  timeZone,
-  weekdayKey,
-  weightUnit,
-} from "@/lib/validation/common";
+import { boundedInt, boundedNumber, dateString, timeZone, weekdayKey, weightUnit } from "@/lib/validation/common";
+import { PROFILE_LIMITS as L, profileLimitRange } from "@/lib/users/limits";
+
+/** A number inside one of the shared profile limits (lib/users/limits.ts). */
+const limitedInt = (key: keyof typeof L) => boundedInt(L[key].min, L[key].max);
+const weightKg = boundedNumber(L.weightKg.min, L.weightKg.max);
+const heightCm = boundedNumber(L.heightCm.min, L.heightCm.max);
 
 export const sex = z.enum(["male", "female"]);
 export const activityLevel = z.enum(["sedentary", "light", "moderate", "active", "very_active"]);
@@ -18,27 +16,27 @@ export const fitnessProfilePatch = z
   .object({
     sex: sex.optional(),
     birthDate: dateString.nullable().optional(),
-    age: boundedInt(10, 100).nullable().optional(),
-    weightKg: bodyWeightKg.nullable().optional(),
+    age: limitedInt("age").nullable().optional(),
+    weightKg: weightKg.nullable().optional(),
     heightCm: heightCm.nullable().optional(),
     activityLevel: activityLevel.optional(),
     goal: fitnessGoal.optional(),
-    calorieAdjustment: boundedInt(0, 1500).nullable().optional(),
+    calorieAdjustment: limitedInt("calorieAdjustment").nullable().optional(),
     // Custom targets. null = "calculate it for me".
-    targetCalories: boundedInt(800, 10_000).nullable().optional(),
-    targetProteinG: boundedInt(0, 600).nullable().optional(),
-    targetCarbsG: boundedInt(0, 1500).nullable().optional(),
-    targetFatG: boundedInt(0, 500).nullable().optional(),
-    targetFiberG: boundedInt(0, 150).nullable().optional(),
+    targetCalories: limitedInt("targetCalories").nullable().optional(),
+    targetProteinG: limitedInt("targetProteinG").nullable().optional(),
+    targetCarbsG: limitedInt("targetCarbsG").nullable().optional(),
+    targetFatG: limitedInt("targetFatG").nullable().optional(),
+    targetFiberG: limitedInt("targetFiberG").nullable().optional(),
   })
   .strict();
 
 export const preferencesPatch = z
   .object({
-    stepGoal: boundedInt(500, 100_000).nullable().optional(),
-    waterGoalMl: boundedInt(250, 10_000).nullable().optional(),
+    stepGoal: limitedInt("stepGoal").nullable().optional(),
+    waterGoalMl: limitedInt("waterGoalMl").nullable().optional(),
     // 0 turns the rest timer off.
-    restTimerDefaultSec: boundedInt(0, 900).nullable().optional(),
+    restTimerDefaultSec: limitedInt("restTimerSec").nullable().optional(),
     weightUnit: weightUnit.optional(),
     timezone: timeZone.optional(),
     weekStartDay: weekdayKey.optional(),
@@ -67,15 +65,21 @@ export type ProfilePatch = z.infer<typeof profilePatchSchema>;
 
 export const onboardingSchema = z.object({
   sex,
-  age: z.coerce.number().int().min(10).max(100).optional(),
+  age: z.coerce.number().int().min(L.age.min).max(L.age.max).optional(),
   birthDate: dateString.nullable().optional(),
-  weightKg: z.coerce.number().min(30, "Weight must be at least 30 kg").max(300, "Weight must be at most 300 kg"),
-  heightCm: z.coerce.number().min(100, "Height must be at least 100 cm").max(250, "Height must be at most 250 cm"),
+  weightKg: z.coerce
+    .number()
+    .min(L.weightKg.min, `Weight must be ${profileLimitRange("weightKg")}`)
+    .max(L.weightKg.max, `Weight must be ${profileLimitRange("weightKg")}`),
+  heightCm: z.coerce
+    .number()
+    .min(L.heightCm.min, `Height must be ${profileLimitRange("heightCm")}`)
+    .max(L.heightCm.max, `Height must be ${profileLimitRange("heightCm")}`),
   activityLevel,
   goal: fitnessGoal,
-  stepGoal: z.coerce.number().int().min(500).max(100_000).optional(),
-  waterGoalMl: z.coerce.number().int().min(250).max(10_000).optional(),
-  restTimerDefaultSec: z.coerce.number().int().min(10).max(900).optional(),
+  stepGoal: z.coerce.number().int().min(L.stepGoal.min).max(L.stepGoal.max).optional(),
+  waterGoalMl: z.coerce.number().int().min(L.waterGoalMl.min).max(L.waterGoalMl.max).optional(),
+  restTimerDefaultSec: z.coerce.number().int().min(L.restTimerSec.min).max(L.restTimerSec.max).optional(),
   weightUnit: weightUnit.optional(),
   timezone: timeZone.optional(),
 });

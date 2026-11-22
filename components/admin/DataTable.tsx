@@ -38,11 +38,11 @@ interface DataTableProps<T> {
 }
 
 function sortIcon(active: boolean, dir: "asc" | "desc" | undefined) {
-  if (!active) return <ChevronsUpDown className="w-3.5 h-3.5 text-zinc-500" aria-hidden="true" />;
+  if (!active) return <ChevronsUpDown className="w-3.5 h-3.5 text-ink-3" aria-hidden="true" />;
   return dir === "asc" ? (
-    <ChevronUp className="w-3.5 h-3.5 text-violet-400" aria-hidden="true" />
+    <ChevronUp className="w-3.5 h-3.5 text-ink-2" aria-hidden="true" />
   ) : (
-    <ChevronDown className="w-3.5 h-3.5 text-violet-400" aria-hidden="true" />
+    <ChevronDown className="w-3.5 h-3.5 text-ink-2" aria-hidden="true" />
   );
 }
 
@@ -78,7 +78,7 @@ export function DataTable<T extends object>({
       <button
         type="button"
         onClick={() => onSort?.(col.key, nextDir)}
-        className="inline-flex items-center gap-1.5 min-h-11 uppercase tracking-wider cursor-pointer hover:text-zinc-100 rounded"
+        className="inline-flex items-center gap-1.5 min-h-11 cursor-pointer hover:text-ink rounded"
       >
         {col.label}
         {sortIcon(active, sortDir)}
@@ -101,22 +101,22 @@ export function DataTable<T extends object>({
       )}
 
       {error && (
-        <div role="alert" className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-300">
+        <div role="alert" className="flex flex-wrap items-center gap-3 p-3 rounded-control bg-surface border border-line text-sm text-danger">
           <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
           <span className="flex-1 min-w-48">{error}</span>
           {onRetry && (
-            <Button type="button" variant="bordered" size="sm" onClick={onRetry} className="min-h-11">
+            <Button type="button" variant="secondary" size="sm" onClick={onRetry} className="min-h-11">
               Try again
             </Button>
           )}
         </div>
       )}
 
-      <div className="w-full overflow-x-auto rounded-2xl border border-zinc-800/60 bg-zinc-950/40">
+      <div className="w-full overflow-x-auto rounded-card border border-line bg-canvas">
         <table className="w-full text-sm" aria-busy={isLoading}>
           {caption && <caption className="sr-only">{caption}</caption>}
           <thead>
-            <tr className="border-b border-zinc-800/60 bg-zinc-900/40">
+            <tr className="border-b border-line bg-surface">
               {columns.map((col) => {
                 const sortable = Boolean(col.sortable && onSort);
                 const ariaSort = sortable
@@ -132,7 +132,7 @@ export function DataTable<T extends object>({
                     scope="col"
                     aria-sort={ariaSort}
                     className={cn(
-                      "px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-zinc-400 whitespace-nowrap",
+                      "px-4 py-2 text-left text-xs font-semibold text-ink-2 whitespace-nowrap",
                       col.className
                     )}
                   >
@@ -143,7 +143,7 @@ export function DataTable<T extends object>({
               {actions && (
                 <th
                   scope="col"
-                  className="sticky right-0 bg-zinc-900 px-4 py-2 text-right text-xs font-bold uppercase tracking-wider text-zinc-400"
+                  className="sticky right-0 bg-surface px-4 py-2 text-right text-xs font-semibold text-ink-2"
                 >
                   Actions
                 </th>
@@ -153,17 +153,17 @@ export function DataTable<T extends object>({
           <tbody>
             {isLoading && data.length === 0 ? (
               Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i} className="border-b border-zinc-800/30">
+                <tr key={i} className="border-b border-line">
                   {Array.from({ length: colSpan }).map((__, j) => (
                     <td key={j} className="px-4 py-3.5">
-                      <div className="h-4 bg-zinc-800/60 rounded-lg animate-pulse" />
+                      <div className="h-4 bg-elevated rounded-chip animate-pulse" />
                     </td>
                   ))}
                 </tr>
               ))
             ) : data.length === 0 ? (
               <tr>
-                <td colSpan={colSpan} className="px-4 py-12 text-center text-zinc-400 text-sm font-medium">
+                <td colSpan={colSpan} className="px-4 py-12 text-center text-ink-2 text-sm font-medium">
                   {error ? "The list could not be loaded." : emptyMessage}
                 </td>
               </tr>
@@ -172,19 +172,19 @@ export function DataTable<T extends object>({
                 <tr
                   key={String(row[keyField])}
                   className={cn(
-                    "border-b border-zinc-800/30 hover:bg-violet-500/5 transition-colors",
+                    "border-b border-line hover:bg-elevated transition-colors",
                     isLoading && "opacity-60"
                   )}
                 >
                   {columns.map((col) => (
-                    <td key={col.key} className={cn("px-4 py-3 text-zinc-300", col.className)}>
+                    <td key={col.key} className={cn("px-4 py-3 text-ink-2", col.className)}>
                       {col.render
                         ? col.render(row)
                         : String((row as Record<string, unknown>)[col.key] ?? "")}
                     </td>
                   ))}
                   {actions && (
-                    <td className="sticky right-0 bg-zinc-950/95 px-2 py-2 text-right whitespace-nowrap">
+                    <td className="sticky right-0 bg-canvas px-2 py-2 text-right whitespace-nowrap">
                       {actions(row)}
                     </td>
                   )}
@@ -196,7 +196,7 @@ export function DataTable<T extends object>({
       </div>
 
       {(totalPages > 1 || page > 1) && (
-        <nav aria-label="Pagination" className="flex items-center justify-between text-sm text-zinc-400 px-1">
+        <nav aria-label="Pagination" className="flex items-center justify-between text-sm text-ink-2 px-1">
           <span className="tabular-nums">
             {total === 0
               ? "No results"
@@ -209,11 +209,11 @@ export function DataTable<T extends object>({
               aria-label="Previous page"
               onClick={() => onPageChange(Math.min(page - 1, totalPages))}
               disabled={page <= 1}
-              className="h-11 w-11 p-0 text-zinc-300 hover:text-white"
+              className="h-11 w-11 p-0 text-ink-2 hover:text-ink"
             >
               <ChevronLeft className="w-4 h-4" aria-hidden="true" />
             </Button>
-            <span className="px-2 text-xs font-semibold text-zinc-400 tabular-nums">
+            <span className="px-2 text-xs font-semibold text-ink-2 tabular-nums">
               Page {page} of {totalPages}
             </span>
             <Button
@@ -222,7 +222,7 @@ export function DataTable<T extends object>({
               aria-label="Next page"
               onClick={() => onPageChange(page + 1)}
               disabled={page >= totalPages}
-              className="h-11 w-11 p-0 text-zinc-300 hover:text-white"
+              className="h-11 w-11 p-0 text-ink-2 hover:text-ink"
             >
               <ChevronRight className="w-4 h-4" aria-hidden="true" />
             </Button>

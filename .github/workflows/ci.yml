@@ -1,6 +1,6 @@
 name: CI
 
-# Type-check, lint and a production build on every push and pull request.
+# Type-check, lint, the design-token check and a production build on every push and pull request.
 # Nothing here deploys or touches a real database: the build gets dummy values.
 # The test suite is kept local (tests/ is not in the repository).
 
@@ -47,6 +47,11 @@ jobs:
 
       - name: Lint
         run: node_modules/.bin/eslint .
+
+      # Screens use the design tokens only (docs/design/README.md); any raw
+      # palette class or hex colour in app/ or components/ fails the build.
+      - name: Design tokens
+        run: node scripts/check-design-tokens.mjs --strict
 
       - name: Build
         run: node_modules/.bin/next build

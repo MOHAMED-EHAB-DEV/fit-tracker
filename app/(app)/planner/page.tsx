@@ -1,15 +1,16 @@
 import React, { Suspense } from "react";
-import { Loader2 } from "lucide-react";
 import { requirePageSession } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/mongoose";
 import Habit from "@/lib/db/models/Habit";
 import { getTodayDateString } from "@/lib/fitness/timezone";
 import { listEventsForDate } from "@/lib/planner/service";
+import { DEFAULT_HABIT_COLOR, DEFAULT_HABIT_EMOJI } from "@/lib/habits/colors";
+import { ScreenSkeleton } from "@/components/ui/Skeleton";
 import PlannerPage from "@/components/planner/PlannerPage";
 
 export const metadata = {
   title: "Planner",
-  description: "Schedule your day in time blocks and link events to your daily habits.",
+  description: "Plan your day in time blocks and link events to your daily habits.",
 };
 
 async function PlannerContent() {
@@ -28,8 +29,8 @@ async function PlannerContent() {
   const availableHabits = habits.map((habit) => ({
     _id: String(habit._id),
     name: habit.name,
-    emoji: habit.emoji || "⚡",
-    color: habit.color || "#10b981",
+    emoji: habit.emoji || DEFAULT_HABIT_EMOJI,
+    color: habit.color || DEFAULT_HABIT_COLOR,
   }));
 
   return (
@@ -38,20 +39,14 @@ async function PlannerContent() {
       initialEvents={events}
       availableHabits={availableHabits}
       timeZone={session.timezone}
+      weekStartDay={session.weekStartDay}
     />
   );
 }
 
 export default function Page() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center min-h-[60vh] text-zinc-400 gap-2" role="status">
-          <Loader2 className="w-6 h-6 animate-spin text-emerald-400" aria-hidden="true" />
-          <span className="font-semibold text-sm">Loading Day Planner...</span>
-        </div>
-      }
-    >
+    <Suspense fallback={<ScreenSkeleton cards={3} />}>
       <PlannerContent />
     </Suspense>
   );

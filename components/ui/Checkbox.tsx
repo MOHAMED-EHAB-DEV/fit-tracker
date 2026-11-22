@@ -35,20 +35,20 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
             type="checkbox"
             disabled={disabled}
             aria-describedby={descId}
-            className="peer absolute inset-0 m-0 appearance-none rounded-md border border-zinc-500 bg-transparent cursor-pointer transition-colors checked:bg-emerald-500 checked:border-emerald-500 disabled:cursor-not-allowed"
+            className="peer absolute inset-0 m-0 appearance-none rounded-[5px] border-[1.5px] border-line-strong bg-transparent cursor-pointer transition-colors checked:bg-ink checked:border-ink disabled:cursor-not-allowed"
             {...props}
           />
           <Check
             aria-hidden="true"
             strokeWidth={3}
-            className="pointer-events-none relative w-3.5 h-3.5 text-zinc-950 opacity-0 peer-checked:opacity-100"
+            className="pointer-events-none relative w-3.5 h-3.5 text-ink-inverse opacity-0 peer-checked:opacity-100"
           />
         </span>
         {(label || description) && (
           <span className="min-w-0">
-            {label && <span className="block text-sm text-zinc-200">{label}</span>}
+            {label && <span className="block text-sm text-ink">{label}</span>}
             {description && (
-              <span id={descId} className="block text-xs text-zinc-400 mt-0.5">
+              <span id={descId} className="block text-xs text-ink-3 mt-0.5">
                 {description}
               </span>
             )}

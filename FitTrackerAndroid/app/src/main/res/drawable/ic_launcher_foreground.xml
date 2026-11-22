@@ -1,10 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Emerald lightning / fitness bolt -->
-    <path
-        android:fillColor="#10B981"
-        android:pathData="M58,24L32,60h18l-6,24l26,-36h-18z"/>
+    <!-- The FitTracker mark: barbell with a cobalt index over a calibrated scale. -->
+    <group android:translateX="18" android:translateY="16.875" android:scaleX="0.75" android:scaleY="0.75">
+        <path android:fillColor="@color/brand_graphite" android:pathData="M18.5,30h2a2.5,2.5 0,0 1,2.5,2.5v19a2.5,2.5 0,0 1,-2.5,2.5h-2a2.5,2.5 0,0 1,-2.5,-2.5v-19a2.5,2.5 0,0 1,2.5,-2.5z" />
+        <path android:fillColor="@color/brand_steel" android:pathData="M29,22h4a3,3 0,0 1,3,3v34a3,3 0,0 1,-3,3h-4a3,3 0,0 1,-3,-3v-34a3,3 0,0 1,3,-3z" />
+        <path android:fillColor="@color/brand_steel" android:pathData="M36,39h24v6h-24z" />
+        <path android:fillColor="@color/brand_steel" android:pathData="M63,22h4a3,3 0,0 1,3,3v34a3,3 0,0 1,-3,3h-4a3,3 0,0 1,-3,-3v-34a3,3 0,0 1,3,-3z" />
+        <path android:fillColor="@color/brand_graphite" android:pathData="M75.5,30h2a2.5,2.5 0,0 1,2.5,2.5v19a2.5,2.5 0,0 1,-2.5,2.5h-2a2.5,2.5 0,0 1,-2.5,-2.5v-19a2.5,2.5 0,0 1,2.5,-2.5z" />
+        <path android:fillColor="@color/brand_accent" android:pathData="M48,36h0a1.5,1.5 0,0 1,1.5,1.5v9a1.5,1.5 0,0 1,-1.5,1.5h0a1.5,1.5 0,0 1,-1.5,-1.5v-9a1.5,1.5 0,0 1,1.5,-1.5z" />
+        <path android:fillColor="@color/brand_track" android:pathData="M22.5,72h51a2.5,2.5 0,0 1,2.5,2.5v0a2.5,2.5 0,0 1,-2.5,2.5h-51a2.5,2.5 0,0 1,-2.5,-2.5v0a2.5,2.5 0,0 1,2.5,-2.5z" />
+        <path android:fillColor="@color/brand_accent" android:pathData="M22.5,72h33a2.5,2.5 0,0 1,2.5,2.5v0a2.5,2.5 0,0 1,-2.5,2.5h-33a2.5,2.5 0,0 1,-2.5,-2.5v0a2.5,2.5 0,0 1,2.5,-2.5z" />
+    </group>
 </vector>

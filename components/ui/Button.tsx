@@ -2,54 +2,31 @@
 
 import React from "react";
 import { Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { buttonClasses, type ButtonSize, type ButtonVariant } from "@/components/ui/button-styles";
+
+export type { ButtonSize, ButtonVariant } from "@/components/ui/button-styles";
+export { buttonClasses } from "@/components/ui/button-styles";
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "solid" | "bordered" | "flat" | "ghost" | "danger";
-  size?: "sm" | "md" | "lg";
-  radius?: "none" | "sm" | "md" | "lg" | "full";
+  variant?: ButtonVariant;
+  /** sm 36px (inside rows), md 44px, lg 48px (the screen's primary action). */
+  size?: ButtonSize;
   isLoading?: boolean;
   startContent?: React.ReactNode;
   endContent?: React.ReactNode;
+  fullWidth?: boolean;
 }
-
-const VARIANT_MAP = {
-  solid:
-    "bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold",
-  bordered:
-    "bg-transparent border border-white/15 hover:border-white/30 text-zinc-200 hover:text-white hover:bg-white/[0.04]",
-  flat:
-    "bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 border border-emerald-500/20 font-bold",
-  ghost:
-    "bg-transparent text-zinc-400 hover:text-white hover:bg-white/10",
-  danger:
-    "bg-red-600 hover:bg-red-700 text-white font-bold",
-};
-
-const SIZE_MAP = {
-  sm: "px-3 py-2 min-h-[40px] text-sm gap-1.5",
-  md: "px-4 py-2.5 min-h-[44px] text-sm gap-2",
-  lg: "px-6 py-3.5 min-h-[48px] text-sm sm:text-base gap-2.5",
-};
-
-const RADIUS_MAP = {
-  none: "rounded-none",
-  sm: "rounded-lg",
-  md: "rounded-xl",
-  lg: "rounded-2xl",
-  full: "rounded-full",
-};
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   (
     {
       children,
-      variant = "solid",
+      variant = "primary",
       size = "md",
-      radius = "lg",
       isLoading = false,
       startContent,
       endContent,
+      fullWidth = false,
       disabled,
       className,
       // A button only submits a form when it says so (the browser default is "submit").
@@ -63,24 +40,25 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         type={type}
         disabled={disabled || isLoading}
-        aria-busy={isLoading}
-        aria-disabled={disabled || isLoading}
-        className={cn(
-          "inline-flex items-center justify-center font-semibold transition-all duration-150 active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:pointer-events-none select-none",
-          VARIANT_MAP[variant],
-          SIZE_MAP[size],
-          RADIUS_MAP[radius],
-          className
-        )}
+        aria-busy={isLoading || undefined}
+        className={buttonClasses({ variant, size, fullWidth, className })}
         {...props}
       >
         {isLoading ? (
-          <Loader2 className="w-4 h-4 animate-spin shrink-0" aria-hidden="true" />
+          <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
         ) : (
-          startContent && <span className="shrink-0" aria-hidden="true">{startContent}</span>
+          startContent && (
+            <span className="flex shrink-0" aria-hidden="true">
+              {startContent}
+            </span>
+          )
         )}
         <span>{children}</span>
-        {!isLoading && endContent && <span className="shrink-0" aria-hidden="true">{endContent}</span>}
+        {!isLoading && endContent && (
+          <span className="flex shrink-0" aria-hidden="true">
+            {endContent}
+          </span>
+        )}
       </button>
     );
   }

@@ -1,12 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, Sparkles, CalendarClock, Loader2, AlertCircle, RotateCw } from "lucide-react";
-import PlannerDayPicker from "./PlannerDayPicker";
+import { Plus, RotateCw, Sparkles } from "lucide-react";
 import PlannerTimeline from "./PlannerTimeline";
-import EventDrawer, { DeleteMode } from "./EventDrawer";
-import AddEventModal from "./AddEventModal";
-import AIPlannerModal from "./AIPlannerModal";
+import EventSheet, { type DeleteMode, type EventSheetState } from "./EventSheet";
+import PlanMyDaySheet from "./PlanMyDaySheet";
+import { WeekStrip } from "./WeekStrip";
 import { useToday } from "./useToday";
 import {
   EventFormValues,
@@ -18,13 +17,16 @@ import {
 import type { AiPlanEvent } from "@/lib/planner/ai-plan";
 import { useToast } from "@/components/ui/Toast";
 import { Button } from "@/components/ui/Button";
+import { PlanTabs } from "@/components/planner/PlanTabs";
 import { syncPlannerReminders } from "@/services/planner-reminders";
+import { addDays, formatDateString, type WeekdayKey } from "@/lib/time";
 
 interface PlannerPageProps {
   initialDate: string;
   initialEvents: PlannedEventItem[];
   availableHabits: HabitOption[];
   timeZone: string;
+  weekStartDay: WeekdayKey;
 }
 
 type LoadState = { status: "ready" } | { status: "loading" } | { status: "error"; message: string };
@@ -33,7 +35,8 @@ function afterPlannerChange() {
   syncPlannerReminders().catch(() => undefined);
 }
 
-export default function PlannerPage({ initialDate, initialEvents, availableHabits, timeZone }: PlannerPageProps) {
+/** Plan › Schedule: the week, the day's events in time order, one sheet per event, Plan my day. */
+export default function PlannerPage({ initialDate, initialEvents, availableHabits, timeZone, weekStartDay }: PlannerPageProps) {
   const { toast } = useToast();
   const { today, time: nowTime } = useToday(timeZone, initialDate);
 
@@ -42,10 +45,9 @@ export default function PlannerPage({ initialDate, initialEvents, availableHabit
   const [loadState, setLoadState] = useState<LoadState>({ status: "ready" });
   const [togglingIds, setTogglingIds] = useState<ReadonlySet<string>>(new Set());
 
-  const [drawerEventId, setDrawerEventId] = useState<string | null>(null);
-  const [drawerSnapshot, setDrawerSnapshot] = useState<PlannedEventItem | null>(null);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  // The event sheet: what it shows stays set while it slides away.
+  const [sheetState, setSheetState] = useState<EventSheetState>(null);
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [aiModalKey, setAiModalKey] = useState(0);
 
@@ -55,15 +57,17 @@ export default function PlannerPage({ initialDate, initialEvents, availableHabit
   const togglingRef = useRef(new Set<string>());
   const lastTodayRef = useRef(initialDate);
 
-  // The drawer follows the live list; the snapshot keeps it filled while it animates closed.
-  const drawerEvent = events.find((event) => event._id === drawerEventId) || drawerSnapshot;
+  // An open event follows the live list (done ticks, edits).
+  const sheetEvent =
+    sheetState?.mode === "event" ? events.find((event) => event._id === sheetState.event._id) || sheetState.event : null;
+  const liveSheetState: EventSheetState = sheetState?.mode === "event" && sheetEvent ? { mode: "event", event: sheetEvent } : sheetState;
 
   const loadDate = useCallback(async (date: string) => {
     const seq = ++loadSeqRef.current;
     selectedDateRef.current = date;
     setSelectedDate(date);
     setLoadState({ status: "loading" });
-    setIsDrawerOpen(false);
+    setIsSheetOpen(false);
 
     try {
       const res = await fetch(`/api/planner?date=${encodeURIComponent(date)}`);
@@ -143,14 +147,18 @@ export default function PlannerPage({ initialDate, initialEvents, availableHabit
   };
 
   const handleSelectEvent = (event: PlannedEventItem) => {
-    setDrawerEventId(event._id);
-    setDrawerSnapshot(event);
-    setIsDrawerOpen(true);
+    setSheetState({ mode: "event", event });
+    setIsSheetOpen(true);
   };
 
-  const closeDrawer = () => {
-    if (drawerEvent) setDrawerSnapshot(drawerEvent);
-    setIsDrawerOpen(false);
+  const openCreate = () => {
+    setSheetState({ mode: "create" });
+    setIsSheetOpen(true);
+  };
+
+  const closeSheet = () => {
+    if (sheetState?.mode === "event" && sheetEvent) setSheetState({ mode: "event", event: sheetEvent });
+    setIsSheetOpen(false);
   };
 
   const handleUpdateEvent = async (id: string, values: EventFormValues): Promise<string | null> => {
@@ -164,7 +172,7 @@ export default function PlannerPage({ initialDate, initialEvents, availableHabit
       const result = await readApiResponse<{ event: PlannedEventItem }>(res);
       if (!result.ok) return result.error;
       replaceEvent(result.data.event, date);
-      setDrawerSnapshot(result.data.event);
+      setSheetState({ mode: "event", event: result.data.event });
       toast("Event saved", "success");
       afterPlannerChange();
       return null;
@@ -181,7 +189,7 @@ export default function PlannerPage({ initialDate, initialEvents, availableHabit
       const result = await readApiResponse<{ deleted: string }>(res);
       if (!result.ok) return result.error;
       if (selectedDateRef.current === date) setEvents((prev) => prev.filter((event) => event._id !== id));
-      closeDrawer();
+      closeSheet();
       toast(mode === "this" ? "Removed from this day" : mode === "following" ? "Removed from this day onwards" : "Event deleted", "success");
       afterPlannerChange();
       return null;
@@ -240,82 +248,97 @@ export default function PlannerPage({ initialDate, initialEvents, availableHabit
   };
 
   const isLoading = loadState.status === "loading";
+  const isToday = selectedDate === today;
+  const dayTitle = isToday
+    ? "Today"
+    : selectedDate === addDays(today, 1)
+      ? "Tomorrow"
+      : selectedDate === addDays(today, -1)
+        ? "Yesterday"
+        : formatDateString(selectedDate, { weekday: "long", month: "short", day: "numeric" });
+  const doneCount = events.filter((event) => event.isCompleted).length;
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto pb-16">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2.5 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-            <CalendarClock className="w-6 h-6" aria-hidden="true" />
-          </div>
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-zinc-100 tracking-tight">Day Planner</h1>
-            <p className="text-sm text-zinc-400 mt-0.5">Time-block your day and link blocks to your habits</p>
-          </div>
-        </div>
+    <div className="space-y-3 lg:mx-auto lg:max-w-[760px]">
+      <PlanTabs active="schedule" className="w-full md:max-w-[300px]" />
 
-        <div className="grid grid-cols-2 sm:flex items-center gap-2">
-          <Button variant="flat" size="md" onClick={openAIModal} startContent={<Sparkles className="w-4 h-4" />}>
-            Plan with AI
+      <WeekStrip selectedDate={selectedDate} today={today} weekStartDay={weekStartDay} onSelectDate={(date) => void loadDate(date)} />
+
+      <div className="flex items-center justify-between gap-3 px-0.5">
+        <div className="min-w-0">
+          <h2 className="truncate text-[15px] font-semibold text-ink">{dayTitle}</h2>
+          <p className="text-xs text-ink-3" aria-live="polite">
+            {isLoading ? (
+              "Loading…"
+            ) : events.length > 0 ? (
+              <>
+                <span className="font-mono tabular-nums">
+                  {doneCount} of {events.length}
+                </span>{" "}
+                done
+              </>
+            ) : (
+              "Nothing planned"
+            )}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={openAIModal} startContent={<Sparkles className="h-3.5 w-3.5" />}>
+            Plan my day
           </Button>
-          <Button variant="solid" size="md" onClick={() => setIsAddModalOpen(true)} startContent={<Plus className="w-4 h-4" />}>
+          <Button size="sm" onClick={openCreate} startContent={<Plus className="h-3.5 w-3.5" />}>
             Add event
           </Button>
         </div>
       </div>
 
-      <PlannerDayPicker selectedDate={selectedDate} today={today} onSelectDate={(date) => void loadDate(date)} />
-
-      <section aria-busy={isLoading} aria-label="Schedule" className="relative">
-        {isLoading && (
-          <div role="status" className="absolute top-2 inset-e-2 z-10 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-900/90 border border-zinc-800 text-xs text-zinc-300">
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" aria-hidden="true" />
-            Loading...
-          </div>
-        )}
+      <section aria-busy={isLoading || undefined} aria-label="Schedule">
         {loadState.status === "error" ? (
-          <div role="alert" className="p-6 rounded-3xl bg-rose-500/5 border border-rose-500/20 flex flex-col items-center gap-3 text-center">
-            <AlertCircle className="w-6 h-6 text-rose-400" aria-hidden="true" />
-            <p className="text-sm text-zinc-200">{loadState.message}</p>
-            <Button variant="bordered" size="md" onClick={() => void loadDate(selectedDate)} startContent={<RotateCw className="w-4 h-4" />}>
+          <div role="alert" className="flex flex-col items-center gap-3 rounded-card border border-line bg-surface px-4 py-6 text-center">
+            <p className="text-sm text-ink-2">{loadState.message}</p>
+            <Button variant="secondary" onClick={() => void loadDate(selectedDate)} startContent={<RotateCw className="h-4 w-4" />}>
               Try again
             </Button>
           </div>
         ) : (
-          <div className={isLoading ? "opacity-50 pointer-events-none transition-opacity" : "transition-opacity"}>
+          <div className={isLoading ? "pointer-events-none opacity-50 transition-opacity" : "transition-opacity"}>
             <PlannerTimeline
               events={events}
-              selectedDate={selectedDate}
-              isToday={selectedDate === today}
+              isToday={isToday}
               nowTime={nowTime}
               togglingIds={togglingIds}
               onToggleComplete={handleToggleComplete}
               onSelectEvent={handleSelectEvent}
+              dayLabel={isToday ? "today" : formatDateString(selectedDate, { weekday: "long", month: "short", day: "numeric" })}
+              emptyActions={
+                <>
+                  <Button variant="secondary" startContent={<Plus className="h-4 w-4" />} onClick={openCreate}>
+                    Add event
+                  </Button>
+                  <Button variant="ghost" startContent={<Sparkles className="h-4 w-4" />} onClick={openAIModal}>
+                    Plan my day
+                  </Button>
+                </>
+              }
             />
           </div>
         )}
       </section>
 
-      <EventDrawer
-        event={drawerEvent}
-        isOpen={isDrawerOpen}
-        onClose={closeDrawer}
+      <EventSheet
+        isOpen={isSheetOpen}
+        state={liveSheetState}
+        onClose={closeSheet}
+        targetDate={selectedDate}
+        onAdd={handleAddEvent}
         onUpdate={handleUpdateEvent}
         onDelete={handleDeleteEvent}
         onToggleComplete={handleToggleComplete}
-        isToggling={drawerEvent ? togglingIds.has(drawerEvent._id) : false}
+        isToggling={sheetEvent ? togglingIds.has(sheetEvent._id) : false}
         availableHabits={availableHabits}
       />
 
-      <AddEventModal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        onAddEvent={handleAddEvent}
-        availableHabits={availableHabits}
-        targetDate={selectedDate}
-      />
-
-      <AIPlannerModal
+      <PlanMyDaySheet
         key={`${aiModalKey}-${selectedDate}`}
         isOpen={isAIModalOpen}
         onClose={() => setIsAIModalOpen(false)}

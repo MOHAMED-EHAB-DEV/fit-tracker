@@ -1,7 +1,7 @@
 export default function RootLoading() {
   return (
-    <div role="status" aria-label="Loading" className="flex min-h-dvh items-center justify-center bg-app">
-      <div className="h-10 w-10 animate-spin rounded-full border-4 border-zinc-700 border-t-emerald-500 motion-reduce:animate-none" />
+    <div role="status" aria-label="Loading" className="flex min-h-dvh items-center justify-center bg-canvas">
+      <div className="h-9 w-9 animate-spin rounded-full border-[3px] border-line border-t-ink motion-reduce:animate-none" />
     </div>
   );
 }

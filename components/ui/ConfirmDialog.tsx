@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Modal } from "@/components/ui/Modal";
+import { Sheet } from "@/components/ui/Sheet";
 import { Button } from "@/components/ui/Button";
 
 export interface ConfirmDialogProps {
@@ -17,9 +17,14 @@ export interface ConfirmDialogProps {
   isWorking?: boolean;
   /** Shown inside the dialog when the action failed. */
   error?: string | null;
+  /** Extra detail under the message (e.g. what still uses the item). */
+  children?: React.ReactNode;
 }
 
-/** The one confirmation dialog used for irreversible actions. */
+/**
+ * The one confirmation, for irreversible actions only (reversible deletes are
+ * instant with an Undo toast instead).
+ */
 export function ConfirmDialog({
   isOpen,
   onCancel,
@@ -31,35 +36,40 @@ export function ConfirmDialog({
   destructive = false,
   isWorking = false,
   error,
+  children,
 }: ConfirmDialogProps) {
   return (
-    <Modal
+    <Sheet
       isOpen={isOpen}
       onClose={isWorking ? () => undefined : onCancel}
       title={title}
       size="sm"
       showCloseButton={false}
       closeOnBackdropClick={!isWorking}
-      footer={
-        <>
-          <Button variant="bordered" onClick={onCancel} disabled={isWorking} data-autofocus>
-            {cancelLabel}
-          </Button>
-          <Button variant={destructive ? "danger" : "solid"} onClick={() => void onConfirm()} isLoading={isWorking}>
-            {confirmLabel}
-          </Button>
-        </>
-      }
     >
-      <div className="space-y-3 text-sm text-zinc-300">
-        <div>{message}</div>
+      <div className="space-y-4">
+        <div className="text-sm leading-5 text-ink-2">{message}</div>
+        {children}
         {error && (
-          <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-red-300">
+          <p role="alert" className="rounded-control border border-line bg-surface px-3 py-2.5 text-sm text-danger">
             {error}
           </p>
         )}
+        <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
+          <Button variant="secondary" size="lg" onClick={onCancel} disabled={isWorking} data-autofocus>
+            {cancelLabel}
+          </Button>
+          <Button
+            variant={destructive ? "danger" : "primary"}
+            size="lg"
+            onClick={() => void onConfirm()}
+            isLoading={isWorking}
+          >
+            {confirmLabel}
+          </Button>
+        </div>
       </div>
-    </Modal>
+    </Sheet>
   );
 }
 

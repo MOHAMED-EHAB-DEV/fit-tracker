@@ -2,11 +2,15 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Info, Plus, Search, X } from "lucide-react";
-import { Drawer } from "@/components/ui/Drawer";
 import { Button } from "@/components/ui/Button";
+import { Chip, FilterChip } from "@/components/ui/Chip";
 import { Input } from "@/components/ui/Input";
 import { Select, type SelectOption } from "@/components/ui/Select";
-import { api, errorMessage } from "@/lib/client/api";
+import { Sheet } from "@/components/ui/Sheet";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { CustomExerciseForm } from "@/components/workout/CustomExerciseForm";
+import { ExerciseDetailSheet } from "@/components/workout/ExerciseDetailSheet";
+import { errorMessage } from "@/lib/client/api";
 import { cn } from "@/lib/utils";
 import {
   addToExerciseCatalog,
@@ -15,39 +19,27 @@ import {
   recentExerciseIds,
   rememberExercises,
 } from "@/lib/workouts/catalog-client";
-import {
-  EQUIPMENT,
-  EQUIPMENT_LABELS,
-  MUSCLE_GROUPS,
-  MUSCLE_GROUP_LABELS,
-  PRIMARY_MUSCLES,
-  type Equipment,
-  type MuscleGroup,
-} from "@/lib/workouts/taxonomy";
+import { EQUIPMENT, EQUIPMENT_LABELS, MUSCLE_GROUPS, MUSCLE_GROUP_LABELS, type Equipment, type MuscleGroup } from "@/lib/workouts/taxonomy";
 import type { ExerciseDTO } from "@/lib/workouts/types";
-import { ExerciseDetailSheet } from "@/components/workout/ExerciseDetailSheet";
 
-const EQUIPMENT_OPTIONS: SelectOption<string>[] = EQUIPMENT.map((item) => ({ value: item, label: EQUIPMENT_LABELS[item] }));
-const EQUIPMENT_FILTER_OPTIONS: SelectOption<string>[] = [{ value: "all", label: "Any" }, ...EQUIPMENT_OPTIONS];
-const PRIMARY_MUSCLE_OPTIONS: SelectOption<string>[] = PRIMARY_MUSCLES.map((muscle) => ({ value: muscle, label: muscle }));
+const EQUIPMENT_FILTER_OPTIONS: SelectOption<string>[] = [
+  { value: "all", label: "Any equipment" },
+  ...EQUIPMENT.map((item) => ({ value: item, label: EQUIPMENT_LABELS[item] })),
+];
 
 interface ExercisePickerProps {
   isOpen: boolean;
   onClose: () => void;
   /** Called with the chosen exercises, in the order they were picked. */
   onAdd?: (exercises: ExerciseDTO[]) => void;
-  /**
-   * "single" closes after one pick (used to replace an exercise);
-   * "browse" is the exercise library: tapping an exercise opens its details.
-   */
-  mode?: "multi" | "single" | "browse";
+  /** "single" closes after one pick (used to replace an exercise). */
+  mode?: "multi" | "single";
   title?: string;
 }
 
 const PAGE_SIZE = 60;
-const CHIP =
-  "shrink-0 px-3.5 min-h-10 rounded-full text-sm font-medium border transition-colors cursor-pointer";
 
+/** Choose exercises to add to a workout or routine (or one to replace an exercise with). */
 export function ExercisePicker({ isOpen, onClose, onAdd, mode = "multi", title }: ExercisePickerProps) {
   const [catalog, setCatalog] = useState<ExerciseDTO[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -115,40 +107,27 @@ export function ExercisePicker({ isOpen, onClose, onAdd, mode = "multi", title }
   };
 
   const toggle = (exercise: ExerciseDTO) => {
-    if (mode === "browse") {
-      setDetailId(exercise.id);
-      return;
-    }
     if (mode === "single") {
       confirm([exercise]);
       return;
     }
     setSelected((current) =>
-      current.some((item) => item.id === exercise.id)
-        ? current.filter((item) => item.id !== exercise.id)
-        : [...current, exercise]
+      current.some((item) => item.id === exercise.id) ? current.filter((item) => item.id !== exercise.id) : [...current, exercise]
     );
   };
 
   return (
     <>
-      <Drawer
+      <Sheet
         isOpen={isOpen}
         onClose={onClose}
-        title={title || (mode === "browse" ? "Exercise library" : mode === "single" ? "Choose an exercise" : "Add exercises")}
-        position="bottom"
-        className="h-[92%]"
+        title={isCreating ? "New custom exercise" : title || (mode === "single" ? "Choose an exercise" : "Add exercises")}
+        size="lg"
+        className="h-[92dvh] md:h-[min(760px,90dvh)]"
         footer={
           mode === "multi" && !isCreating ? (
-            <Button
-              className="w-full"
-              size="lg"
-              disabled={selected.length === 0}
-              onClick={() => confirm(selected)}
-            >
-              {selected.length === 0
-                ? "Select exercises"
-                : `Add ${selected.length} exercise${selected.length === 1 ? "" : "s"}`}
+            <Button fullWidth size="lg" disabled={selected.length === 0} onClick={() => confirm(selected)}>
+              {selected.length === 0 ? "Select exercises" : `Add ${selected.length} exercise${selected.length === 1 ? "" : "s"}`}
             </Button>
           ) : undefined
         }
@@ -156,13 +135,13 @@ export function ExercisePicker({ isOpen, onClose, onAdd, mode = "multi", title }
         {isCreating ? (
           <CustomExerciseForm
             initialName={query.trim()}
+            cancelLabel="Back"
             onCancel={() => setIsCreating(false)}
-            onCreated={(exercise) => {
+            onSaved={(exercise) => {
               addToExerciseCatalog(exercise);
               setCatalog((current) => (current ? [...current, exercise] : [exercise]));
               setIsCreating(false);
-              if (mode === "browse") setQuery(exercise.name);
-              else if (mode === "single") confirm([exercise]);
+              if (mode === "single") confirm([exercise]);
               else {
                 setSelected((current) => [...current, exercise]);
                 setQuery("");
@@ -171,60 +150,51 @@ export function ExercisePicker({ isOpen, onClose, onAdd, mode = "multi", title }
           />
         ) : (
           <div className="flex flex-col gap-3">
-            <div className="sticky -top-5 sm:-top-6 z-10 -mt-5 sm:-mt-6 pt-5 sm:pt-6 pb-2 bg-zinc-900 flex flex-col gap-3">
-            <Input
-              type="search"
-              value={query}
-              onChange={(event) => {
-                setQuery(event.target.value);
-                resetScroll();
-              }}
-              placeholder="Search exercises"
-              aria-label="Search exercises"
-              autoComplete="off"
-              enterKeyHint="search"
-              startContent={<Search className="w-5 h-5" />}
-              endContent={
-                query ? (
-                  <button
-                    type="button"
+            <div className="sticky top-0 z-10 -mx-4 flex flex-col gap-2.5 border-b border-line bg-(--glass-fallback-sheet) px-4 pb-3 md:-mx-6 md:px-6">
+              <Input
+                type="search"
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  resetScroll();
+                }}
+                placeholder="Search exercises"
+                aria-label="Search exercises"
+                autoComplete="off"
+                enterKeyHint="search"
+                startContent={<Search className="h-4 w-4" />}
+                endContent={
+                  query ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuery("");
+                        resetScroll();
+                      }}
+                      aria-label="Clear search"
+                      className="grid h-9 w-9 place-items-center rounded-chip text-ink-3 hover:text-ink cursor-pointer"
+                    >
+                      <X className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  ) : undefined
+                }
+              />
+
+              <div role="group" aria-label="Muscle group" className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4 md:-mx-6 md:px-6">
+                {(["all", ...MUSCLE_GROUPS.filter((group) => group !== "other")] as const).map((group) => (
+                  <FilterChip
+                    key={group}
+                    selected={muscleGroup === group}
                     onClick={() => {
-                      setQuery("");
+                      setMuscleGroup(group);
                       resetScroll();
                     }}
-                    aria-label="Clear search"
-                    className="grid place-items-center w-10 h-10 rounded-full text-zinc-400 cursor-pointer"
                   >
-                    <X className="w-5 h-5" aria-hidden="true" />
-                  </button>
-                ) : undefined
-              }
-            />
+                    {group === "all" ? "All" : MUSCLE_GROUP_LABELS[group]}
+                  </FilterChip>
+                ))}
+              </div>
 
-            <div role="group" aria-label="Muscle group" className="flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1">
-              {(["all", ...MUSCLE_GROUPS.filter((group) => group !== "other")] as const).map((group) => (
-                <button
-                  key={group}
-                  type="button"
-                  aria-pressed={muscleGroup === group}
-                  onClick={() => {
-                    setMuscleGroup(group);
-                    resetScroll();
-                  }}
-                  className={cn(
-                    CHIP,
-                    muscleGroup === group
-                      ? "bg-emerald-500 border-emerald-500 text-zinc-950"
-                      : "bg-transparent border-line text-zinc-300"
-                  )}
-                >
-                  {group === "all" ? "All" : MUSCLE_GROUP_LABELS[group]}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex items-center gap-2 text-sm text-zinc-400">
-              <span className="shrink-0">Equipment</span>
               <Select<string>
                 ariaLabel="Equipment"
                 options={EQUIPMENT_FILTER_OPTIONS}
@@ -234,51 +204,43 @@ export function ExercisePicker({ isOpen, onClose, onAdd, mode = "multi", title }
                   resetScroll();
                 }}
                 size="sm"
-                className="flex-1 min-w-0"
               />
             </div>
-            </div>
 
-            <div ref={listRef} className="-mx-2">
+            <div ref={listRef}>
               {loadError ? (
-                <div className="px-2 py-10 text-center space-y-3">
-                  <p role="alert" className="text-sm text-red-300">
+                <div className="space-y-3 py-10 text-center">
+                  <p role="alert" className="text-sm text-danger">
                     {loadError}
                   </p>
-                  <Button variant="bordered" onClick={() => load(true)}>
+                  <Button variant="secondary" onClick={() => load(true)}>
                     Try again
                   </Button>
                 </div>
               ) : !catalog ? (
-                <div className="px-2 space-y-2" aria-busy="true" aria-label="Loading exercises">
+                <div className="space-y-2" aria-busy="true" aria-label="Loading exercises">
                   {Array.from({ length: 8 }, (_, index) => (
-                    <div key={index} className="skeleton h-14" />
+                    <Skeleton key={index} className="h-12 rounded-control" />
                   ))}
                 </div>
               ) : results.length === 0 ? (
-                <div className="px-2 py-10 text-center space-y-3">
-                  <p className="text-sm text-zinc-300">
-                    {query.trim() ? `No exercise matches "${query.trim()}".` : "No exercises match these filters."}
+                <div className="space-y-3 py-10 text-center">
+                  <p className="text-sm text-ink-2">
+                    {query.trim() ? `No exercise matches “${query.trim()}”.` : "No exercises match these filters."}
                   </p>
-                  <Button variant="flat" startContent={<Plus className="w-4 h-4" />} onClick={() => setIsCreating(true)}>
-                    Create a custom exercise
+                  <Button variant="secondary" startContent={<Plus className="h-4 w-4" />} onClick={() => setIsCreating(true)}>
+                    New custom exercise
                   </Button>
                 </div>
               ) : (
-                <ul>
+                <ul className="-mx-2">
                   {results.slice(0, visibleCount).map((exercise, index) => {
                     const isSelected = selectedIds.has(exercise.id);
                     return (
                       <li key={exercise.id}>
-                        {index === 0 && recentCount > 0 && (
-                          <p className="px-3 pt-1 pb-1 text-xs font-semibold uppercase tracking-wide text-zinc-400">
-                            Recently used
-                          </p>
-                        )}
+                        {index === 0 && recentCount > 0 && <p className="px-2 pb-1 text-xs font-medium text-ink-3">Recently used</p>}
                         {index === recentCount && recentCount > 0 && (
-                          <p className="px-3 pt-3 pb-1 text-xs font-semibold uppercase tracking-wide text-zinc-400">
-                            All exercises
-                          </p>
+                          <p className="px-2 pb-1 pt-3 text-xs font-medium text-ink-3">All exercises</p>
                         )}
                         <div className="flex items-center">
                           <button
@@ -286,54 +248,52 @@ export function ExercisePicker({ isOpen, onClose, onAdd, mode = "multi", title }
                             aria-pressed={mode === "multi" ? isSelected : undefined}
                             onClick={() => toggle(exercise)}
                             className={cn(
-                              "flex flex-1 min-w-0 items-center gap-3 px-3 min-h-14 rounded-xl text-start cursor-pointer",
-                              isSelected ? "bg-emerald-500/15" : "active:bg-white/5"
+                              "flex min-h-12 min-w-0 flex-1 items-center gap-3 rounded-control px-2 py-1.5 text-start transition-colors cursor-pointer",
+                              isSelected ? "bg-surface" : "hover:bg-surface/60"
                             )}
                           >
                             {mode === "multi" && (
                               <span
                                 aria-hidden="true"
                                 className={cn(
-                                  "grid place-items-center w-6 h-6 rounded-md border shrink-0",
-                                  isSelected ? "bg-emerald-500 border-emerald-500 text-zinc-950" : "border-zinc-500"
+                                  "grid h-5 w-5 shrink-0 place-items-center rounded-[6px] border",
+                                  isSelected ? "border-ink bg-ink text-ink-inverse" : "border-line-strong"
                                 )}
                               >
-                                {isSelected && <Check className="w-4 h-4" />}
+                                {isSelected && <Check className="h-3.5 w-3.5" strokeWidth={2.5} />}
                               </span>
                             )}
-                            <span className="min-w-0">
-                              <span className="block text-base font-medium text-white truncate">{exercise.name}</span>
-                              <span className="block text-sm text-zinc-400 truncate">
-                                {exercise.primaryMuscle} ·{" "}
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-medium text-ink">{exercise.name}</span>
+                              <span className="mt-0.5 block truncate text-xs text-ink-3">
+                                <span className="capitalize">{exercise.primaryMuscle}</span> ·{" "}
                                 {EQUIPMENT_LABELS[exercise.equipment as Equipment] || exercise.equipment}
-                                {exercise.isCustom ? " · Custom" : ""}
                               </span>
                             </span>
+                            {exercise.isCustom && <Chip size="sm">Custom</Chip>}
                           </button>
-                          {mode !== "browse" && (
-                            <button
-                              type="button"
-                              onClick={() => setDetailId(exercise.id)}
-                              aria-label={`How to do ${exercise.name}`}
-                              className="grid place-items-center w-11 h-11 rounded-full text-zinc-400 active:bg-white/10 shrink-0 cursor-pointer"
-                            >
-                              <Info className="w-5 h-5" aria-hidden="true" />
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => setDetailId(exercise.id)}
+                            aria-label={`About ${exercise.name}`}
+                            className="grid h-11 w-11 shrink-0 place-items-center rounded-control text-ink-3 transition-colors hover:bg-surface hover:text-ink cursor-pointer"
+                          >
+                            <Info className="h-4 w-4" aria-hidden="true" />
+                          </button>
                         </div>
                       </li>
                     );
                   })}
                   {results.length > visibleCount && (
                     <li className="px-2 py-3">
-                      <Button variant="bordered" className="w-full" onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}>
+                      <Button variant="secondary" fullWidth onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}>
                         Show more ({results.length - visibleCount} left)
                       </Button>
                     </li>
                   )}
                   <li className="px-2 py-3">
-                    <Button variant="ghost" className="w-full" startContent={<Plus className="w-4 h-4" />} onClick={() => setIsCreating(true)}>
-                      Create a custom exercise
+                    <Button variant="ghost" fullWidth startContent={<Plus className="h-4 w-4" />} onClick={() => setIsCreating(true)}>
+                      New custom exercise
                     </Button>
                   </li>
                 </ul>
@@ -341,86 +301,10 @@ export function ExercisePicker({ isOpen, onClose, onAdd, mode = "multi", title }
             </div>
           </div>
         )}
-      </Drawer>
+      </Sheet>
 
       <ExerciseDetailSheet exerciseId={detailId} onClose={() => setDetailId(null)} />
     </>
-  );
-}
-
-function CustomExerciseForm({
-  initialName,
-  onCancel,
-  onCreated,
-}: {
-  initialName: string;
-  onCancel: () => void;
-  onCreated: (exercise: ExerciseDTO) => void;
-}) {
-  const [name, setName] = useState(initialName);
-  const [primaryMuscle, setPrimaryMuscle] = useState<string>(PRIMARY_MUSCLES[0]);
-  const [equipment, setEquipment] = useState<string>("barbell");
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (isSaving) return;
-    if (name.trim().length < 2) {
-      setError("Give the exercise a name.");
-      return;
-    }
-    setIsSaving(true);
-    setError(null);
-    try {
-      const data = await api<{ exercise: ExerciseDTO }>("/api/exercises", {
-        method: "POST",
-        body: { name: name.trim(), primaryMuscle, equipment },
-      });
-      onCreated(data.exercise);
-    } catch (err) {
-      setError(errorMessage(err));
-      setIsSaving(false);
-    }
-  };
-
-  return (
-    <form onSubmit={submit} className="space-y-4">
-      <h3 className="text-base font-semibold text-white">New custom exercise</h3>
-      <Input
-        label="Name"
-        value={name}
-        onChange={(event) => setName(event.target.value)}
-        maxLength={80}
-        data-autofocus
-        placeholder="e.g. Landmine press"
-      />
-      <Select<string>
-        label="Main muscle"
-        options={PRIMARY_MUSCLE_OPTIONS}
-        value={primaryMuscle}
-        onChange={(value) => setPrimaryMuscle(value)}
-      />
-      <Select<string>
-        label="Equipment"
-        options={EQUIPMENT_OPTIONS}
-        value={equipment}
-        onChange={(value) => setEquipment(value)}
-      />
-      {error && (
-        <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-          {error}
-        </p>
-      )}
-      <div className="flex gap-3">
-        <Button type="button" variant="bordered" className="flex-1" onClick={onCancel} disabled={isSaving}>
-          Back
-        </Button>
-        <Button type="submit" className="flex-1" isLoading={isSaving}>
-          Create
-        </Button>
-      </div>
-    </form>
   );
 }
 

@@ -35,7 +35,7 @@ object PlannerNotificationManager {
         ).apply {
             description = context.getString(R.string.channel_planner_desc)
             enableLights(true)
-            lightColor = Color.parseColor("#10B981")
+            lightColor = Color.parseColor("#4C82FB")
             enableVibration(true)
             vibrationPattern = longArrayOf(0, 250, 150, 250)
             lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
@@ -91,7 +91,7 @@ object PlannerNotificationManager {
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_fittracker)
-            .setColor(Color.parseColor("#10B981"))
+            .setColor(Color.parseColor("#4C82FB"))
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))

@@ -1,15 +1,18 @@
 "use client";
 
-import { useId } from "react";
-import { CheckCircle2, Circle, Repeat, Info } from "lucide-react";
+import React, { useId } from "react";
+import { Check } from "lucide-react";
 import { Input } from "@/components/ui/Input";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Textarea } from "@/components/ui/Textarea";
+import { cn } from "@/lib/utils";
 import {
   CATEGORY_CONFIG,
   EventCategory,
   EventFormValues,
   HabitOption,
   RECURRENCE_OPTIONS,
+  RecurrenceType,
   isEndAfterStart,
   normalizeTime,
 } from "./types";
@@ -50,20 +53,15 @@ interface EventFormProps {
   autoFocusTitle?: boolean;
 }
 
-const labelClass = "block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5";
+const LEGEND = "mb-1.5 text-[13px] font-medium text-ink-2";
 
-export default function EventForm({
-  formId,
-  values,
-  onChange,
-  onSubmit,
-  availableHabits,
-  error,
-  autoFocusTitle,
-}: EventFormProps) {
+/** Title, category, times, repeats, notes and linked habits of a planner event. */
+export default function EventForm({ formId, values, onChange, onSubmit, availableHabits, error, autoFocusTitle }: EventFormProps) {
   const ids = useId();
-  const set = <K extends keyof EventFormValues>(key: K, value: EventFormValues[K]) =>
-    onChange({ ...values, [key]: value });
+  const set = <K extends keyof EventFormValues>(key: K, value: EventFormValues[K]) => onChange({ ...values, [key]: value });
+  const titleProblem = error === "Give the event a title." || error === "Keep the title under 120 characters." ? error : null;
+  const timeProblem = error && /time/i.test(error) ? error : null;
+  const otherProblem = error && !titleProblem && !timeProblem ? error : null;
 
   const toggleHabit = (habitId: string) =>
     set(
@@ -77,139 +75,134 @@ export default function EventForm({
     <form
       id={formId}
       noValidate
-      onSubmit={(e) => {
-        e.preventDefault();
+      onSubmit={(event) => {
+        event.preventDefault();
         onSubmit();
       }}
       className="space-y-4"
     >
-      {error && (
-        <p role="alert" className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/25 text-rose-300 text-sm">
-          {error}
+      {otherProblem && (
+        <p role="alert" className="rounded-control border border-line bg-surface px-3 py-2.5 text-sm text-danger">
+          {otherProblem}
         </p>
       )}
 
       <Input
         label="Title"
         required
-        autoFocus={autoFocusTitle}
+        data-autofocus={autoFocusTitle ? true : undefined}
         maxLength={120}
         value={values.title}
-        onChange={(e) => set("title", e.target.value)}
-        placeholder="e.g. Upper body push session"
+        onChange={(event) => set("title", event.target.value)}
+        placeholder="Upper body session"
+        isInvalid={Boolean(titleProblem)}
+        errorMessage={titleProblem ?? undefined}
       />
-
-      <fieldset>
-        <legend className={labelClass}>Category</legend>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {(Object.keys(CATEGORY_CONFIG) as EventCategory[]).map((cat) => {
-            const cfg = CATEGORY_CONFIG[cat];
-            const isSelected = values.category === cat;
-            return (
-              <button
-                key={cat}
-                type="button"
-                aria-pressed={isSelected}
-                onClick={() => onChange({ ...values, category: cat, color: cfg.defaultColor })}
-                className={`px-3 min-h-11 rounded-xl text-sm font-medium border transition-all text-center ${
-                  isSelected
-                    ? `${cfg.badgeBg} ${cfg.badgeText} ${cfg.borderCol} ring-1 ring-emerald-500/50`
-                    : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200"
-                }`}
-              >
-                {cfg.label}
-              </button>
-            );
-          })}
-        </div>
-      </fieldset>
 
       <div className="grid grid-cols-2 gap-3">
         <Input
           id={`${ids}-start`}
-          label="Start time"
+          label="Starts"
           type="time"
           required
           value={values.startTime}
-          onChange={(e) => set("startTime", e.target.value)}
+          onChange={(event) => set("startTime", event.target.value)}
+          inputClassName="font-mono tabular-nums"
+          isInvalid={Boolean(timeProblem) && !/end/i.test(timeProblem ?? "")}
         />
         <Input
           id={`${ids}-end`}
-          label="End time (optional)"
+          label="Ends (optional)"
           type="time"
           value={values.endTime}
-          onChange={(e) => set("endTime", e.target.value)}
+          onChange={(event) => set("endTime", event.target.value)}
+          inputClassName="font-mono tabular-nums"
+          isInvalid={Boolean(timeProblem) && /end/i.test(timeProblem ?? "")}
         />
+        {timeProblem && (
+          <p role="alert" className="col-span-2 -mt-1.5 text-xs text-danger">
+            {timeProblem}
+          </p>
+        )}
       </div>
 
       <fieldset>
-        <legend className={`${labelClass} flex items-center gap-1.5`}>
-          <Repeat className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
-          Repeats
-        </legend>
-        <div className="grid grid-cols-4 gap-2">
-          {RECURRENCE_OPTIONS.map((opt) => {
-            const isSelected = values.recurrence === opt.value;
+        <legend className={LEGEND}>Category</legend>
+        <div className="flex flex-wrap gap-1.5">
+          {(Object.keys(CATEGORY_CONFIG) as EventCategory[]).map((category) => {
+            const config = CATEGORY_CONFIG[category];
+            const selected = values.category === category;
             return (
               <button
-                key={opt.value}
+                key={category}
                 type="button"
-                aria-pressed={isSelected}
-                onClick={() => set("recurrence", opt.value)}
-                className={`min-h-11 px-2 rounded-xl text-xs sm:text-sm font-semibold border transition-all text-center ${
-                  isSelected
-                    ? "bg-emerald-500/15 border-emerald-500/50 text-emerald-300 ring-1 ring-emerald-500/30"
-                    : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200"
-                }`}
+                aria-pressed={selected}
+                onClick={() => onChange({ ...values, category, color: config.defaultColor })}
+                className={cn(
+                  "inline-flex min-h-9 items-center gap-1.5 rounded-chip border px-3 text-[13px] transition-colors cursor-pointer",
+                  selected ? "border-ink bg-ink font-semibold text-ink-inverse" : "border-line bg-surface font-medium text-ink-2 hover:border-line-strong hover:text-ink"
+                )}
               >
-                {opt.label}
+                <span aria-hidden="true" className="h-3 w-[3px] rounded-full" style={{ backgroundColor: config.defaultColor }} />
+                {config.label}
               </button>
             );
           })}
         </div>
       </fieldset>
 
+      <div>
+        <span className={cn(LEGEND, "block")}>Repeats</span>
+        <SegmentedControl<RecurrenceType>
+          label="Repeats"
+          value={values.recurrence}
+          options={RECURRENCE_OPTIONS}
+          onChange={(recurrence) => set("recurrence", recurrence)}
+          className="w-full"
+        />
+      </div>
+
       <Textarea
         id={`${ids}-notes`}
-        label="Notes"
+        label="Notes (optional)"
         rows={2}
         maxLength={1000}
         value={values.description}
-        onChange={(e) => set("description", e.target.value)}
-        placeholder="Optional details or targets"
+        onChange={(event) => set("description", event.target.value)}
+        placeholder="Details or targets"
       />
 
       {availableHabits.length > 0 && (
         <fieldset>
-          <legend className={labelClass}>Linked habits</legend>
-          <p className="flex items-start gap-1.5 text-xs text-zinc-400 mb-2">
-            <Info className="w-3.5 h-3.5 shrink-0 mt-px text-emerald-400" aria-hidden="true" />
-            Marking the event done also ticks these habits for that day.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-0.5">
+          <legend className={LEGEND}>Linked habits</legend>
+          <p className="mb-2 text-xs text-ink-3">Marking the event done also ticks these habits for that day.</p>
+          <div className="grid max-h-48 grid-cols-1 gap-1.5 overflow-y-auto p-0.5 sm:grid-cols-2">
             {availableHabits.map((habit) => {
-              const isLinked = values.linkedHabitIds.includes(habit._id);
+              const linked = values.linkedHabitIds.includes(habit._id);
               return (
                 <button
                   key={habit._id}
                   type="button"
                   role="checkbox"
-                  aria-checked={isLinked}
+                  aria-checked={linked}
                   onClick={() => toggleHabit(habit._id)}
-                  className={`flex items-center justify-between px-3 min-h-11 rounded-xl text-sm border text-start transition-colors ${
-                    isLinked
-                      ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-300"
-                      : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200"
-                  }`}
+                  className={cn(
+                    "flex min-h-11 items-center justify-between gap-2 rounded-control border px-3 text-start text-sm transition-colors cursor-pointer",
+                    linked ? "border-line-strong bg-elevated text-ink" : "border-line bg-surface text-ink-2 hover:text-ink"
+                  )}
                 >
                   <span className="truncate">
                     <span aria-hidden="true">{habit.emoji}</span> {habit.name}
                   </span>
-                  {isLinked ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 ms-1" aria-hidden="true" />
-                  ) : (
-                    <Circle className="w-4 h-4 text-zinc-500 shrink-0 ms-1" aria-hidden="true" />
-                  )}
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "grid h-5 w-5 shrink-0 place-items-center rounded-[6px] border",
+                      linked ? "border-ink bg-ink text-ink-inverse" : "border-line-strong"
+                    )}
+                  >
+                    {linked && <Check className="h-3.5 w-3.5" strokeWidth={2.5} />}
+                  </span>
                 </button>
               );
             })}

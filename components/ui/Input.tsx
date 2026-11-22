@@ -81,7 +81,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           )}
         >
           {startContent && (
-            <span className="flex shrink-0 text-zinc-400 select-none" aria-hidden="true">
+            <span className="flex shrink-0 text-ink-3 select-none" aria-hidden="true">
               {startContent}
             </span>
           )}
@@ -93,13 +93,13 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
             aria-invalid={isInvalid || undefined}
             aria-describedby={describedBy}
             className={cn(
-              "w-full min-w-0 self-stretch bg-transparent text-white placeholder:text-zinc-500 focus:outline-none disabled:cursor-not-allowed scheme-dark [&::-webkit-search-cancel-button]:appearance-none",
+              "w-full min-w-0 self-stretch bg-transparent text-ink placeholder:text-ink-3 focus:outline-none disabled:cursor-not-allowed [&::-webkit-search-cancel-button]:appearance-none",
               inputClassName
             )}
             {...props}
           />
 
-          {endContent && <span className="flex shrink-0 items-center text-zinc-400 -me-1.5">{endContent}</span>}
+          {endContent && <span className="flex shrink-0 items-center text-ink-3 -me-1.5">{endContent}</span>}
         </div>
 
         {showError && (

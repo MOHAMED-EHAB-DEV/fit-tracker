@@ -6,7 +6,7 @@
  * It deliberately caches nothing else. Pages and API responses are private
  * and change constantly, so they always come from the network.
  */
-const CACHE = "ft-offline-v1";
+const CACHE = "ft-offline-v2";
 const OFFLINE_ASSETS = ["/offline.html", "/icons/icon-192.png"];
 
 self.addEventListener("install", (event) => {

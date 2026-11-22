@@ -12,7 +12,7 @@ export default function RootNotFound() {
       title="Page not found"
       message="This address does not exist, or what it pointed to has been deleted."
       primaryAction={
-        <Link href="/" className={STATUS_PRIMARY_CLASS}>
+        <Link href="/dashboard" className={STATUS_PRIMARY_CLASS}>
           Go to Today
         </Link>
       }

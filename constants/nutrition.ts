@@ -14,8 +14,8 @@ export const MEAL_TYPE_LABELS: Record<MealType, string> = {
   lunch: "Lunch",
   dinner: "Dinner",
   snack: "Snack",
-  pre_workout: "Pre-Workout",
-  post_workout: "Post-Workout",
+  pre_workout: "Pre-workout",
+  post_workout: "Post-workout",
 };
 
 export const MEAL_TYPE_OPTIONS: { value: MealType; label: string }[] = [
@@ -23,8 +23,8 @@ export const MEAL_TYPE_OPTIONS: { value: MealType; label: string }[] = [
   { value: "lunch", label: "Lunch" },
   { value: "dinner", label: "Dinner" },
   { value: "snack", label: "Snack" },
-  { value: "pre_workout", label: "Pre-Workout" },
-  { value: "post_workout", label: "Post-Workout" },
+  { value: "pre_workout", label: "Pre-workout" },
+  { value: "post_workout", label: "Post-workout" },
 ];
 
 export const WATER_QUICK_AMOUNTS = [250, 500, 750, 1000] as const;

@@ -1,0 +1,923 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FitTracker — Calibrated Matte + Glass Chrome Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { -webkit-font-smoothing: antialiased; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+
+  /* ===== DESIGN TOKENS (DEFAULT: DARK + SIGNAL COBALT) ===== */
+  .preview-root {
+    --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+    --r-card: 14px;
+    --r-ctrl: 10px;
+    --r-chip: 6px;
+    --r-pill: 9999px;
+    --user-teal: #2CA58D;
+    --user-violet: #8B6CE8;
+    --user-sky: #3E8ED0;
+
+    --stage-bg: #060708;
+    --bg-canvas: #0C0D0F;
+    --bg-surface: #141619;
+    --bg-elevated: #1C1F24;
+    --bg-recessed: #090A0C;
+    --border-subtle: #242830;
+    --border-strong: #373D48;
+    --ink-primary: #F2F4F7;
+    --ink-secondary: #9CA3AF;
+    --ink-muted: #7C8594;
+    --ink-inverse: #0C0D0F;
+    --status-ok: #3FB978;
+    --status-warn: #E5A93C;
+    --status-danger: #E85454;
+    --tick-color: rgba(12, 13, 15, 0.55);
+    --frame-rim: #262A33;
+    --accent: #4C82FB;
+    --accent-soft: rgba(76, 130, 251, 0.14);
+
+    /* Glass Chrome & Sheet Tokens */
+    --glass-chrome-bg: rgba(16, 18, 22, 0.82);
+    --glass-sheet-bg: rgba(20, 22, 26, 0.88);
+    --glass-live-tint: rgba(76, 130, 251, 0.08);
+    --glass-blur-chrome: blur(20px) saturate(160%);
+    --glass-blur-sheet: blur(24px) saturate(170%);
+    --glass-border: rgba(255, 255, 255, 0.09);
+    --glass-specular: inset 0 1px 0 rgba(255, 255, 255, 0.10);
+    --glass-shadow-bar: 0 -6px 20px rgba(0, 0, 0, 0.32);
+    --glass-shadow-sheet: 0 -14px 36px rgba(0, 0, 0, 0.52);
+    --glass-scrim: rgba(6, 7, 9, 0.58);
+    --glass-fallback-chrome: #111317;
+    --glass-fallback-sheet: #16181D;
+
+    min-height: 100vh;
+    background: var(--stage-bg);
+    color: var(--ink-primary);
+    font-family: var(--font-sans);
+    padding: 24px 20px 64px;
+    display: flex; flex-direction: column; align-items: center; gap: 28px;
+  }
+
+  /* LIGHT THEME OVERRIDE */
+  .preview-root:has(#t-light:checked) {
+    --stage-bg: #E8E5DC;
+    --bg-canvas: #F5F4F0;
+    --bg-surface: #FFFFFF;
+    --bg-elevated: #ECEAE2;
+    --bg-recessed: #E6E3DA;
+    --border-subtle: #E1DED5;
+    --border-strong: #C5C0B4;
+    --ink-primary: #171715;
+    --ink-secondary: #57564F;
+    --ink-muted: #6A685F;
+    --ink-inverse: #FFFFFF;
+    --status-ok: #1D7A4C;
+    --status-warn: #B4690E;
+    --status-danger: #C4322B;
+    --tick-color: rgba(245, 244, 240, 0.75);
+    --frame-rim: #CFCBC0;
+    --accent: #2563EB;
+    --accent-soft: rgba(37, 99, 235, 0.10);
+
+    --glass-chrome-bg: rgba(245, 244, 240, 0.84);
+    --glass-sheet-bg: rgba(255, 255, 255, 0.90);
+    --glass-live-tint: rgba(37, 99, 235, 0.06);
+    --glass-blur-chrome: blur(20px) saturate(140%);
+    --glass-blur-sheet: blur(24px) saturate(150%);
+    --glass-border: rgba(23, 23, 21, 0.10);
+    --glass-specular: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+    --glass-shadow-bar: 0 -6px 20px rgba(23, 23, 21, 0.06);
+    --glass-shadow-sheet: 0 -14px 36px rgba(23, 23, 21, 0.12);
+    --glass-scrim: rgba(23, 23, 21, 0.34);
+    --glass-fallback-chrome: #F5F4F0;
+    --glass-fallback-sheet: #FFFFFF;
+  }
+
+  /* ACCENT OVERRIDES */
+  .preview-root:has(#a-emerald:checked) {
+    --accent: #2BB67D;
+    --accent-soft: rgba(43, 182, 125, 0.14);
+    --glass-live-tint: rgba(43, 182, 125, 0.08);
+  }
+  .preview-root:has(#t-light:checked):has(#a-emerald:checked) {
+    --accent: #147D55;
+    --accent-soft: rgba(20, 125, 85, 0.10);
+    --glass-live-tint: rgba(20, 125, 85, 0.06);
+  }
+
+  /* ===== GLASS MATERIAL CLASSES & FALLBACKS ===== */
+  .glass-chrome {
+    background: var(--glass-chrome-bg);
+    -webkit-backdrop-filter: var(--glass-blur-chrome);
+    backdrop-filter: var(--glass-blur-chrome);
+    border-top: 1px solid var(--glass-border);
+    box-shadow: var(--glass-specular), var(--glass-shadow-bar);
+  }
+  .glass-sheet {
+    background: var(--glass-sheet-bg);
+    -webkit-backdrop-filter: var(--glass-blur-sheet);
+    backdrop-filter: var(--glass-blur-sheet);
+    border-top: 1px solid var(--glass-border);
+    box-shadow: var(--glass-specular), var(--glass-shadow-sheet);
+  }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass-chrome { background: var(--glass-fallback-chrome); border-top-color: var(--border-subtle); }
+    .glass-sheet { background: var(--glass-fallback-sheet); border-top-color: var(--border-subtle); }
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .glass-chrome { background: var(--glass-fallback-chrome); -webkit-backdrop-filter: none; backdrop-filter: none; border-top-color: var(--border-subtle); }
+    .glass-sheet { background: var(--glass-fallback-sheet); -webkit-backdrop-filter: none; backdrop-filter: none; border-top-color: var(--border-subtle); }
+  }
+
+  /* ===== CSS-ONLY SWITCHER BAR ===== */
+  .switcher-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px 20px; }
+  .seg-group { display: flex; align-items: center; gap: 8px; }
+  .seg-title { font-size: 12px; font-weight: 500; color: var(--ink-muted); }
+  .seg-control {
+    display: inline-flex; padding: 3px; border-radius: var(--r-ctrl);
+    background: var(--bg-surface); border: 1px solid var(--border-subtle); gap: 2px;
+  }
+  .seg-opt {
+    height: 30px; padding: 0 12px; border-radius: var(--r-chip); cursor: pointer;
+    font-size: 13px; font-weight: 500; color: var(--ink-secondary);
+    display: inline-flex; align-items: center; gap: 6px; user-select: none;
+  }
+  .swatch { width: 8px; height: 8px; border-radius: var(--r-pill); flex-shrink: 0; }
+  .preview-root:has(#t-dark:checked) label[for="t-dark"],
+  .preview-root:has(#t-light:checked) label[for="t-light"],
+  .preview-root:has(#a-cobalt:checked) label[for="a-cobalt"],
+  .preview-root:has(#a-emerald:checked) label[for="a-emerald"] {
+    background: var(--ink-primary); color: var(--ink-inverse);
+  }
+
+  /* ===== RESPONSIVE STAGE ===== */
+  .stage {
+    display: flex; flex-direction: row; flex-wrap: wrap;
+    align-items: flex-start; justify-content: center; gap: 32px; max-width: 1260px;
+  }
+  @media (max-width: 899px) {
+    .stage { flex-direction: column; align-items: center; gap: 36px; }
+  }
+  .frame-col { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .frame-caption { font-size: 13px; color: var(--ink-muted); font-weight: 500; }
+  .phone {
+    position: relative; width: 390px; height: 844px; overflow: hidden;
+    background: var(--bg-canvas); color: var(--ink-primary);
+    border-radius: 40px; border: 1px solid var(--frame-rim);
+    display: flex; flex-direction: column;
+  }
+
+  /* ===== UTILITIES ===== */
+  .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .icon { width: 20px; height: 20px; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; flex-shrink: 0; }
+  .icon-sm { width: 16px; height: 16px; }
+  .icon-xs { width: 14px; height: 14px; }
+  .btn-primary {
+    height: 48px; width: 100%; border: 0; border-radius: var(--r-ctrl);
+    background: var(--ink-primary); color: var(--ink-inverse);
+    font: 600 14px/1 var(--font-sans); padding: 0 14px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap;
+  }
+  .btn-secondary {
+    height: 44px; padding: 0 14px; border-radius: var(--r-ctrl);
+    background: var(--bg-elevated); color: var(--ink-primary);
+    border: 1px solid var(--border-subtle); font: 500 14px/1 var(--font-sans);
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap;
+  }
+  .icon-btn {
+    width: 40px; height: 40px; border-radius: var(--r-ctrl);
+    border: 1px solid transparent; background: transparent; color: var(--ink-secondary);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+
+  /* ===== STATUS BAR & HEADERS ===== */
+  .statusbar {
+    height: 44px; padding: 14px 24px 0; flex-shrink: 0; position: relative; z-index: 12;
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 13px; font-weight: 600; color: var(--ink-primary);
+  }
+  .sb-icons { display: flex; align-items: center; gap: 6px; color: var(--ink-secondary); }
+  .topbar {
+    height: 52px; padding: 0 16px; flex-shrink: 0; position: relative; z-index: 12;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .topbar-today, .topbar-live { border-bottom-color: transparent; }
+  .page-title { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
+  .top-actions { display: flex; align-items: center; gap: 4px; }
+  .streak-pill {
+    height: 28px; padding: 0 9px; border-radius: var(--r-chip);
+    background: var(--bg-surface); border: 1px solid var(--border-subtle);
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12px; font-weight: 500; color: var(--ink-secondary); margin-inline-end: 4px;
+  }
+  .avatar {
+    width: 30px; height: 30px; border-radius: var(--r-pill);
+    background: var(--bg-elevated); border: 1px solid var(--border-strong);
+    font-size: 12px; font-weight: 600; color: var(--ink-primary);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+
+  /* ===== CALIBRATED VERNIER TRACKS ===== */
+  .track { position: relative; height: 6px; width: 100%; border-radius: 3px; background: var(--bg-elevated); overflow: hidden; }
+  .track-sm { height: 4px; border-radius: 2px; }
+  .track-fill { height: 100%; background: var(--ink-primary); border-radius: inherit; }
+  .track-fill-accent { background: var(--accent); }
+  .track::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(90deg, transparent 0, transparent calc(25% - 1px), var(--tick-color) calc(25% - 1px), var(--tick-color) 25%);
+  }
+  .session-progress {
+    position: relative; height: 3px; width: 100%; flex-shrink: 0; z-index: 12;
+    background: var(--bg-elevated); border-bottom: 1px solid var(--border-subtle);
+  }
+  .session-progress-fill { height: 100%; background: var(--ink-primary); }
+  .session-progress::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(90deg, transparent 0, transparent calc(16.666% - 1.5px), var(--bg-canvas) calc(16.666% - 1.5px), var(--bg-canvas) 16.666%);
+  }
+
+  /* ===== FRAME 1: TODAY (CONTENT PASSES VISIBLY UNDER GLASS TAB BAR) ===== */
+  .scroll-today { flex: 1; padding: 6px 16px 0; display: flex; flex-direction: column; gap: 11px; overflow: hidden; }
+  .card { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--r-card); padding: 15px; }
+  .week-strip {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px;
+    padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--border-subtle);
+  }
+  .day-cell { display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 12px; color: var(--ink-muted); }
+  .day-dot { width: 18px; height: 4px; border-radius: 2px; background: var(--bg-elevated); }
+  .day-done .day-dot { background: var(--ink-primary); }
+  .day-today { color: var(--ink-primary); font-weight: 600; }
+  .day-today .day-dot { background: var(--accent); }
+  .workout-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 3px; }
+  .workout-title { font-size: 18px; font-weight: 600; letter-spacing: -0.015em; }
+  .workout-meta { font-size: 13px; color: var(--ink-secondary); margin-bottom: 12px; }
+
+  .ledger-card { padding: 0; overflow: hidden; }
+  .cal-block { padding: 14px 15px; }
+  .cal-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 9px; }
+  .cal-hero { font-size: 30px; font-weight: 500; letter-spacing: -0.03em; line-height: 1; }
+  .cal-unit { font-size: 14px; color: var(--ink-secondary); margin-inline-start: 4px; font-family: var(--font-sans); }
+  .cal-caption { font-size: 12px; color: var(--ink-muted); }
+  .macro-row { display: grid; grid-template-columns: 1.25fr 1fr 1fr; border-top: 1px solid var(--border-subtle); }
+  .macro-cell { padding: 10px 13px; display: flex; flex-direction: column; gap: 5px; }
+  .macro-cell + .macro-cell { border-inline-start: 1px solid var(--border-subtle); }
+  .cell-label { font-size: 12px; color: var(--ink-muted); }
+  .cell-val { font-size: 14px; font-weight: 500; color: var(--ink-primary); white-space: nowrap; }
+  .cell-val span { color: var(--ink-muted); font-weight: 400; font-size: 12px; }
+
+  .move-row { display: grid; grid-template-columns: 0.84fr 1.16fr; border-top: 1px solid var(--border-subtle); }
+  .move-cell { padding: 11px 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .move-cell + .move-cell { border-inline-start: 1px solid var(--border-subtle); }
+  .move-stack { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 0; }
+  .water-add {
+    height: 44px; padding: 0 10px; border-radius: var(--r-ctrl); flex-shrink: 0;
+    background: var(--bg-elevated); border: 1px solid var(--border-strong);
+    color: var(--ink-primary); font: 500 12px/1 var(--font-mono); white-space: nowrap;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+
+  .section-head { display: flex; justify-content: space-between; align-items: center; padding: 2px 2px 0; font-size: 13px; font-weight: 600; color: var(--ink-secondary); }
+  .section-link { font-size: 12px; font-weight: 500; color: var(--ink-muted); }
+  .rhythm-list { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--r-card); overflow: hidden; }
+  .rhythm-row { min-height: 46px; padding: 9px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .rhythm-row + .rhythm-row { border-top: 1px solid var(--border-subtle); }
+  .rhythm-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .user-bar { width: 3px; height: 22px; border-radius: 2px; flex-shrink: 0; }
+  .rhythm-title { font-size: 14px; font-weight: 500; }
+  .rhythm-sub { font-size: 12px; color: var(--ink-muted); }
+  .habit-check {
+    width: 26px; height: 26px; border-radius: var(--r-chip);
+    border: 1.5px solid var(--border-strong); display: inline-flex; align-items: center; justify-content: center;
+  }
+  .habit-check-done { background: var(--ink-primary); border-color: var(--ink-primary); color: var(--ink-inverse); }
+  .meal-kcal { font-size: 13px; font-weight: 500; color: var(--ink-secondary); white-space: nowrap; }
+
+  /* Glass 5-Tab Bottom Bar */
+  .tabbar {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 78px; z-index: 10;
+    padding: 8px 8px 22px; display: grid; grid-template-columns: repeat(5, 1fr);
+  }
+  .tab-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 12px; font-weight: 500; color: var(--ink-muted); }
+  .tab-active { color: var(--accent); }
+  .home-ind { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); width: 124px; height: 4px; border-radius: var(--r-pill); background: var(--border-strong); }
+
+  /* ===== FRAME 2 & 3: LIVE SESSION ===== */
+  .session-meta { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .session-name { font-size: 14px; font-weight: 600; }
+  .session-sub { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-secondary); }
+  .sync-chip { display: inline-flex; align-items: center; gap: 4px; color: var(--status-ok); font-size: 12px; }
+  .sync-dot { width: 6px; height: 6px; border-radius: var(--r-pill); background: currentColor; }
+
+  .ledger-body { flex: 1; overflow: hidden; }
+  .ex-collapsed {
+    padding: 12px; border-bottom: 1px solid var(--border-subtle);
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  .ex-collapsed-title { font-size: 15px; font-weight: 600; color: var(--ink-primary); }
+  .ex-collapsed-done .ex-collapsed-title { color: var(--ink-secondary); }
+  .ex-collapsed-sub { font-size: 12px; color: var(--ink-muted); margin-top: 2px; }
+  .ex-collapsed-right { display: flex; align-items: center; gap: 8px; }
+  .ex-done-chip {
+    width: 24px; height: 24px; border-radius: var(--r-chip);
+    background: var(--bg-elevated); border: 1px solid var(--border-subtle);
+    color: var(--ink-primary); display: inline-flex; align-items: center; justify-content: center;
+  }
+  .ex-divider { height: 6px; background: var(--bg-recessed); border-bottom: 1px solid var(--border-subtle); }
+
+  .ex-header { padding: 12px 12px 10px; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .ex-title { font-size: 17px; font-weight: 600; letter-spacing: -0.015em; }
+  .ex-last { font-size: 12px; color: var(--ink-muted); margin-top: 2px; }
+  .rest-chip {
+    height: 28px; padding: 0 9px; border-radius: var(--r-chip);
+    background: var(--bg-surface); border: 1px solid var(--border-subtle);
+    font-size: 12px; color: var(--ink-secondary); display: inline-flex; align-items: center; gap: 5px;
+  }
+
+  .set-grid { display: grid; grid-template-columns: 36px 66px 94px 86px 52px; gap: 8px; padding: 0 12px; align-items: center; }
+  .set-colhead {
+    height: 26px; font-size: 12px; font-weight: 500; color: var(--ink-muted);
+    border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle);
+    background: var(--bg-recessed);
+  }
+  .col-c { text-align: center; }
+  .set-row { min-height: 50px; padding-top: 4px; padding-bottom: 4px; border-bottom: 1px solid var(--border-subtle); }
+  .set-row-done { background: var(--bg-canvas); }
+  .set-row-active { background: var(--bg-surface); box-shadow: inset 3px 0 0 var(--accent); }
+  .set-badge {
+    width: 36px; height: 36px; border-radius: var(--r-chip);
+    background: var(--bg-surface); border: 1px solid var(--border-subtle);
+    font-size: 13px; font-weight: 600; color: var(--ink-secondary);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .set-badge-active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .prev-val { font-size: 12px; color: var(--ink-muted); text-align: center; }
+  .num-input {
+    height: 42px; width: 100%; border-radius: var(--r-ctrl);
+    background: var(--bg-surface); border: 1px solid var(--border-subtle);
+    color: var(--ink-primary); font: 500 16px/1 var(--font-mono);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .set-row-done .num-input { background: transparent; border-color: transparent; color: var(--ink-secondary); }
+  .set-row-active .num-input { background: var(--bg-elevated); border-color: var(--border-strong); color: var(--ink-muted); }
+
+  .done-btn {
+    width: 52px; height: 42px; border-radius: var(--r-ctrl);
+    border: 1px solid var(--border-subtle); background: transparent; color: var(--ink-muted);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .done-btn-done { background: var(--bg-elevated); border-color: var(--border-subtle); color: var(--ink-primary); }
+  .done-btn-active { background: var(--ink-primary); border-color: var(--ink-primary); color: var(--ink-inverse); }
+  .set-meta-line { grid-column: 2 / 5; font-size: 12px; display: flex; gap: 10px; padding-top: 1px; }
+  .pr-tag { color: var(--status-warn); font-weight: 600; display: inline-flex; align-items: center; gap: 3px; }
+  .rpe-tag { color: var(--ink-muted); }
+
+  .inline-add-row {
+    height: 40px; padding: 0 12px; border-bottom: 1px solid var(--border-subtle);
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    font-size: 13px; font-weight: 500; color: var(--ink-secondary);
+  }
+  .add-ex-row {
+    height: 44px; margin: 10px 12px 0; border-radius: var(--r-ctrl);
+    border: 1px dashed var(--border-strong); color: var(--ink-secondary);
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    font-size: 13px; font-weight: 500;
+  }
+
+  /* Glass Live Bottom Dock */
+  .live-dock { position: absolute; left: 0; right: 0; bottom: 0; z-index: 10; }
+  .rest-strip { padding: 9px 12px; border-bottom: 1px solid var(--glass-border); background: var(--glass-live-tint); }
+  .rest-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 7px; }
+  .rest-left { display: flex; align-items: baseline; gap: 8px; }
+  .rest-label { font-size: 12px; color: var(--ink-secondary); font-weight: 500; }
+  .rest-clock { font-size: 21px; font-weight: 600; color: var(--accent); letter-spacing: -0.02em; }
+  .rest-actions { display: flex; gap: 6px; }
+  .rest-btn {
+    height: 34px; padding: 0 10px; border-radius: var(--r-chip);
+    background: var(--bg-elevated); border: 1px solid var(--border-subtle);
+    color: var(--ink-primary); font: 500 13px/1 var(--font-mono);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .rest-btn-skip { font-family: var(--font-sans); color: var(--ink-secondary); }
+  .dock-actions { padding: 10px 12px 24px; display: grid; grid-template-columns: auto 1fr; gap: 10px; }
+  .dock-actions .btn-secondary { height: 46px; padding: 0 16px; color: var(--ink-secondary); }
+  .dock-actions .btn-primary { height: 46px; }
+
+  /* ===== FRAME 3: FINISH CONFIRMATION GLASS SHEET ===== */
+  .sheet-scrim { position: absolute; inset: 0; z-index: 20; background: var(--glass-scrim); }
+  .confirm-sheet {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 30;
+    border-radius: var(--r-card) var(--r-card) 0 0;
+    padding: 10px 16px 28px; display: flex; flex-direction: column; gap: 16px;
+  }
+  .sheet-handle { width: 36px; height: 4px; border-radius: var(--r-pill); background: var(--border-strong); margin: 0 auto 2px; }
+  .sheet-head { display: flex; flex-direction: column; gap: 3px; }
+  .sheet-title { font-size: 19px; font-weight: 600; letter-spacing: -0.015em; }
+  .sheet-sub { font-size: 13px; color: var(--ink-secondary); }
+  .stat-strip {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    background: var(--bg-surface); border: 1px solid var(--border-subtle);
+    border-radius: var(--r-ctrl); overflow: hidden;
+  }
+  .stat-cell { padding: 12px 10px; display: flex; flex-direction: column; gap: 4px; }
+  .stat-cell + .stat-cell { border-inline-start: 1px solid var(--border-subtle); }
+  .stat-label { font-size: 12px; color: var(--ink-muted); }
+  .stat-num { font-size: 18px; font-weight: 600; color: var(--ink-primary); letter-spacing: -0.02em; }
+  .stat-num span { font-size: 12px; font-weight: 400; color: var(--ink-muted); }
+  .sheet-notice {
+    padding: 11px 12px; border-radius: var(--r-ctrl);
+    background: var(--bg-surface); border: 1px solid var(--border-subtle);
+    display: flex; align-items: flex-start; gap: 9px;
+    font-size: 13px; line-height: 1.4; color: var(--ink-secondary);
+  }
+  .notice-icon { color: var(--status-warn); margin-top: 1px; }
+  .sheet-actions { display: flex; flex-direction: column; gap: 8px; }
+  .sheet-actions .btn-secondary { width: 100%; height: 46px; }
+</style>
+</head>
+<body>
+
+<div class="preview-root">
+  <!-- CSS-ONLY STATE INPUTS -->
+  <input class="sr-only" type="radio" name="theme" id="t-dark" checked />
+  <input class="sr-only" type="radio" name="theme" id="t-light" />
+  <input class="sr-only" type="radio" name="accent" id="a-cobalt" checked />
+  <input class="sr-only" type="radio" name="accent" id="a-emerald" />
+
+  <!-- SEGMENTED PREVIEW SWITCHER -->
+  <div class="switcher-bar" role="region" aria-label="Preview theme and accent controls">
+    <div class="seg-group">
+      <span class="seg-title">Theme</span>
+      <div class="seg-control">
+        <label class="seg-opt" for="t-dark">Dark</label>
+        <label class="seg-opt" for="t-light">Light</label>
+      </div>
+    </div>
+    <div class="seg-group">
+      <span class="seg-title">Accent</span>
+      <div class="seg-control">
+        <label class="seg-opt" for="a-cobalt"><span class="swatch" style="background:#4C82FB"></span>Cobalt</label>
+        <label class="seg-opt" for="a-emerald"><span class="swatch" style="background:#2BB67D"></span>Emerald</label>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage">
+
+    <!-- ==================== FRAME 1: TODAY ==================== -->
+    <div class="frame-col">
+      <div class="frame-caption">Frame 1 — Today (Glass tab bar over scrolling content)</div>
+      <section class="phone" aria-label="Today screen">
+        <div class="statusbar">
+          <span class="mono">9:41</span>
+          <div class="sb-icons">
+            <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M2 20h.01M7 20v-4M12 20v-8M17 20V8M22 4v16"/></svg>
+            <svg class="icon icon-sm" viewBox="0 0 24 24"><rect x="2" y="7" width="16" height="10" rx="2"/><path d="M22 11v2"/></svg>
+          </div>
+        </div>
+
+        <header class="topbar topbar-today">
+          <h1 class="page-title">Sat, Nov 21</h1>
+          <div class="top-actions">
+            <span class="streak-pill">
+              <svg class="icon icon-xs" viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+              <span class="mono">14d</span>
+            </span>
+            <button class="icon-btn" aria-label="Coach">
+              <svg class="icon" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </button>
+            <div class="avatar">AM</div>
+          </div>
+        </header>
+
+        <main class="scroll-today">
+          <article class="card">
+            <div class="week-strip">
+              <div class="day-cell day-done"><span>M</span><span class="day-dot"></span></div>
+              <div class="day-cell day-done"><span>T</span><span class="day-dot"></span></div>
+              <div class="day-cell"><span>W</span><span class="day-dot"></span></div>
+              <div class="day-cell day-done"><span>T</span><span class="day-dot"></span></div>
+              <div class="day-cell"><span>F</span><span class="day-dot"></span></div>
+              <div class="day-cell day-today"><span>S</span><span class="day-dot"></span></div>
+              <div class="day-cell"><span>S</span><span class="day-dot"></span></div>
+            </div>
+            <div class="workout-head">
+              <h2 class="workout-title">Upper body A</h2>
+              <span class="cal-caption">Scheduled</span>
+            </div>
+            <p class="workout-meta">6 exercises · 18 sets · ~50 min</p>
+            <button class="btn-primary">
+              <svg class="icon icon-sm" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+              Start workout
+            </button>
+          </article>
+
+          <article class="card ledger-card">
+            <div class="cal-block">
+              <div class="cal-top">
+                <div><span class="cal-hero mono">750</span><span class="cal-unit">kcal left</span></div>
+                <span class="cal-caption mono">1,650 of 2,400</span>
+              </div>
+              <div class="track"><div class="track-fill" style="width: 68.75%"></div></div>
+            </div>
+            <div class="macro-row">
+              <div class="macro-cell">
+                <span class="cell-label">Protein</span>
+                <span class="cell-val mono">142<span> / 180 g</span></span>
+                <div class="track track-sm"><div class="track-fill" style="width: 79%"></div></div>
+              </div>
+              <div class="macro-cell">
+                <span class="cell-label">Carbs</span>
+                <span class="cell-val mono">158<span> g</span></span>
+              </div>
+              <div class="macro-cell">
+                <span class="cell-label">Fat</span>
+                <span class="cell-val mono">49<span> g</span></span>
+              </div>
+            </div>
+            <div class="move-row">
+              <div class="move-cell">
+                <div class="move-stack">
+                  <span class="cell-label">Steps</span>
+                  <span class="cell-val mono">6,420<span> / 10k</span></span>
+                  <div class="track track-sm"><div class="track-fill" style="width: 64%"></div></div>
+                </div>
+              </div>
+              <div class="move-cell">
+                <div class="move-stack">
+                  <span class="cell-label">Water</span>
+                  <span class="cell-val mono">1.5<span> / 2.5 L</span></span>
+                  <div class="track track-sm"><div class="track-fill" style="width: 60%"></div></div>
+                </div>
+                <button class="water-add" aria-label="Add 250 ml water">+250 ml</button>
+              </div>
+            </div>
+          </article>
+
+          <div class="section-head">
+            <span>Up next and habits</span>
+            <span class="section-link">2 of 4 left</span>
+          </div>
+          <div class="rhythm-list">
+            <div class="rhythm-row">
+              <div class="rhythm-left">
+                <span class="user-bar" style="background: var(--user-sky)"></span>
+                <div>
+                  <div class="rhythm-title">Physio shoulder check</div>
+                  <div class="rhythm-sub mono">18:30 · 45 min</div>
+                </div>
+              </div>
+              <svg class="icon icon-sm" style="color:var(--ink-muted)" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+            </div>
+            <div class="rhythm-row">
+              <div class="rhythm-left">
+                <span class="user-bar" style="background: var(--user-teal)"></span>
+                <div class="rhythm-title" style="color:var(--ink-secondary)">Creatine 5 g</div>
+              </div>
+              <span class="habit-check habit-check-done">
+                <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
+              </span>
+            </div>
+            <div class="rhythm-row">
+              <div class="rhythm-left">
+                <span class="user-bar" style="background: var(--user-violet)"></span>
+                <div class="rhythm-title">Evening walk · 20 min</div>
+              </div>
+              <span class="habit-check"></span>
+            </div>
+          </div>
+
+          <!-- Meals section flows directly behind glass tab bar -->
+          <div class="section-head">
+            <span>Meals today</span>
+            <span class="section-link">3 logged</span>
+          </div>
+          <div class="rhythm-list">
+            <div class="rhythm-row">
+              <div class="rhythm-left">
+                <span class="user-bar" style="background: var(--accent)"></span>
+                <div>
+                  <div class="rhythm-title">Chicken rice bowl</div>
+                  <div class="rhythm-sub mono">13:15 · 54 g protein</div>
+                </div>
+              </div>
+              <span class="meal-kcal mono">680 kcal</span>
+            </div>
+            <div class="rhythm-row">
+              <div class="rhythm-left">
+                <span class="user-bar" style="background: var(--user-teal)"></span>
+                <div>
+                  <div class="rhythm-title">Greek yogurt and oats</div>
+                  <div class="rhythm-sub mono">08:40 · 42 g protein</div>
+                </div>
+              </div>
+              <span class="meal-kcal mono">520 kcal</span>
+            </div>
+          </div>
+        </main>
+
+        <nav class="tabbar glass-chrome" aria-label="Main navigation">
+          <div class="tab-item tab-active">
+            <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+            <span>Today</span>
+          </div>
+          <div class="tab-item">
+            <svg class="icon" viewBox="0 0 24 24"><path d="m6.5 6.5 11 11M21 21l-1-1M3 3l1 1M18 22l4-4M2 6l4-4M3 10l7-7M14 21l7-7"/></svg>
+            <span>Train</span>
+          </div>
+          <div class="tab-item">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2M7 2v20M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>
+            <span>Eat</span>
+          </div>
+          <div class="tab-item">
+            <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h.01M12 14h.01M16 14h.01"/></svg>
+            <span>Plan</span>
+          </div>
+          <div class="tab-item">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+            <span>Body</span>
+          </div>
+          <div class="home-ind"></div>
+        </nav>
+      </section>
+    </div>
+
+    <!-- ==================== FRAME 2: LIVE SESSION ==================== -->
+    <div class="frame-col">
+      <div class="frame-caption">Frame 2 — Live Session (Glass dock over exercise ledger)</div>
+      <section class="phone" aria-label="Live workout session">
+        <div class="statusbar">
+          <span class="mono">9:41</span>
+          <div class="sb-icons">
+            <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M2 20h.01M7 20v-4M12 20v-8M17 20V8M22 4v16"/></svg>
+            <svg class="icon icon-sm" viewBox="0 0 24 24"><rect x="2" y="7" width="16" height="10" rx="2"/><path d="M22 11v2"/></svg>
+          </div>
+        </div>
+
+        <header class="topbar topbar-live">
+          <button class="icon-btn" aria-label="Minimize workout">
+            <svg class="icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="session-meta">
+            <span class="session-name">Upper body A</span>
+            <div class="session-sub">
+              <span class="mono">24:10</span>
+              <span class="sync-chip"><span class="sync-dot"></span>Saved</span>
+            </div>
+          </div>
+          <button class="icon-btn" aria-label="Session options">
+            <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+          </button>
+        </header>
+
+        <div class="session-progress" aria-label="5 of 18 working sets complete">
+          <div class="session-progress-fill" style="width: 27.8%"></div>
+        </div>
+
+        <main class="ledger-body">
+          <div class="ex-collapsed ex-collapsed-done">
+            <div>
+              <div class="ex-collapsed-title">Overhead press</div>
+              <div class="ex-collapsed-sub"><span class="mono">3 / 3</span> sets · <span class="mono">50 kg × 8</span></div>
+            </div>
+            <div class="ex-collapsed-right">
+              <span class="ex-done-chip" aria-label="Exercise complete">
+                <svg class="icon icon-xs" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
+              </span>
+              <svg class="icon icon-sm" style="color:var(--ink-muted)" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+            </div>
+          </div>
+          <div class="ex-divider"></div>
+
+          <div class="ex-header">
+            <div>
+              <h2 class="ex-title">Barbell bench press</h2>
+              <p class="ex-last">Last Nov 14 · <span class="mono">80×8, 80×8, 80×7</span></p>
+            </div>
+            <span class="rest-chip mono">
+              <svg class="icon icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M5 3 2 6M22 6l-3-3"/></svg>
+              2:00
+            </span>
+          </div>
+
+          <div class="set-grid set-colhead">
+            <span class="col-c">Set</span><span class="col-c">Prev</span><span class="col-c">kg</span><span class="col-c">Reps</span><span class="col-c">Done</span>
+          </div>
+
+          <div class="set-grid set-row set-row-done">
+            <span class="set-badge">W</span>
+            <span class="prev-val mono">60×10</span>
+            <div class="num-input">60</div>
+            <div class="num-input">10</div>
+            <button class="done-btn done-btn-done" aria-label="Warm-up complete"><svg class="icon" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button>
+          </div>
+          <div class="set-grid set-row set-row-done">
+            <span class="set-badge mono">1</span>
+            <span class="prev-val mono">80×8</span>
+            <div class="num-input">80</div>
+            <div class="num-input">8</div>
+            <button class="done-btn done-btn-done" aria-label="Set 1 complete"><svg class="icon" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button>
+          </div>
+          <div class="set-grid set-row set-row-done">
+            <span class="set-badge mono">2</span>
+            <span class="prev-val mono">80×8</span>
+            <div class="num-input">82.5</div>
+            <div class="num-input">8</div>
+            <button class="done-btn done-btn-done" aria-label="Set 2 complete"><svg class="icon" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button>
+            <div class="set-meta-line">
+              <span class="pr-tag">
+                <svg class="icon" style="width:13px;height:13px" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6M18 9h1.5a2.5 2.5 0 0 0 0-5H18M4 22h16M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+                New PR
+              </span>
+              <span class="rpe-tag mono">RPE 8.5</span>
+            </div>
+          </div>
+          <div class="set-grid set-row set-row-active">
+            <span class="set-badge set-badge-active mono">3</span>
+            <span class="prev-val mono">80×7</span>
+            <div class="num-input">80</div>
+            <div class="num-input">8</div>
+            <button class="done-btn done-btn-active" aria-label="Log set 3: 80 kg by 8 reps"><svg class="icon" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button>
+          </div>
+
+          <div class="inline-add-row">
+            <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            Add set
+          </div>
+          <div class="ex-divider"></div>
+
+          <!-- Upcoming exercises visibly pass behind the glass dock -->
+          <div class="ex-collapsed">
+            <div>
+              <div class="ex-collapsed-title">Incline dumbbell press</div>
+              <div class="ex-collapsed-sub"><span class="mono">0 / 3</span> sets · Last <span class="mono">30 kg × 10</span></div>
+            </div>
+            <svg class="icon icon-sm" style="color:var(--ink-muted)" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+          </div>
+          <div class="ex-collapsed">
+            <div>
+              <div class="ex-collapsed-title">Weighted pull-up</div>
+              <div class="ex-collapsed-sub"><span class="mono">0 / 3</span> sets · Last <span class="mono">+10 kg × 8</span></div>
+            </div>
+            <svg class="icon icon-sm" style="color:var(--ink-muted)" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+          </div>
+          <div class="ex-collapsed">
+            <div>
+              <div class="ex-collapsed-title">Cable lateral raise</div>
+              <div class="ex-collapsed-sub"><span class="mono">0 / 3</span> sets · Last <span class="mono">12.5 kg × 15</span></div>
+            </div>
+            <svg class="icon icon-sm" style="color:var(--ink-muted)" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+          </div>
+          <div class="add-ex-row">
+            <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            Add exercise
+          </div>
+        </main>
+
+        <footer class="live-dock glass-chrome">
+          <div class="rest-strip">
+            <div class="track track-sm"><div class="track-fill track-fill-accent" style="width: 65%"></div></div>
+            <div class="rest-row">
+              <div class="rest-left">
+                <span class="rest-label">Rest</span>
+                <span class="rest-clock mono">01:18</span>
+              </div>
+              <div class="rest-actions">
+                <button class="rest-btn">-15s</button>
+                <button class="rest-btn">+15s</button>
+                <button class="rest-btn rest-btn-skip">Skip</button>
+              </div>
+            </div>
+          </div>
+          <div class="dock-actions">
+            <button class="btn-secondary">Finish</button>
+            <button class="btn-primary">Log set <span class="mono">3 · 80 kg × 8</span></button>
+          </div>
+          <div class="home-ind"></div>
+        </footer>
+      </section>
+    </div>
+
+    <!-- ==================== FRAME 3: FINISH CONFIRMATION SHEET ==================== -->
+    <div class="frame-col">
+      <div class="frame-caption">Frame 3 — Finish confirmation (Glass sheet + scrim)</div>
+      <section class="phone" aria-label="Finish workout confirmation">
+        <div class="statusbar">
+          <span class="mono">9:41</span>
+          <div class="sb-icons">
+            <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M2 20h.01M7 20v-4M12 20v-8M17 20V8M22 4v16"/></svg>
+            <svg class="icon icon-sm" viewBox="0 0 24 24"><rect x="2" y="7" width="16" height="10" rx="2"/><path d="M22 11v2"/></svg>
+          </div>
+        </div>
+
+        <header class="topbar topbar-live">
+          <button class="icon-btn" aria-label="Minimize workout"><svg class="icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+          <div class="session-meta">
+            <span class="session-name">Upper body A</span>
+            <div class="session-sub"><span class="mono">24:10</span><span class="sync-chip"><span class="sync-dot"></span>Saved</span></div>
+          </div>
+          <button class="icon-btn" aria-label="Session options"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+        </header>
+
+        <div class="session-progress"><div class="session-progress-fill" style="width: 27.8%"></div></div>
+
+        <main class="ledger-body" aria-hidden="true">
+          <div class="ex-collapsed ex-collapsed-done">
+            <div>
+              <div class="ex-collapsed-title">Overhead press</div>
+              <div class="ex-collapsed-sub"><span class="mono">3 / 3</span> sets · <span class="mono">50 kg × 8</span></div>
+            </div>
+            <div class="ex-collapsed-right">
+              <span class="ex-done-chip"><svg class="icon icon-xs" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>
+              <svg class="icon icon-sm" style="color:var(--ink-muted)" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+            </div>
+          </div>
+          <div class="ex-divider"></div>
+          <div class="ex-header">
+            <div>
+              <h2 class="ex-title">Barbell bench press</h2>
+              <p class="ex-last">Last Nov 14 · <span class="mono">80×8, 80×8, 80×7</span></p>
+            </div>
+            <span class="rest-chip mono">2:00</span>
+          </div>
+          <div class="set-grid set-colhead">
+            <span class="col-c">Set</span><span class="col-c">Prev</span><span class="col-c">kg</span><span class="col-c">Reps</span><span class="col-c">Done</span>
+          </div>
+          <div class="set-grid set-row set-row-done">
+            <span class="set-badge">W</span><span class="prev-val mono">60×10</span><div class="num-input">60</div><div class="num-input">10</div>
+            <button class="done-btn done-btn-done"><svg class="icon" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button>
+          </div>
+          <div class="set-grid set-row set-row-done">
+            <span class="set-badge mono">1</span><span class="prev-val mono">80×8</span><div class="num-input">80</div><div class="num-input">8</div>
+            <button class="done-btn done-btn-done"><svg class="icon" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button>
+          </div>
+          <div class="set-grid set-row set-row-done">
+            <span class="set-badge mono">2</span><span class="prev-val mono">80×8</span><div class="num-input">82.5</div><div class="num-input">8</div>
+            <button class="done-btn done-btn-done"><svg class="icon" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button>
+          </div>
+          <div class="set-grid set-row set-row-active">
+            <span class="set-badge set-badge-active mono">3</span><span class="prev-val mono">80×7</span><div class="num-input">80</div><div class="num-input">8</div>
+            <button class="done-btn done-btn-active"><svg class="icon" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button>
+          </div>
+          <div class="ex-divider"></div>
+          <div class="ex-collapsed">
+            <div>
+              <div class="ex-collapsed-title">Incline dumbbell press</div>
+              <div class="ex-collapsed-sub"><span class="mono">0 / 3</span> sets · Last <span class="mono">30 kg × 10</span></div>
+            </div>
+          </div>
+        </main>
+
+        <!-- SCRIM + GLASS CONFIRMATION SHEET -->
+        <div class="sheet-scrim"></div>
+        <div class="confirm-sheet glass-sheet" role="dialog" aria-modal="true" aria-label="Finish workout confirmation">
+          <div class="sheet-handle"></div>
+          <div class="sheet-head">
+            <h2 class="sheet-title">Finish workout?</h2>
+            <p class="sheet-sub">Upper body A · 1 new PR recorded</p>
+          </div>
+
+          <div class="stat-strip">
+            <div class="stat-cell">
+              <span class="stat-label">Duration</span>
+              <span class="stat-num mono">24:10</span>
+            </div>
+            <div class="stat-cell">
+              <span class="stat-label">Sets done</span>
+              <span class="stat-num mono">5<span> / 18</span></span>
+            </div>
+            <div class="stat-cell">
+              <span class="stat-label">Volume</span>
+              <span class="stat-num mono">2,500<span> kg</span></span>
+            </div>
+          </div>
+
+          <div class="sheet-notice">
+            <svg class="icon icon-sm notice-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+            <span><strong style="font-weight:600;color:var(--ink-primary)">13 unticked sets</strong> will not be saved to your workout history.</span>
+          </div>
+
+          <div class="sheet-actions">
+            <button class="btn-primary">Complete workout</button>
+            <button class="btn-secondary">Keep going</button>
+          </div>
+          <div class="home-ind"></div>
+        </div>
+      </section>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

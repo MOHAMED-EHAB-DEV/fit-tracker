@@ -18,7 +18,7 @@ import {
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { FIELD_LABEL } from "@/components/ui/field-styles";
-import { Modal } from "@/components/ui/Modal";
+import { Sheet } from "@/components/ui/Sheet";
 import { cn } from "@/lib/utils";
 import { readApi, errorMessage } from "@/components/admin/api";
 import { EXERCISE_LIMITS } from "@/lib/admin/exercise-vocabulary";
@@ -179,13 +179,13 @@ function Tile({
   const loadFailed = failedSrc === item.previewUrl;
   const isCover = index === 0;
   const button =
-    "min-h-11 min-w-11 flex items-center justify-center rounded-lg text-zinc-200 bg-zinc-900 border border-white/10 hover:bg-zinc-800 transition cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed";
+    "min-h-11 min-w-11 flex items-center justify-center rounded-chip text-ink bg-surface border border-line hover:bg-elevated transition cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed";
 
   return (
     <li
       className={cn(
-        "rounded-2xl overflow-hidden bg-zinc-950 border flex flex-col",
-        isCover ? "border-violet-500" : "border-white/10"
+        "rounded-card overflow-hidden bg-canvas border flex flex-col",
+        isCover ? "border-line" : "border-line"
       )}
     >
       <button
@@ -205,30 +205,30 @@ function Tile({
             className="object-cover"
           />
         ) : (
-          <span className="absolute inset-0 flex flex-col items-center justify-center gap-1 p-2 text-center bg-zinc-900">
-            <AlertCircle className="w-6 h-6 text-amber-400" aria-hidden="true" />
-            <span className="text-xs text-zinc-300 font-semibold">Users cannot load this image</span>
+          <span className="absolute inset-0 flex flex-col items-center justify-center gap-1 p-2 text-center bg-surface">
+            <AlertCircle className="w-6 h-6 text-warn" aria-hidden="true" />
+            <span className="text-xs text-ink-2 font-semibold">Users cannot load this image</span>
           </span>
         )}
         <span className="absolute top-2 left-2 flex flex-col gap-1 items-start">
           {isCover && (
-            <span className="px-2 py-0.5 rounded-lg bg-violet-600 text-white text-xs font-bold flex items-center gap-1">
-              <Star className="w-3 h-3 fill-current text-amber-300" aria-hidden="true" /> Cover
+            <span className="px-2 py-0.5 rounded-chip bg-ink text-ink-inverse text-xs font-semibold flex items-center gap-1">
+              <Star className="w-3 h-3 fill-current text-warn" aria-hidden="true" /> Cover
             </span>
           )}
           {item.unsaved && item.status === "ready" && (
-            <span className="px-2 py-0.5 rounded-lg bg-amber-400 text-zinc-950 text-xs font-bold">Not saved yet</span>
+            <span className="px-2 py-0.5 rounded-chip bg-ink text-ink-inverse text-xs font-semibold">Not saved yet</span>
           )}
         </span>
         {item.status === "uploading" && (
-          <span className="absolute inset-0 flex items-center justify-center bg-zinc-950/70 text-sm text-zinc-100 gap-2">
+          <span className="absolute inset-0 flex items-center justify-center bg-canvas text-sm text-ink gap-2">
             <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" /> Uploading…
           </span>
         )}
       </button>
 
       {item.status === "error" && (
-        <p role="alert" className="px-2 pt-2 text-xs text-red-300">
+        <p role="alert" className="px-2 pt-2 text-xs text-danger">
           {item.error}
         </p>
       )}
@@ -242,7 +242,7 @@ function Tile({
         </button>
         {!isCover && (
           <button type="button" className={button} onClick={() => onCover(index)} aria-label={`Use image ${index + 1} as cover`} title="Use as cover">
-            <Star className="w-4 h-4 text-amber-300" aria-hidden="true" />
+            <Star className="w-4 h-4 text-warn" aria-hidden="true" />
           </button>
         )}
         {item.status === "error" && item.file && (
@@ -252,7 +252,7 @@ function Tile({
         )}
         <button
           type="button"
-          className={cn(button, "ml-auto text-red-300 hover:bg-red-500/20")}
+          className={cn(button, "ml-auto text-danger hover:bg-elevated")}
           onClick={() => onRemove(index)}
           disabled={item.status === "uploading"}
           aria-label={`Remove image ${index + 1}`}
@@ -396,14 +396,14 @@ export function ExerciseImageUploader({ images, setImages, className }: Exercise
   return (
     <div className={cn("space-y-4", className)}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-zinc-400">
+        <p className="text-sm text-ink-2">
           Demonstration photos or diagrams ({images.length}/{maxImages}). The first image is the cover.
         </p>
         <button
           type="button"
           onClick={() => setShowUrlInput((value) => !value)}
           aria-expanded={showUrlInput}
-          className="inline-flex items-center gap-1.5 min-h-11 px-2 text-sm font-semibold text-violet-300 hover:text-violet-200 transition cursor-pointer rounded-lg"
+          className="inline-flex items-center gap-1.5 min-h-11 px-2 text-sm font-semibold text-ink-2 hover:text-ink-2 transition cursor-pointer rounded-chip"
         >
           <LinkIcon className="w-4 h-4" aria-hidden="true" />
           <span>{showUrlInput ? "Hide link field" : "Add by link"}</span>
@@ -411,7 +411,7 @@ export function ExerciseImageUploader({ images, setImages, className }: Exercise
       </div>
 
       {showUrlInput && (
-        <div className="space-y-2 p-3 bg-zinc-950/80 border border-white/10 rounded-2xl">
+        <div className="space-y-2 p-3 bg-canvas border border-line rounded-card">
           <label htmlFor="exercise-image-url" className={FIELD_LABEL}>
             Image link
           </label>
@@ -432,11 +432,11 @@ export function ExerciseImageUploader({ images, setImages, className }: Exercise
               }}
               containerClassName="flex-1"
             />
-            <Button type="button" variant="solid" size="md" onClick={addUrl} disabled={full} className="min-h-11">
+            <Button type="button" variant="primary" size="md" onClick={addUrl} disabled={full} className="min-h-11">
               Add link
             </Button>
           </div>
-          <p className="text-xs text-zinc-400">
+          <p className="text-xs text-ink-2">
             Only links the app can show to users work: raw.githubusercontent.com image files and this app&apos;s Cloudinary uploads.
             For anything else, download the image and upload it.
           </p>
@@ -444,13 +444,13 @@ export function ExerciseImageUploader({ images, setImages, className }: Exercise
       )}
 
       {error && (
-        <div role="alert" className="flex items-center gap-2 p-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-300 text-sm">
+        <div role="alert" className="flex items-center gap-2 p-3 rounded-card bg-surface border border-line text-danger text-sm">
           <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
           <span className="flex-1">{error}</span>
           <button
             type="button"
             onClick={() => setError(null)}
-            className="min-h-11 min-w-11 flex items-center justify-center rounded-lg hover:text-red-200 cursor-pointer"
+            className="min-h-11 min-w-11 flex items-center justify-center rounded-chip hover:text-danger cursor-pointer"
             aria-label="Dismiss message"
           >
             <X className="w-4 h-4" aria-hidden="true" />
@@ -473,13 +473,13 @@ export function ExerciseImageUploader({ images, setImages, className }: Exercise
           if (!full && e.dataTransfer.files?.length) void addFiles(e.dataTransfer.files);
         }}
         className={cn(
-          "border-2 border-dashed rounded-3xl p-6 flex flex-col items-center justify-center gap-3 text-center transition",
-          isDragging ? "border-violet-500 bg-violet-500/10" : "border-white/15 bg-zinc-950/50",
+          "border-2 border-dashed rounded-card p-6 flex flex-col items-center justify-center gap-3 text-center transition",
+          isDragging ? "border-line bg-elevated" : "border-line-strong bg-canvas",
           full && "opacity-50"
         )}
       >
-        <UploadCloud className="w-8 h-8 text-violet-300" aria-hidden="true" />
-        <p className="text-sm text-zinc-200">
+        <UploadCloud className="w-8 h-8 text-ink-2" aria-hidden="true" />
+        <p className="text-sm text-ink">
           {isDragging ? "Drop the images to upload them" : "Drag images here, or"}
         </p>
         <input
@@ -494,10 +494,10 @@ export function ExerciseImageUploader({ images, setImages, className }: Exercise
           className="sr-only"
           disabled={full}
         />
-        <Button type="button" variant="bordered" size="md" disabled={full} onClick={() => fileInputRef.current?.click()} className="min-h-11">
+        <Button type="button" variant="secondary" size="md" disabled={full} onClick={() => fileInputRef.current?.click()} className="min-h-11">
           Choose images
         </Button>
-        <p className="text-xs text-zinc-400">JPG, PNG, WebP or GIF. Photos are resized before upload; GIFs up to 3.5 MB.</p>
+        <p className="text-xs text-ink-2">JPG, PNG, WebP or GIF. Photos are resized before upload; GIFs up to 3.5 MB.</p>
       </div>
 
       {images.length > 0 && (
@@ -521,20 +521,20 @@ export function ExerciseImageUploader({ images, setImages, className }: Exercise
         </ul>
       )}
 
-      <Modal
+      <Sheet
         isOpen={Boolean(preview)}
         onClose={() => setPreview(null)}
         size="lg"
         title={
           <span className="flex items-center gap-2">
-            <ImageIcon className="w-5 h-5 text-violet-400" aria-hidden="true" />
-            <span className="font-bold text-white">Image preview (as users see it)</span>
+            <ImageIcon className="w-5 h-5 text-ink-2" aria-hidden="true" />
+            <span className="font-semibold text-ink">Image preview (as users see it)</span>
           </span>
         }
       >
         {preview && (
           <div className="space-y-3">
-            <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-zinc-950 border border-white/10">
+            <div className="relative aspect-video w-full rounded-card overflow-hidden bg-canvas border border-line">
               {!previewFailed ? (
                 <Image
                   src={preview.previewUrl}
@@ -545,16 +545,16 @@ export function ExerciseImageUploader({ images, setImages, className }: Exercise
                   className="object-contain"
                 />
               ) : (
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 gap-2 text-zinc-300">
-                  <AlertCircle className="w-8 h-8 text-amber-400" aria-hidden="true" />
-                  <p className="text-sm font-bold">Users cannot load this image either.</p>
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 gap-2 text-ink-2">
+                  <AlertCircle className="w-8 h-8 text-warn" aria-hidden="true" />
+                  <p className="text-sm font-semibold">Users cannot load this image either.</p>
                 </div>
               )}
             </div>
-            <p className="text-xs text-zinc-400 font-mono break-all">{preview.url || "Local file (uploading)"}</p>
+            <p className="text-xs text-ink-2 font-mono break-all">{preview.url || "Local file (uploading)"}</p>
           </div>
         )}
-      </Modal>
+      </Sheet>
     </div>
   );
 }

@@ -4,7 +4,7 @@ import React, { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Save, Plus, Trash2, Users, Search, X } from "lucide-react";
-import { ConfirmModal } from "@/components/admin/ConfirmModal";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Input } from "@/components/ui/Input";
@@ -159,7 +159,7 @@ function TextField({
   const fieldLabel = (
     <>
       {label}
-      {required && <span className="text-red-300"> *</span>}
+      {required && <span className="text-danger"> *</span>}
     </>
   );
   return multiline ? (
@@ -244,27 +244,27 @@ function AssigneesPanel({ planId, assigned, onChange }: { planId: string; assign
   const visibleResults = query.trim().length >= 2 ? results : [];
 
   return (
-    <section className="bg-zinc-900/60 border border-zinc-800/60 rounded-2xl p-6 space-y-4" aria-labelledby="assignees-heading">
+    <section className="bg-surface border border-line rounded-card p-6 space-y-4" aria-labelledby="assignees-heading">
       <div className="flex items-center gap-2">
-        <Users className="w-4 h-4 text-violet-400" aria-hidden="true" />
-        <h2 id="assignees-heading" className="text-sm font-bold text-white">
+        <Users className="w-4 h-4 text-ink-2" aria-hidden="true" />
+        <h2 id="assignees-heading" className="text-sm font-semibold text-ink">
           Assigned users ({assigned.length})
         </h2>
       </div>
-      <p className="text-sm text-zinc-400">Assigned users get this plan as their nutrition plan. Changes here are saved immediately.</p>
+      <p className="text-sm text-ink-2">Assigned users get this plan as their nutrition plan. Changes here are saved immediately.</p>
 
       {assigned.length > 0 ? (
         <ul className="flex flex-wrap gap-2">
           {assigned.map((user) => (
-            <li key={user.id} className="flex items-center gap-1 pl-3 rounded-xl bg-zinc-800 border border-zinc-700 text-sm text-zinc-200">
+            <li key={user.id} className="flex items-center gap-1 pl-3 rounded-control bg-elevated border border-line-strong text-sm text-ink">
               <span>
-                {user.name} <span className="text-xs text-zinc-400">{user.email}</span>
+                {user.name} <span className="text-xs text-ink-2">{user.email}</span>
               </span>
               <button
                 type="button"
                 onClick={() => change(user, "remove")}
                 disabled={busyId !== null}
-                className="min-h-11 min-w-11 flex items-center justify-center text-zinc-300 hover:text-red-300 transition cursor-pointer disabled:opacity-40 rounded-xl"
+                className="min-h-11 min-w-11 flex items-center justify-center text-ink-2 hover:text-danger transition cursor-pointer disabled:opacity-40 rounded-control"
                 aria-label={`Unassign ${user.name || user.email}`}
               >
                 <X className="w-4 h-4" aria-hidden="true" />
@@ -273,7 +273,7 @@ function AssigneesPanel({ planId, assigned, onChange }: { planId: string; assign
           ))}
         </ul>
       ) : (
-        <p className="text-sm text-zinc-400">Nobody is assigned yet.</p>
+        <p className="text-sm text-ink-2">Nobody is assigned yet.</p>
       )}
 
       <div className="space-y-2">
@@ -287,18 +287,18 @@ function AssigneesPanel({ planId, assigned, onChange }: { planId: string; assign
           placeholder="Name or email (at least 2 characters)"
           startContent={<Search className="w-4 h-4" />}
         />
-        {searchError && <p role="alert" className="text-sm text-red-300">{searchError}</p>}
+        {searchError && <p role="alert" className="text-sm text-danger">{searchError}</p>}
         {visibleResults.length > 0 && (
-          <ul className="divide-y divide-zinc-800 border border-zinc-800 rounded-xl overflow-hidden">
+          <ul className="divide-y divide-line border border-line rounded-control overflow-hidden">
             {visibleResults.map((user) => (
               <li key={user.id} className="flex items-center justify-between gap-3 px-3 py-1">
-                <span className="min-w-0 text-sm text-zinc-200 truncate">
-                  {user.name} <span className="text-xs text-zinc-400">{user.email}</span>
+                <span className="min-w-0 text-sm text-ink truncate">
+                  {user.name} <span className="text-xs text-ink-2">{user.email}</span>
                 </span>
                 {assignedIds.has(user.id) ? (
-                  <span className="text-xs text-emerald-300 font-semibold min-h-11 flex items-center">Assigned</span>
+                  <span className="text-xs text-ink font-semibold min-h-11 flex items-center">Assigned</span>
                 ) : (
-                  <Button type="button" size="sm" variant="flat" onClick={() => change(user, "add")} disabled={busyId !== null} className="min-h-11">
+                  <Button type="button" size="sm" variant="secondary" onClick={() => change(user, "add")} disabled={busyId !== null} className="min-h-11">
                     Assign
                   </Button>
                 )}
@@ -307,7 +307,7 @@ function AssigneesPanel({ planId, assigned, onChange }: { planId: string; assign
           </ul>
         )}
         {query.trim().length >= 2 && visibleResults.length === 0 && !searchError && (
-          <p className="text-sm text-zinc-400">No matching users.</p>
+          <p className="text-sm text-ink-2">No matching users.</p>
         )}
       </div>
     </section>
@@ -419,12 +419,12 @@ export function NutritionPlanForm({ initialPlan = null }: { initialPlan?: AdminP
       <div className="flex flex-wrap items-center gap-3">
         <Link
           href="/admin/nutrition"
-          className="min-h-11 min-w-11 flex items-center justify-center text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-xl transition"
+          className="min-h-11 min-w-11 flex items-center justify-center text-ink-2 hover:text-ink hover:bg-elevated rounded-control transition"
           aria-label="Back to nutrition plans"
         >
           <ArrowLeft className="w-5 h-5" aria-hidden="true" />
         </Link>
-        <h1 className="text-2xl font-extrabold text-white flex-1">{isEdit ? "Edit nutrition plan" : "New nutrition plan"}</h1>
+        <h1 className="text-2xl font-semibold text-ink flex-1">{isEdit ? "Edit nutrition plan" : "New nutrition plan"}</h1>
         {isEdit && (
           <button
             type="button"
@@ -432,7 +432,7 @@ export function NutritionPlanForm({ initialPlan = null }: { initialPlan?: AdminP
               setDeleteError(null);
               setDeleteOpen(true);
             }}
-            className="min-h-11 min-w-11 flex items-center justify-center text-zinc-300 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition cursor-pointer"
+            className="min-h-11 min-w-11 flex items-center justify-center text-ink-2 hover:text-danger hover:bg-elevated rounded-control transition cursor-pointer"
             aria-label="Delete plan"
             title="Delete plan"
           >
@@ -442,13 +442,13 @@ export function NutritionPlanForm({ initialPlan = null }: { initialPlan?: AdminP
       </div>
 
       {formError && (
-        <div role="alert" className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-sm text-red-300">
+        <div role="alert" className="bg-surface border border-line rounded-control p-3 text-sm text-danger">
           {formError}
         </div>
       )}
 
-      <section className="bg-zinc-900/60 border border-zinc-800/60 rounded-2xl p-6 space-y-4" aria-labelledby="plan-details">
-        <h2 id="plan-details" className="text-sm font-bold text-white">Plan details</h2>
+      <section className="bg-surface border border-line rounded-card p-6 space-y-4" aria-labelledby="plan-details">
+        <h2 id="plan-details" className="text-sm font-semibold text-ink">Plan details</h2>
         <TextField label="Name" required value={form.name} onChange={setField("name")} error={errors.name} placeholder="e.g. 2,500 kcal muscle gain" />
         <TextField label="Description" multiline value={form.description} onChange={setField("description")} placeholder="Who this plan is for…" />
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -462,7 +462,7 @@ export function NutritionPlanForm({ initialPlan = null }: { initialPlan?: AdminP
           onChange={(e) => setForm((current) => ({ ...current, isPublic: e.target.checked }))}
           label={
             <>
-              Public template <span className="text-zinc-400">(a label for admins; users only get plans assigned to them)</span>
+              Public template <span className="text-ink-2">(a label for admins; users only get plans assigned to them)</span>
             </>
           }
         />
@@ -471,22 +471,22 @@ export function NutritionPlanForm({ initialPlan = null }: { initialPlan?: AdminP
       {isEdit && plan ? (
         <AssigneesPanel planId={plan.id} assigned={plan.assignedTo} onChange={setPlan} />
       ) : (
-        <p className="text-sm text-zinc-400">After you create the plan you can assign it to users.</p>
+        <p className="text-sm text-ink-2">After you create the plan you can assign it to users.</p>
       )}
 
       <section className="space-y-4" aria-labelledby="plan-meals">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 id="plan-meals" className="text-base font-bold text-white">Daily meal template</h2>
+            <h2 id="plan-meals" className="text-base font-semibold text-ink">Daily meal template</h2>
             {form.meals.length > 0 && (
-              <p className="text-xs text-zinc-400 tabular-nums">
+              <p className="text-xs text-ink-2 tabular-nums">
                 Meals add up to {Math.round(totals.calories).toLocaleString()} kcal and {Math.round(totals.protein)} g protein.
               </p>
             )}
           </div>
           <Button
             type="button"
-            variant="flat"
+            variant="secondary"
             size="sm"
             disabled={form.meals.length >= 12}
             onClick={() => setForm((current) => ({ ...current, meals: [...current.meals, emptyMeal()] }))}
@@ -497,16 +497,16 @@ export function NutritionPlanForm({ initialPlan = null }: { initialPlan?: AdminP
           </Button>
         </div>
         {form.meals.length === 0 && (
-          <p className="text-center py-8 bg-zinc-900/40 border border-zinc-800/40 rounded-2xl text-sm text-zinc-400">No meals yet.</p>
+          <p className="text-center py-8 bg-surface border border-line rounded-card text-sm text-ink-2">No meals yet.</p>
         )}
         {form.meals.map((meal, index) => (
-          <fieldset key={meal.key} className="bg-zinc-900/60 border border-zinc-800/60 rounded-2xl p-5 space-y-3">
+          <fieldset key={meal.key} className="bg-surface border border-line rounded-card p-5 space-y-3">
             <div className="flex items-center justify-between">
-              <legend className="text-xs font-bold text-violet-300 uppercase tracking-wider">Meal {index + 1}</legend>
+              <legend className="text-xs font-semibold text-ink-2">Meal {index + 1}</legend>
               <button
                 type="button"
                 onClick={() => setForm((current) => ({ ...current, meals: current.meals.filter((_, i) => i !== index) }))}
-                className="min-h-11 min-w-11 flex items-center justify-center text-zinc-300 hover:text-red-300 transition cursor-pointer rounded-xl"
+                className="min-h-11 min-w-11 flex items-center justify-center text-ink-2 hover:text-danger transition cursor-pointer rounded-control"
                 aria-label={`Remove meal ${index + 1}`}
               >
                 <Trash2 className="w-4 h-4" aria-hidden="true" />
@@ -537,13 +537,13 @@ export function NutritionPlanForm({ initialPlan = null }: { initialPlan?: AdminP
       <div className="flex flex-wrap justify-end gap-3 pb-8">
         <Link
           href="/admin/nutrition"
-          className="inline-flex items-center px-4 min-h-11 text-sm text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-xl transition"
+          className="inline-flex items-center px-4 min-h-11 text-sm text-ink-2 hover:text-ink hover:bg-elevated rounded-control transition"
         >
           Cancel
         </Link>
         <Button
           type="submit"
-          variant="solid"
+          variant="primary"
           size="md"
           isLoading={isSaving}
           disabled={isSaving || navigating || (isEdit && !dirty)}
@@ -554,17 +554,17 @@ export function NutritionPlanForm({ initialPlan = null }: { initialPlan?: AdminP
         </Button>
       </div>
 
-      <ConfirmModal
+      <ConfirmDialog
         isOpen={deleteOpen}
-        onClose={() => {
+        onCancel={() => {
           if (!deleteBusy) setDeleteOpen(false);
         }}
         onConfirm={handleDelete}
         title="Delete plan"
         message={`Delete "${plan?.name || ""}"?${plan?.assignedTo.length ? ` ${plan.assignedTo.length} assigned user(s) will no longer have it.` : ""} This cannot be undone.`}
         confirmLabel="Delete plan"
-        confirmVariant="danger"
-        isLoading={deleteBusy}
+        destructive
+        isWorking={deleteBusy}
         error={deleteError}
       />
     </form>

@@ -1,59 +1,237 @@
 @import "tailwindcss";
 
-/*
- * Design tokens. Use these names in new code instead of raw palette values:
- *   bg-app / bg-surface / bg-surface-2      page, card, raised card
- *   text-ink / text-ink-muted                primary and secondary text
- *   border-line                              dividers and card borders
- *   bg-brand text-on-brand                   primary action
- *   bg-danger                                destructive action
- */
+/* ===========================================================================
+ * Design tokens — "Calibrated Matte, glass chrome" (docs/design/README.md).
+ *
+ * Light is the default. Dark follows the system unless the user chose a theme:
+ * the pre-paint script in app/layout.tsx (lib/ui/theme.ts) always sets
+ * html[data-theme] to the resolved theme; the media query covers pages viewed
+ * without JavaScript.
+ *
+ * Use the Tailwind names from `@theme inline` below (bg-surface, text-ink-2,
+ * border-line, rounded-card, ...). Raw palette classes and hex values are
+ * reported by `bun run lint:tokens`.
+ * ======================================================================== */
+
+:root {
+  color-scheme: light;
+
+  --canvas: #f5f4f0;
+  --surface: #ffffff;
+  --elevated: #eceae2;
+  --recessed: #e6e3da;
+  --line: #e1ded5;
+  --line-strong: #c5c0b4;
+  --ink: #171715;
+  --ink-2: #57564f;
+  /* Spec #6A685F, darkened to stay >= 4.5:1 on recessed. */
+  --ink-3: #65635a;
+  --ink-inverse: #ffffff;
+  --accent: #2563eb;
+  --accent-soft: rgb(37 99 235 / 0.1);
+  --ok: #1d7a4c;
+  /* Spec #B4690E, darkened to stay >= 4.5:1 on canvas and elevated. */
+  --warn: #985a0b;
+  --danger: #c4322b;
+  /* Fine tick marks inside progress tracks (25 / 50 / 75 %). */
+  --tick: rgb(245 244 240 / 0.75);
+
+  --glass-chrome: rgb(245 244 240 / 0.84);
+  --glass-sheet: rgb(255 255 255 / 0.9);
+  --glass-live: rgb(37 99 235 / 0.06);
+  --glass-blur-chrome: blur(20px) saturate(140%);
+  --glass-blur-sheet: blur(24px) saturate(150%);
+  --glass-border: rgb(23 23 21 / 0.1);
+  --glass-specular: inset 0 1px 0 rgb(255 255 255 / 0.85);
+  --glass-shadow-bar: 0 -6px 20px rgb(23 23 21 / 0.06);
+  --glass-shadow-top: 0 6px 20px rgb(23 23 21 / 0.06);
+  --glass-shadow-sheet: 0 -14px 36px rgb(23 23 21 / 0.12);
+  --glass-shadow-float: 0 14px 36px rgb(23 23 21 / 0.14);
+  --scrim: rgb(23 23 21 / 0.34);
+  --glass-fallback-chrome: #f5f4f0;
+  --glass-fallback-sheet: #ffffff;
+
+  /* Brand artwork (app icon, wordmark): fixed colours, the same in both themes. */
+  --brand-carbon: #0e1014;
+  --brand-steel: #f2f4f7;
+  --brand-graphite: #7c8594;
+  --brand-track: #242830;
+  --brand-rim: rgb(255 255 255 / 0.12);
+  --brand-accent: #4c82fb;
+
+  /* Layout */
+  --nav-height: 3.5rem;
+  --header-height: 3.25rem;
+  --rail-width: 14rem;
+}
+
+/* Dark: the same values twice — once for the system preference (before or
+ * without the theme script), once for an explicit or resolved choice. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --canvas: #0c0d0f;
+    --surface: #141619;
+    --elevated: #1c1f24;
+    --recessed: #090a0c;
+    --line: #242830;
+    --line-strong: #373d48;
+    --ink: #f2f4f7;
+    --ink-2: #9ca3af;
+    --ink-3: #7f8897;
+    --ink-inverse: #0c0d0f;
+    --accent: #4c82fb;
+    --accent-soft: rgb(76 130 251 / 0.14);
+    --ok: #3fb978;
+    --warn: #e5a93c;
+    --danger: #e85454;
+    --tick: rgb(12 13 15 / 0.55);
+
+    --glass-chrome: rgb(16 18 22 / 0.82);
+    --glass-sheet: rgb(20 22 26 / 0.88);
+    --glass-live: rgb(76 130 251 / 0.08);
+    --glass-blur-chrome: blur(20px) saturate(160%);
+    --glass-blur-sheet: blur(24px) saturate(170%);
+    --glass-border: rgb(255 255 255 / 0.09);
+    --glass-specular: inset 0 1px 0 rgb(255 255 255 / 0.1);
+    --glass-shadow-bar: 0 -6px 20px rgb(0 0 0 / 0.32);
+    --glass-shadow-top: 0 6px 20px rgb(0 0 0 / 0.24);
+    --glass-shadow-sheet: 0 -14px 36px rgb(0 0 0 / 0.52);
+    --glass-shadow-float: 0 14px 36px rgb(0 0 0 / 0.5);
+    --scrim: rgb(6 7 9 / 0.58);
+    --glass-fallback-chrome: #111317;
+    --glass-fallback-sheet: #16181d;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --canvas: #0c0d0f;
+  --surface: #141619;
+  --elevated: #1c1f24;
+  --recessed: #090a0c;
+  --line: #242830;
+  --line-strong: #373d48;
+  --ink: #f2f4f7;
+  --ink-2: #9ca3af;
+  /* Spec #7C8594, lightened to stay >= 4.5:1 on elevated. */
+  --ink-3: #7f8897;
+  --ink-inverse: #0c0d0f;
+  --accent: #4c82fb;
+  --accent-soft: rgb(76 130 251 / 0.14);
+  --ok: #3fb978;
+  --warn: #e5a93c;
+  --danger: #e85454;
+  --tick: rgb(12 13 15 / 0.55);
+
+  --glass-chrome: rgb(16 18 22 / 0.82);
+  --glass-sheet: rgb(20 22 26 / 0.88);
+  --glass-live: rgb(76 130 251 / 0.08);
+  --glass-blur-chrome: blur(20px) saturate(160%);
+  --glass-blur-sheet: blur(24px) saturate(170%);
+  --glass-border: rgb(255 255 255 / 0.09);
+  --glass-specular: inset 0 1px 0 rgb(255 255 255 / 0.1);
+  --glass-shadow-bar: 0 -6px 20px rgb(0 0 0 / 0.32);
+  --glass-shadow-top: 0 6px 20px rgb(0 0 0 / 0.24);
+  --glass-shadow-sheet: 0 -14px 36px rgb(0 0 0 / 0.52);
+  --glass-shadow-float: 0 14px 36px rgb(0 0 0 / 0.5);
+  --scrim: rgb(6 7 9 / 0.58);
+  --glass-fallback-chrome: #111317;
+  --glass-fallback-sheet: #16181d;
+}
+
+/* The public site scrolls smoothly to its sections (reduced motion turns it off below). */
+html:has(.marketing-root) {
+  scroll-behavior: smooth;
+}
+
+/* Focus mode (the live workout): no tab bar, so nothing reserves room for it. */
+html:has([data-focus-mode]) {
+  --nav-height: 0px;
+}
+@media (min-width: 768px) {
+  :root {
+    --nav-height: 0px;
+  }
+}
+
+/* Tailwind names for the tokens. `inline` makes utilities read the variables
+ * above directly, so they follow the active theme. */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-elevated: var(--elevated);
+  --color-recessed: var(--recessed);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-inverse: var(--ink-inverse);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-scrim: var(--scrim);
+
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 @theme {
-  --color-app: #09090b;
-  --color-surface: #18181b;
-  --color-surface-2: #27272a;
-  --color-line: rgb(255 255 255 / 0.1);
-  --color-ink: #f4f4f5;
-  --color-ink-muted: #a1a1aa;
-  --color-brand: #10b981;
-  --color-brand-strong: #34d399;
-  --color-on-brand: #052e22;
-  --color-danger: #dc2626;
-  --color-danger-strong: #ef4444;
-  --color-warning: #f59e0b;
+  /* Three radii (+ rounded-full for dots, avatars and switches). */
+  --radius-card: 14px;
+  --radius-control: 10px;
+  --radius-chip: 6px;
 
-  /*
-   * zinc-500 is used across the app for secondary text. The stock value fails
-   * WCAG contrast on the dark surfaces (3.6:1); this one passes (5.2:1).
-   */
-  --color-zinc-500: #8b8b95;
+  /* Type roles that Tailwind's scale does not have. Body = text-sm (14/20),
+   * label = text-xs (12/16), input = text-base (16). */
+  --text-display: 2rem;
+  --text-display--line-height: 2.25rem;
+  --text-display--letter-spacing: -0.03em;
+  --text-title: 1.25rem;
+  --text-title--line-height: 1.75rem;
+  --text-title--letter-spacing: -0.02em;
+  --text-section: 0.9375rem;
+  --text-section--line-height: 1.25rem;
 
-  --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ease-out-quint: cubic-bezier(0.16, 1, 0.3, 1);
 
-  --animate-overlay-in: overlay-in 180ms ease-out both;
-  --animate-rise-in: rise-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-live: pulse-live 2.2s ease-in-out infinite;
+
+  @keyframes pulse-live {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.42;
+    }
+  }
 }
 
 @layer base {
-  :root {
-    color-scheme: dark;
-    --background: #09090b;
-    --foreground: #f4f4f5;
-    --nav-height: 4rem;
-  }
-
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
   }
 
   body {
-    background-color: var(--background);
-    color: var(--foreground);
+    background-color: var(--canvas);
+    color: var(--ink);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  ::selection {
+    background-color: color-mix(in srgb, var(--accent) 28%, transparent);
+    color: var(--ink);
   }
 
   /* Numbers that change (timers, weights, totals) must not jitter. */
@@ -81,13 +259,112 @@
  * ------------------------------------------------------------------------- */
 @layer base {
   :focus-visible {
-    outline: 1.5px solid rgb(52 211 153 / 0.8);
+    outline: 1.5px solid var(--accent);
     outline-offset: 2px;
   }
   /* Headings, dialogs and the main region receive focus from code only (to
    * move screen readers along); they are not controls, so they show no ring. */
   [tabindex="-1"]:focus-visible {
     outline: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Materials. Content is matte; glass is only for layers that float over
+ * scrolling content (tab bar, session dock, minimised workout, sticky top bar
+ * once scrolled, sheets, dialogs, popovers, toasts). Solid fallbacks when the
+ * browser cannot blur or the user asks for less transparency.
+ * ------------------------------------------------------------------------- */
+@layer components {
+  /* Bars at the bottom edge (tab bar, live dock, minimised workout). */
+  .glass-chrome {
+    background-color: var(--glass-chrome);
+    -webkit-backdrop-filter: var(--glass-blur-chrome);
+    backdrop-filter: var(--glass-blur-chrome);
+    border-top: 1px solid var(--glass-border);
+    box-shadow: var(--glass-specular), var(--glass-shadow-bar);
+  }
+  /* Bars at the top edge (sticky header once content scrolls under it). */
+  .glass-chrome-top {
+    background-color: var(--glass-chrome);
+    -webkit-backdrop-filter: var(--glass-blur-chrome);
+    backdrop-filter: var(--glass-blur-chrome);
+    border-bottom: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow-top);
+  }
+  /* Bottom sheets. */
+  .glass-sheet {
+    background-color: var(--glass-sheet);
+    -webkit-backdrop-filter: var(--glass-blur-sheet);
+    backdrop-filter: var(--glass-blur-sheet);
+    border-top: 1px solid var(--glass-border);
+    box-shadow: var(--glass-specular), var(--glass-shadow-sheet);
+  }
+  /* Free-floating layers: centred dialogs, popovers, toasts. */
+  .glass-float {
+    background-color: var(--glass-sheet);
+    -webkit-backdrop-filter: var(--glass-blur-sheet);
+    backdrop-filter: var(--glass-blur-sheet);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-specular), var(--glass-shadow-float);
+  }
+  /* Live tint, layered on chrome (rest strip, minimised workout). */
+  .glass-live {
+    background-image: linear-gradient(var(--glass-live), var(--glass-live));
+  }
+  /* A bottom sheet becomes a free-floating dialog from 768px. */
+  @media (min-width: 768px) {
+    .glass-sheet.sheet-dialog {
+      border: 1px solid var(--glass-border);
+      box-shadow: var(--glass-specular), var(--glass-shadow-float);
+    }
+  }
+
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass-chrome,
+    .glass-chrome-top {
+      background-color: var(--glass-fallback-chrome);
+      border-color: var(--line);
+    }
+    .glass-sheet,
+    .glass-float {
+      background-color: var(--glass-fallback-sheet);
+      border-color: var(--line);
+    }
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass-chrome,
+  .glass-chrome-top {
+    background-color: var(--glass-fallback-chrome);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    border-color: var(--line);
+  }
+  .glass-sheet,
+  .glass-float {
+    background-color: var(--glass-fallback-sheet);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    border-color: var(--line);
+  }
+}
+
+/* Calibrated track: fine tick marks at 25 / 50 / 75 % over the fill. */
+@layer components {
+  .track-ticks::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent calc(25% - 1px),
+      var(--tick) calc(25% - 1px),
+      var(--tick) 25%
+    );
   }
 }
 
@@ -121,7 +398,7 @@
   }
 }
 
-/* Custom subtle scrollbar */
+/* Subtle scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -130,28 +407,23 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: var(--line-strong);
   border-radius: 9999px;
 }
 
-.no-scrollbar,
-.scrollbar-none {
+.no-scrollbar {
   scrollbar-width: none;
 }
-.no-scrollbar::-webkit-scrollbar,
-.scrollbar-none::-webkit-scrollbar {
+.no-scrollbar::-webkit-scrollbar {
   display: none;
 }
 
-/* Safe areas (notch, home indicator, gesture bar). */
-.safe-area-pb {
-  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
-}
-.safe-area-pt {
-  padding-top: max(0.75rem, env(safe-area-inset-top));
-}
-/* Room for the fixed bottom navigation on phones (and the "workout in
- * progress" bar while one is running: --session-bar-height is set by it). */
+/* ---------------------------------------------------------------------------
+ * Layout helpers
+ * ------------------------------------------------------------------------- */
+
+/* Room for the tab bar on phones (and the minimised workout while one is
+ * running: --session-bar-height is set by it). */
 .pb-nav {
   padding-bottom: calc(var(--nav-height) + var(--session-bar-height, 0px) + env(safe-area-inset-bottom) + 1.5rem);
 }
@@ -160,7 +432,7 @@
     padding-bottom: calc(var(--session-bar-height, 0px) + 2rem);
   }
 }
-/* Position for things that float just above the bottom navigation. */
+/* Position for things that float just above the tab bar. */
 .bottom-above-nav {
   bottom: calc(var(--nav-height) + var(--session-bar-height, 0px) + env(safe-area-inset-bottom) + 0.75rem);
 }
@@ -177,13 +449,24 @@
   height: var(--overlay-height, 100dvh);
 }
 
-/* The "workout in progress" bar itself. */
+/* Toasts: in the thumb zone, just above the tab bar, the minimised workout or
+ * the live-session dock (--dock-height), never at the top of the screen. */
+.toast-region {
+  bottom: calc(var(--nav-height) + var(--session-bar-height, 0px) + var(--dock-height, 0px) + env(safe-area-inset-bottom) + 0.5rem);
+}
+@media (min-width: 768px) {
+  .toast-region {
+    bottom: calc(var(--session-bar-height, 0px) + var(--dock-height, 0px) + 1.5rem);
+  }
+}
+
+/* The minimised workout, docked directly on top of the tab bar. */
 .session-bar {
-  bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + 0.5rem);
+  bottom: calc(var(--nav-height) + env(safe-area-inset-bottom));
 }
 @media (min-width: 768px) {
   .session-bar {
-    bottom: 1.5rem;
+    bottom: 0;
   }
 }
 
@@ -199,14 +482,14 @@
   }
 }
 
-@keyframes rise-in {
+@keyframes dialog-in {
   from {
     opacity: 0;
-    transform: translateY(16px);
+    transform: translateY(8px) scale(0.98);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 
@@ -234,12 +517,6 @@
 .overlay-fade-in {
   animation: overlay-in 180ms ease-out both;
 }
-.dialog-rise-in {
-  animation: rise-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-.drawer-in-bottom {
-  animation: drawer-from-bottom 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
 .drawer-in-top {
   animation: drawer-from-top 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
@@ -256,6 +533,20 @@
   animation-name: drawer-from-right;
 }
 
+/* A sheet rises from the bottom edge on phones and appears as a centred dialog
+ * from 768px. */
+.sheet-in {
+  animation: drawer-from-bottom 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@media (min-width: 768px) {
+  .sheet-in {
+    animation: dialog-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+.popover-in {
+  animation: dialog-in 140ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 @keyframes shimmer {
   from {
     background-position: 200% 0;
@@ -265,17 +556,17 @@
   }
 }
 .skeleton {
-  border-radius: 0.75rem;
-  background: linear-gradient(90deg, #18181b 25%, #27272a 37%, #18181b 63%);
+  border-radius: var(--radius-control);
+  background: linear-gradient(90deg, var(--surface) 25%, var(--elevated) 37%, var(--surface) 63%);
   background-size: 400% 100%;
   animation: shimmer 1.4s ease-in-out infinite;
 }
 
-/* Toasts */
+/* Toasts rise from the bottom (the thumb zone) and leave the same way. */
 @keyframes toast-in {
   from {
     opacity: 0;
-    transform: translateY(-12px) scale(0.95);
+    transform: translateY(12px) scale(0.98);
   }
   to {
     opacity: 1;
@@ -289,14 +580,14 @@
   }
   to {
     opacity: 0;
-    transform: translateY(-8px) scale(0.96);
+    transform: translateY(8px) scale(0.98);
   }
 }
 .toast-enter {
   animation: toast-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .toast-exit {
-  animation: toast-out 280ms cubic-bezier(0.4, 0, 1, 1) both;
+  animation: toast-out 220ms cubic-bezier(0.4, 0, 1, 1) both;
 }
 
 /* Respect the user's motion preference. */

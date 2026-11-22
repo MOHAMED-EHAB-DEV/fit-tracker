@@ -50,7 +50,7 @@ export function CheckInFields({ values, onChange, errors, weightUnit, todayDateS
           onChange={(e) => set({ dateString: e.target.value })}
           isInvalid={Boolean(errors.dateString)}
           errorMessage={errors.dateString}
-          inputClassName="tabular-nums"
+          inputClassName="font-mono tabular-nums"
         />
         <Input
           id={`${id}-weight`}
@@ -63,14 +63,14 @@ export function CheckInFields({ values, onChange, errors, weightUnit, todayDateS
           value={values.weight}
           disabled={disabled}
           onChange={(e) => set({ weight: e.target.value })}
-          placeholder={weightUnit === "lbs" ? "e.g. 173.1" : "e.g. 78.5"}
+          placeholder={weightUnit === "lbs" ? "173.1" : "78.5"}
           isInvalid={Boolean(errors.weight)}
           errorMessage={errors.weight}
-          inputClassName="tabular-nums font-bold"
+          inputClassName="font-mono tabular-nums"
         />
         <Input
           id={`${id}-bf`}
-          label="Body fat (%) — measured"
+          label="Body fat (%), measured"
           type="number"
           inputMode="decimal"
           step="any"
@@ -82,28 +82,28 @@ export function CheckInFields({ values, onChange, errors, weightUnit, todayDateS
           placeholder="optional"
           isInvalid={Boolean(errors.bodyFat)}
           errorMessage={errors.bodyFat}
-          inputClassName="tabular-nums"
+          inputClassName="font-mono tabular-nums"
         />
       </div>
 
-      <div className="rounded-2xl bg-zinc-950/60 border border-white/8">
+      <div className="rounded-control border border-line bg-surface">
         <button
           type="button"
           onClick={() => setShowMeasurements((prev) => !prev)}
           aria-expanded={showMeasurements || measurementErrors}
-          className="w-full min-h-11 flex items-center justify-between gap-2 px-4 text-sm font-bold text-zinc-200 cursor-pointer"
+          className="flex min-h-11 w-full items-center justify-between gap-2 px-3 text-[13px] font-medium text-ink-2 transition-colors hover:text-ink cursor-pointer"
         >
           <span className="flex items-center gap-2">
-            <Ruler className="w-4 h-4 text-teal-400" aria-hidden="true" />
-            Circumference measurements ({lengthUnit}, optional)
+            <Ruler className="h-4 w-4" aria-hidden="true" />
+            Measurements ({lengthUnit}, optional)
           </span>
           <ChevronDown
-            className={`w-4 h-4 text-zinc-400 transition-transform ${showMeasurements || measurementErrors ? "rotate-180" : ""}`}
+            className={`h-4 w-4 text-ink-3 transition-transform ${showMeasurements || measurementErrors ? "rotate-180" : ""}`}
             aria-hidden="true"
           />
         </button>
         {(showMeasurements || measurementErrors) && (
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 px-4 pb-4">
+          <div className="grid grid-cols-2 gap-2.5 px-3 pb-3 sm:grid-cols-3">
             {MEASUREMENT_KEYS.map((key) => (
               <Input
                 key={key}
@@ -119,7 +119,7 @@ export function CheckInFields({ values, onChange, errors, weightUnit, todayDateS
                 onChange={(e) => set({ measurements: { ...values.measurements, [key]: e.target.value } })}
                 isInvalid={Boolean(errors[key])}
                 errorMessage={errors[key]}
-                inputClassName="tabular-nums"
+                inputClassName="font-mono tabular-nums"
               />
             ))}
           </div>
@@ -133,7 +133,7 @@ export function CheckInFields({ values, onChange, errors, weightUnit, todayDateS
         maxLength={NOTES_MAX}
         disabled={disabled}
         onChange={(e) => set({ notes: e.target.value })}
-        placeholder="e.g. Morning fasted weigh-in"
+        placeholder="Morning, before breakfast"
         rows={2}
         isInvalid={Boolean(errors.notes)}
         errorMessage={errors.notes}
