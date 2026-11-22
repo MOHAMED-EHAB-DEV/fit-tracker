@@ -1,13 +1,47 @@
 # FitTracker Release Notes
 
-## Unreleased — full rebuild (not yet released)
+## v2.2.0 — New design (2026-11-22)
 
-> Not deployed and not published as an APK yet. Before an Android release,
-> bump `version.json` (`bun run bump:minor`); the release workflow refuses to
-> publish over an existing version tag.
+> Version code 13.
 
-This release rebuilds the app's foundations and the workout system, and
-reviews every other module for security and correctness.
+The whole app has a new look, and most screens work in a simpler way.
+
+### What's new
+- **New look**: matte surfaces, one accent colour, and a light and a dark
+  theme. Choose System, Light or Dark in Settings → Appearance.
+- **Five tabs**: Today, Train, Eat, Plan and Body. Coach and your profile menu
+  are in the header of every screen. The centre (+) button and the "More"
+  menu are gone.
+- **Today**: today's workout first, then calories and macros, steps, water,
+  habits and today's meals.
+- **Start any routine on any day**: "Start a different workout" on Today and
+  Train lists every routine. Your week plan stays as you saved it.
+- **Train**: a focused workout screen with the set table, the rest timer and
+  "Log set" within reach of your thumb; History with weekly insights; a new
+  Exercises library with a progress chart for each exercise.
+- **Eat**: Day and Week views, and one sheet to log, scan or edit a meal.
+- **Plan**: Schedule and Habits share one tab. "Plan my day" suggests events
+  that you accept one at a time.
+- **Body**: your weight with a 7-day average line, Log weight and Check in.
+- **Undo**: a delete that can be undone happens at once, with 7 seconds to
+  undo it.
+- **Web**: `/` is now a public home page. The signed-in home is `/dashboard`.
+
+### Android
+- New app icon and notification icon. Widgets, reminders and the update
+  dialog use the new colours.
+- The status and navigation bars are light or dark with the phone's theme.
+  They follow the phone, not the Appearance choice inside the app.
+- The app's start page is `/dashboard`.
+
+---
+
+## v2.1.0 — Full rebuild (2026-11-20)
+
+> Version code 12.
+
+This release rebuilt the app's foundations and the workout system, and
+reviewed every other module for security and correctness.
 
 ### Workouts (rebuilt)
 - **Routines** (plans) and **workouts** (what was performed) are now separate.
