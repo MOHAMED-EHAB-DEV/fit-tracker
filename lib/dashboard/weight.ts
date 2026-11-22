@@ -76,3 +76,31 @@ export function weightChangeTone(
   if (goal === "maintain") return Math.abs(deltaKg) <= 1 ? "good" : "off";
   return "neutral";
 }
+
+const DAY_MS = 86_400_000;
+
+/**
+ * The trailing average for every weigh-in: the mean of all weigh-ins in the
+ * `windowDays` days up to and including it (a 7-day average smooths daily
+ * water swings). Input in any order; output in the same order as the input.
+ */
+export function movingAverage(points: ReadonlyArray<{ timestamp: number; weightKg: number }>, windowDays: number = 7): number[] {
+  const windowMs = Math.max(1, windowDays) * DAY_MS;
+  return points.map((point) => {
+    let sum = 0;
+    let count = 0;
+    for (const other of points) {
+      if (other.timestamp <= point.timestamp && other.timestamp > point.timestamp - windowMs) {
+        sum += other.weightKg;
+        count += 1;
+      }
+    }
+    return count > 0 ? Math.round((sum / count) * 100) / 100 : point.weightKg;
+  });
+}
+
+/** Weigh-ins of the last `days` days up to `nowMs`, oldest first. */
+export function pointsWithinDays<T extends { timestamp: number }>(points: readonly T[], days: number, nowMs: number): T[] {
+  const from = nowMs - days * DAY_MS;
+  return points.filter((point) => point.timestamp >= from && point.timestamp <= nowMs).sort((a, b) => a.timestamp - b.timestamp);
+}

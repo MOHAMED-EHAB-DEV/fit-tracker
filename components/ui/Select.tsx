@@ -201,25 +201,25 @@ export function Select<T = string | number>({
         onClick={() => !disabled && setIsOpen((prev) => !prev)}
         onKeyDown={handleKeyDown}
         className={cn(
-          "w-full ps-3.5 pe-3 bg-surface-2 border rounded-xl text-start flex items-center justify-between gap-2 transition-colors focus:outline-none cursor-pointer select-none",
+          "w-full ps-3.5 pe-3 bg-elevated border rounded-control text-start flex items-center justify-between gap-2 transition-colors focus:outline-none cursor-pointer select-none",
           FIELD_SIZE[size],
           error
-            ? "border-red-500/70 focus-visible:border-red-500"
+            ? "border-danger focus-visible:border-danger"
             : isOpen
-            ? "border-emerald-500/80"
-            : "border-line hover:not-focus-visible:border-white/20 focus-visible:border-emerald-500/80",
+            ? "border-accent"
+            : "border-line hover:not-focus-visible:border-line-strong focus-visible:border-accent",
           disabled && FIELD_BOX_DISABLED,
           triggerClassName
         )}
       >
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
           {selectedOption?.icon && <span aria-hidden="true" className="shrink-0">{selectedOption.icon}</span>}
-          <span className={cn("truncate", selectedOption ? "text-white" : "text-zinc-500")}>
+          <span className={cn("truncate", selectedOption ? "text-ink" : "text-ink-3")}>
             {selectedOption ? selectedOption.label : placeholder}
           </span>
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0 text-zinc-400">
+        <div className="flex items-center gap-1.5 shrink-0 text-ink-3">
           {clearable && selectedOption && (
             <span
               role="button"
@@ -231,7 +231,7 @@ export function Select<T = string | number>({
                   handleClear(e);
                 }
               }}
-              className="p-1 hover:text-white rounded-lg hover:bg-white/10 transition cursor-pointer"
+              className="p-1 hover:text-ink rounded-chip hover:bg-line transition cursor-pointer"
               aria-label="Clear selection"
             >
               <X className="w-3.5 h-3.5" aria-hidden="true" />
@@ -241,7 +241,7 @@ export function Select<T = string | number>({
             aria-hidden="true"
             className={cn(
               "w-4 h-4 transition-transform duration-200",
-              isOpen && "rotate-180 text-emerald-400"
+              isOpen && "rotate-180 text-ink"
             )}
           />
         </div>
@@ -262,7 +262,7 @@ export function Select<T = string | number>({
             ref={listboxWrapperRef}
             style={floatingStyle}
             className={cn(
-              "rounded-[22px] bg-zinc-900/95 border border-white/10 shadow-[0_15px_50px_rgba(0,0,0,0.8),0_0_1px_1px_rgba(255,255,255,0.08)] backdrop-blur-2xl p-1.5 transform ring-1 ring-white/5 transition duration-150 ease-out z-9999",
+              "glass-float rounded-card p-1.5 transform transition duration-150 ease-out z-9999",
               actualSide === "top" ? "origin-bottom" : "origin-top",
               isAnimatingIn && !isAnimatingOut
                 ? "opacity-100 scale-100 translate-y-0 pointer-events-auto"
@@ -271,9 +271,9 @@ export function Select<T = string | number>({
           >
             {/* Search Box if enabled */}
             {searchable && (
-              <div className="p-1.5 mb-1 border-b border-white/6">
+              <div className="p-1.5 mb-1 border-b border-line">
                 <div className="relative flex items-center">
-                  <Search aria-hidden="true" className="w-3.5 h-3.5 text-zinc-500 absolute left-3" />
+                  <Search aria-hidden="true" className="w-3.5 h-3.5 text-ink-3 absolute left-3" />
                   <input
                     ref={searchInputRef}
                     type="text"
@@ -288,7 +288,7 @@ export function Select<T = string | number>({
                     aria-controls={`${selectId}-listbox`}
                     aria-activedescendant={highlightedIndex >= 0 ? `${selectId}-opt-${highlightedIndex}` : undefined}
                     placeholder="Search..."
-                    className="w-full pl-9 pr-3 py-2 min-h-10 bg-zinc-950/90 border border-white/10 rounded-xl text-white text-base placeholder-zinc-500 transition-colors focus:outline-none focus:border-emerald-500/80"
+                    className="w-full pl-9 pr-3 py-2 min-h-10 bg-elevated border border-line rounded-control text-ink text-base placeholder:text-ink-3 transition-colors focus:outline-none focus:border-accent"
                   />
                 </div>
               </div>
@@ -304,7 +304,7 @@ export function Select<T = string | number>({
               className="max-h-60 overflow-y-auto space-y-1 p-0.5"
             >
               {filteredOptions.length === 0 ? (
-                <li role="presentation" className="py-4 px-3 text-center text-xs text-zinc-500">
+                <li role="presentation" className="py-4 px-3 text-center text-xs text-ink-3">
                   No matching options found
                 </li>
               ) : (
@@ -322,12 +322,12 @@ export function Select<T = string | number>({
                       onClick={() => handleSelect(opt)}
                       onMouseEnter={() => setHighlightedIndex(i)}
                       className={cn(
-                        "px-3.5 py-2.5 min-h-11 rounded-xl text-sm flex items-center justify-between cursor-pointer transition-colors duration-100 select-none",
+                        "px-3.5 py-2.5 min-h-11 rounded-chip text-sm flex items-center justify-between cursor-pointer transition-colors duration-100 select-none",
                         isSelected
-                          ? "bg-emerald-500/15 text-emerald-300 font-bold border border-emerald-500/20 shadow-sm"
+                          ? "bg-elevated text-ink font-semibold"
                           : isHighlighted
-                          ? "bg-white/10 text-white font-semibold"
-                          : "text-zinc-300 hover:bg-white/5",
+                          ? "bg-elevated text-ink"
+                          : "text-ink-2 hover:bg-elevated/60",
                         opt.disabled && "opacity-40 cursor-not-allowed pointer-events-none"
                       )}
                     >
@@ -336,7 +336,7 @@ export function Select<T = string | number>({
                         <div>
                           <span className="block truncate">{opt.label}</span>
                           {opt.description && (
-                            <span className="text-xs text-zinc-400 block truncate mt-0.5">
+                            <span className="text-xs text-ink-3 block truncate mt-0.5">
                               {opt.description}
                             </span>
                           )}
@@ -344,7 +344,7 @@ export function Select<T = string | number>({
                       </div>
 
                       {isSelected && (
-                        <Check aria-hidden="true" className="w-4 h-4 text-emerald-400 shrink-0 ml-2" />
+                        <Check aria-hidden="true" className="w-4 h-4 text-ink shrink-0 ms-2" />
                       )}
                     </li>
                   );

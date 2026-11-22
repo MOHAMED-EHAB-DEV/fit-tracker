@@ -1,108 +1,99 @@
-"use client";
-
 import React from "react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export interface ChipProps extends React.HTMLAttributes<HTMLDivElement> {
-  variant?: "solid" | "bordered" | "flat" | "dot";
-  color?: "default" | "primary" | "secondary" | "success" | "warning" | "danger";
+export interface ChipProps extends React.HTMLAttributes<HTMLSpanElement> {
+  /** Status chips colour their text only; everything else is neutral. */
+  tone?: "neutral" | "accent" | "ok" | "warn" | "danger";
   size?: "sm" | "md" | "lg";
   startContent?: React.ReactNode;
   endContent?: React.ReactNode;
   onClose?: () => void;
+  /** Accessible name of the remove button. */
+  closeLabel?: string;
 }
 
-const COLOR_MAP = {
-  default: {
-    solid: "bg-zinc-800 text-zinc-200",
-    bordered: "border-white/15 text-zinc-300 bg-transparent",
-    flat: "bg-white/5 text-zinc-300 border border-white/10",
-    dot: "bg-zinc-900/80 text-zinc-300 border border-white/10",
-    dotColor: "bg-zinc-400",
-  },
-  primary: {
-    solid: "bg-emerald-500 text-zinc-950 font-black",
-    bordered: "border-emerald-500/50 text-emerald-300 bg-transparent",
-    flat: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/25",
-    dot: "bg-zinc-950 text-emerald-300 border border-emerald-500/20",
-    dotColor: "bg-emerald-400",
-  },
-  secondary: {
-    solid: "bg-teal-500 text-zinc-950 font-black",
-    bordered: "border-teal-500/50 text-teal-300 bg-transparent",
-    flat: "bg-teal-500/15 text-teal-300 border border-teal-500/25",
-    dot: "bg-zinc-950 text-teal-300 border border-teal-500/20",
-    dotColor: "bg-teal-400",
-  },
-  success: {
-    solid: "bg-emerald-500 text-zinc-950 font-bold",
-    bordered: "border-emerald-500 text-emerald-400 bg-transparent",
-    flat: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30",
-    dot: "bg-zinc-950 text-emerald-300 border border-emerald-500/30",
-    dotColor: "bg-emerald-400",
-  },
-  warning: {
-    solid: "bg-amber-500 text-zinc-950 font-bold",
-    bordered: "border-amber-500 text-amber-300 bg-transparent",
-    flat: "bg-amber-500/15 text-amber-300 border border-amber-500/30",
-    dot: "bg-zinc-950 text-amber-300 border border-amber-500/30",
-    dotColor: "bg-amber-400",
-  },
-  danger: {
-    solid: "bg-red-500 text-white font-bold",
-    bordered: "border-red-500 text-red-300 bg-transparent",
-    flat: "bg-red-500/15 text-red-300 border border-red-500/30",
-    dot: "bg-zinc-950 text-red-300 border border-red-500/30",
-    dotColor: "bg-red-400",
-  },
+const TONE = {
+  neutral: "text-ink-2",
+  accent: "text-accent",
+  ok: "text-ok",
+  warn: "text-warn",
+  danger: "text-danger",
 };
 
-const SIZE_MAP = {
-  sm: "px-2 py-0.5 text-[10px] gap-1",
-  md: "px-2.5 py-1 text-xs gap-1.5",
-  lg: "px-3.5 py-1.5 text-sm gap-2",
+const SIZE = {
+  sm: "h-5 px-1.5 gap-1",
+  md: "h-6 px-2 gap-1",
+  lg: "h-7 px-2.5 gap-1.5",
 };
 
+/** A small label: meal type, "Custom", "Suggested", set counts. */
 export function Chip({
-  children,
-  variant = "flat",
-  color = "primary",
+  tone = "neutral",
   size = "md",
   startContent,
   endContent,
   onClose,
+  closeLabel = "Remove",
   className,
+  children,
   ...props
 }: ChipProps) {
-  const scheme = COLOR_MAP[color] || COLOR_MAP.primary;
-
   return (
-    <div
+    <span
       className={cn(
-        "inline-flex items-center rounded-full font-bold select-none transition-all duration-150",
-        scheme[variant],
-        SIZE_MAP[size],
+        "inline-flex max-w-full items-center rounded-chip border border-line bg-elevated text-xs font-medium select-none",
+        SIZE[size],
+        TONE[tone],
         className
       )}
       {...props}
     >
-      {variant === "dot" && (
-        <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", scheme.dotColor)} />
+      {startContent && (
+        <span className="flex shrink-0" aria-hidden="true">
+          {startContent}
+        </span>
       )}
-      {startContent && <span className="shrink-0">{startContent}</span>}
       <span className="truncate">{children}</span>
-      {endContent && <span className="shrink-0">{endContent}</span>}
+      {endContent && <span className="flex shrink-0">{endContent}</span>}
       {onClose && (
         <button
           type="button"
           onClick={onClose}
-          className="p-0.5 rounded-full hover:bg-white/20 transition shrink-0 ml-0.5"
-          aria-label="Remove chip"
+          aria-label={closeLabel}
+          className="-me-1 ms-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-[4px] text-ink-3 hover:bg-line hover:text-ink cursor-pointer"
         >
-          ✕
+          <X className="h-3 w-3" aria-hidden="true" />
         </button>
       )}
-    </div>
+    </span>
+  );
+}
+
+export interface FilterChipProps {
+  selected: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  className?: string;
+}
+
+/** A toggle in a row of filters (muscle group, equipment). The chosen one is filled with ink. */
+export function FilterChip({ selected, onClick, children, className }: FilterChipProps) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onClick}
+      className={cn(
+        "inline-flex min-h-9 shrink-0 items-center rounded-chip border px-3 text-[13px] transition-colors cursor-pointer",
+        selected
+          ? "border-ink bg-ink font-semibold text-ink-inverse"
+          : "border-line bg-surface font-medium text-ink-2 hover:border-line-strong hover:text-ink",
+        className
+      )}
+    >
+      {children}
+    </button>
   );
 }
 

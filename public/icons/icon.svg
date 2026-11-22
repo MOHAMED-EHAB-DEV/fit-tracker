@@ -1,6 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
-  <rect width="108" height="108" rx="24" fill="#09090B"/>
-  <g transform="translate(54 54) scale(1.15) translate(-51 -54)">
-    <path d="M58,24L32,60h18l-6,24l26,-36h-18z" fill="#10B981"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96">
+  <title>FitTracker</title>
+  <rect width="96" height="96" rx="22" fill="#0e1014"/>
+  <rect x="0.75" y="0.75" width="94.5" height="94.5" rx="21.25" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1.5"/>
+    <rect x="16" y="30" width="7" height="24" rx="2.5" fill="#7c8594"/>
+    <rect x="26" y="22" width="10" height="40" rx="3" fill="#f2f4f7"/>
+    <rect x="36" y="39" width="24" height="6" fill="#f2f4f7"/>
+    <rect x="60" y="22" width="10" height="40" rx="3" fill="#f2f4f7"/>
+    <rect x="73" y="30" width="7" height="24" rx="2.5" fill="#7c8594"/>
+    <rect x="46.5" y="36" width="3" height="12" rx="1.5" fill="#4c82fb"/>
+    <rect x="20" y="72" width="56" height="5" rx="2.5" fill="#242830"/>
+    <rect x="20" y="72" width="38" height="5" rx="2.5" fill="#4c82fb"/>
 </svg>

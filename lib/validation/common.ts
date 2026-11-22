@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PROFILE_LIMITS } from "@/lib/users/limits";
 import { isValidDateString, isValidTimeZone } from "@/lib/time";
 
 /** Building blocks shared by every request schema. */
@@ -43,6 +44,5 @@ export const macros = z.object({
 
 export const mealType = z.enum(["breakfast", "lunch", "dinner", "snack", "pre_workout", "post_workout"]);
 
-/** Body weight in kilograms. */
-export const bodyWeightKg = boundedNumber(20, 400);
-export const heightCm = boundedNumber(90, 260);
+/** Body weight in kilograms (the shared profile limit, lib/users/limits.ts). */
+export const bodyWeightKg = boundedNumber(PROFILE_LIMITS.weightKg.min, PROFILE_LIMITS.weightKg.max);

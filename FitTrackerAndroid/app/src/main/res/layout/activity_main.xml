@@ -3,7 +3,7 @@
     android:id="@+id/main_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background_dark">
+    android:background="@color/window_background">
 
     <FrameLayout
         android:id="@+id/webview_container"
@@ -14,7 +14,7 @@
         android:id="@+id/error_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="@color/background_dark"
+        android:background="@color/window_background"
         android:gravity="center"
         android:orientation="vertical"
         android:padding="32dp"
@@ -24,7 +24,7 @@
             android:layout_width="56dp"
             android:layout_height="56dp"
             android:contentDescription="@null"
-            android:src="@drawable/ic_launcher_foreground" />
+            android:src="@drawable/ic_brand_tile" />
 
         <TextView
             android:id="@+id/error_title"
@@ -33,7 +33,7 @@
             android:layout_marginTop="16dp"
             android:gravity="center"
             android:text="@string/error_offline_title"
-            android:textColor="@color/widget_text_primary"
+            android:textColor="@color/screen_text_primary"
             android:textSize="20sp"
             android:textStyle="bold" />
 
@@ -44,7 +44,7 @@
             android:layout_marginTop="8dp"
             android:gravity="center"
             android:text="@string/error_offline_message"
-            android:textColor="@color/widget_text_secondary"
+            android:textColor="@color/screen_text_secondary"
             android:textSize="15sp" />
 
         <Button

@@ -16,6 +16,12 @@ const PUBLIC_API_PREFIXES = ["/api/auth/"];
 const AUTH_PAGES = ["/login", "/signup"];
 /** Open to everyone: a reset link must work even where another account is signed in. */
 const PUBLIC_PAGES = ["/forgot-password", "/reset-password"];
+/** The landing page's generated share image (/opengraph-image?<hash>). */
+const PUBLIC_PREFIXES = ["/opengraph-image"];
+/** The public landing page. A signed-in visitor goes straight to the app. */
+const LANDING_PAGE = "/";
+/** The signed-in home. */
+const APP_HOME = "/dashboard";
 
 function isCrossSiteWrite(request: NextRequest): boolean {
   if (["GET", "HEAD", "OPTIONS"].includes(request.method)) return false;
@@ -41,12 +47,19 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (PUBLIC_PAGES.includes(pathname)) {
+  if (PUBLIC_PAGES.includes(pathname) || PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     return NextResponse.next();
   }
 
   const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
   const payload = token ? await verifyToken(token) : null;
+
+  if (pathname === LANDING_PAGE) {
+    // Installed PWAs and the Android app start at "/": signed-in people land
+    // on Today, everyone else sees the landing page. (A revoked session is
+    // caught by the app layout, which sends the visitor to /login.)
+    return payload ? NextResponse.redirect(new URL(APP_HOME, request.url)) : NextResponse.next();
+  }
 
   if (AUTH_PAGES.includes(pathname)) {
     // Already signed in: skip the auth screens. (A revoked session is caught
@@ -58,7 +71,7 @@ export async function proxy(request: NextRequest) {
       return cleared;
     }
     if (payload) {
-      return NextResponse.redirect(new URL("/", request.url));
+      return NextResponse.redirect(new URL(APP_HOME, request.url));
     }
     return NextResponse.next();
   }

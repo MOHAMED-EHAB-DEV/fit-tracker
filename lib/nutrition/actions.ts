@@ -80,7 +80,7 @@ export async function logWaterAction(
     }
 
     const waterMl = Math.max(0, updated?.waterMl ?? 0);
-    revalidatePath("/");
+    revalidatePath("/dashboard");
     return { success: true, waterMl, dateString };
   } catch (err) {
     console.error("logWaterAction:", err);
@@ -100,7 +100,7 @@ export async function deleteMealAction(mealId: string): Promise<{ success: boole
 
     await deleteMealForUser(session.userId, mealId);
 
-    revalidatePath("/");
+    revalidatePath("/dashboard");
     revalidatePath("/nutrition");
     return { success: true };
   } catch (err) {

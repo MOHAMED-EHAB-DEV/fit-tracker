@@ -116,6 +116,68 @@ export function suggestedValues(
   };
 }
 
+/** Last time's matching set for the "Prev" column (warm-ups match warm-ups). */
+export function previousSetValues(
+  exercise: SessionExerciseDTO,
+  setIndex: number,
+  previous: PreviousPerformanceDTO | undefined
+): SetValues | null {
+  const last = previousSetFor(exercise, setIndex, previous);
+  if (!last) return null;
+  return {
+    weightKg: last.weightKg ?? null,
+    reps: last.reps ?? null,
+    durationSec: last.durationSec ?? null,
+    distanceM: last.distanceM ?? null,
+  };
+}
+
+/** Where a set sits in the workout. */
+export interface SetLocation {
+  exerciseId: string;
+  setId: string;
+  exerciseIndex: number;
+  setIndex: number;
+}
+
+/**
+ * The first set that is not ticked yet, in workout order. With
+ * `fromExerciseId` the search starts at that exercise and wraps round to the
+ * ones before it.
+ * Null when every set is done (or there are none).
+ */
+export function nextOpenSet(
+  session: Pick<SessionDTO, "exercises">,
+  fromExerciseId?: string | null
+): SetLocation | null {
+  const { exercises } = session;
+  if (exercises.length === 0) return null;
+  const start = fromExerciseId ? Math.max(0, exercises.findIndex((exercise) => exercise.id === fromExerciseId)) : 0;
+  for (let step = 0; step < exercises.length; step += 1) {
+    const exerciseIndex = (start + step) % exercises.length;
+    const exercise = exercises[exerciseIndex];
+    const setIndex = exercise.sets.findIndex((set) => !set.done);
+    if (setIndex >= 0) {
+      return { exerciseId: exercise.id, setId: exercise.sets[setIndex].id, exerciseIndex, setIndex };
+    }
+  }
+  return null;
+}
+
+/**
+ * The set the live workout is on: the first open set of the exercise the user
+ * opened, else the next open set after it. The dock's "Log set" logs this one.
+ */
+export function activeSet(session: Pick<SessionDTO, "exercises">, focusedExerciseId?: string | null): SetLocation | null {
+  return nextOpenSet(session, focusedExerciseId);
+}
+
+/** True when the workout has sets and every one of them is ticked. */
+export function allSetsDone(session: Pick<SessionDTO, "exercises">): boolean {
+  const sets = session.exercises.flatMap((exercise) => exercise.sets);
+  return sets.length > 0 && sets.every((set) => set.done);
+}
+
 /** Which value is still missing before a set can be ticked (null = ready). */
 export function missingField(
   set: SetValues,

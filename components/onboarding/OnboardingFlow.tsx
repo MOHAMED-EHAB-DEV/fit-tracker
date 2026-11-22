@@ -4,15 +4,19 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Check } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { IconButton } from "@/components/ui/IconButton";
 import { Input } from "@/components/ui/Input";
 import { NumberField } from "@/components/ui/NumberField";
+import { ProgressTrack } from "@/components/ui/ProgressTrack";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { focusFirstInvalid } from "@/components/auth/AuthCard";
 import { api, errorMessage } from "@/lib/client/api";
 import { logout } from "@/lib/client/logout";
 import { cn } from "@/lib/utils";
 import { dailyTargets } from "@/lib/fitness/targets";
 import { cmToInches, fromKg, inchesToCm, toKg, type WeightUnit } from "@/lib/fitness/units";
 import { addDays, detectDeviceTimeZone, isValidDateString, localDateString } from "@/lib/time";
+import { PROFILE_LIMITS, profileLimitProblem } from "@/lib/users/limits";
 import type { ActivityLevel, FitnessGoal, Sex } from "@/types/fitness";
 
 interface OnboardingFlowProps {
@@ -33,8 +37,12 @@ interface Answers {
   waterGoalMl: number | null;
 }
 
+type Field = "sex" | "birthDate" | "weightKg" | "heightCm" | "activityLevel" | "goal" | "stepGoal" | "waterGoalMl";
+type Errors = Partial<Record<Field, string>>;
+
 const STORAGE_KEY = "ft:onboarding";
 const STEP_TITLES = ["About you", "Your body", "How active are you?", "What is your goal?", "Daily goals"];
+const LABEL = "mb-1.5 text-[13px] font-medium text-ink-2";
 
 const ACTIVITY_OPTIONS: Array<{ value: ActivityLevel; label: string; detail: string }> = [
   { value: "sedentary", label: "Mostly sitting", detail: "Desk job, little or no exercise" },
@@ -66,9 +74,16 @@ function suggestedWaterMl(weightKg: number | null): number {
   return Math.min(4000, Math.max(1500, rounded));
 }
 
+/**
+ * First-run setup: five short steps (about you, body, activity, goal, daily
+ * goals). Continue checks the step and shows each problem under its field;
+ * the limits are the ones Settings uses. Rendered in the browser only (the
+ * answers are kept on the device until Finish).
+ */
 export function OnboardingFlow({ userName, initialWeightUnit }: OnboardingFlowProps) {
   const router = useRouter();
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const [answers, setAnswers] = useState<Answers>(() => ({
     step: 0,
     sex: null,
@@ -82,13 +97,16 @@ export function OnboardingFlow({ userName, initialWeightUnit }: OnboardingFlowPr
     waterGoalMl: null,
     ...(typeof window === "undefined" ? {} : loadSaved() || {}),
   }));
-  const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Errors>({});
+  const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
 
   const today = localDateString(new Date(), detectDeviceTimeZone());
-  const youngest = addDays(today, -10 * 365);
-  const oldest = addDays(today, -100 * 365);
+  const youngest = addDays(today, -PROFILE_LIMITS.age.min * 365);
+  const oldest = addDays(today, -PROFILE_LIMITS.age.max * 365);
+  const step = Math.min(Math.max(0, answers.step), STEP_TITLES.length - 1);
+  const unit = answers.unit;
 
   // Answers survive a reload or a closed tab.
   useEffect(() => {
@@ -100,13 +118,17 @@ export function OnboardingFlow({ userName, initialWeightUnit }: OnboardingFlowPr
   }, [answers]);
 
   // Move focus to the new question so keyboard and screen-reader users follow along.
-  const step = answers.step;
   useEffect(() => {
     headingRef.current?.focus();
   }, [step]);
 
   const update = (patch: Partial<Answers>) => {
-    setError(null);
+    setFormError(null);
+    setErrors((current) => {
+      const next = { ...current };
+      for (const key of Object.keys(patch)) delete next[key as Field];
+      return next;
+    });
     setAnswers((current) => ({ ...current, ...patch }));
   };
 
@@ -127,48 +149,43 @@ export function OnboardingFlow({ userName, initialWeightUnit }: OnboardingFlowPr
   const feet = heightInches == null ? null : Math.floor(heightInches / 12);
   const inches = heightInches == null || feet == null ? null : Math.round((heightInches - feet * 12) * 10) / 10;
 
-  const problem = (): string | null => {
+  /** The problems on the current step, by field. */
+  const problems = (): Errors => {
+    const found: Errors = {};
+    const limit = (field: "weightKg" | "heightCm" | "stepGoal" | "waterGoalMl") => {
+      const problem = profileLimitProblem(field, answers[field], unit);
+      if (problem) found[field] = problem;
+    };
     switch (step) {
       case 0:
-        if (!answers.sex) return "Choose male or female.";
-        if (!isValidDateString(answers.birthDate)) return "Enter your date of birth.";
-        if (answers.birthDate > youngest) return "You need to be at least 10 years old to use FitTracker.";
-        if (answers.birthDate < oldest) return "Check the year of your date of birth.";
-        return null;
+        if (!answers.sex) found.sex = "Choose male or female.";
+        if (!isValidDateString(answers.birthDate)) found.birthDate = "Enter your date of birth.";
+        else if (answers.birthDate > youngest) found.birthDate = `You need to be at least ${PROFILE_LIMITS.age.min} years old to use FitTracker.`;
+        else if (answers.birthDate < oldest) found.birthDate = "Check the year of your date of birth.";
+        break;
       case 1:
-        if (answers.weightKg == null) return "Enter your weight.";
-        if (answers.weightKg < 30 || answers.weightKg > 300) {
-          return answers.unit === "lbs"
-            ? "Weight must be between 66 and 661 lbs."
-            : "Weight must be between 30 and 300 kg.";
-        }
-        if (answers.heightCm == null) return "Enter your height.";
-        if (answers.heightCm < 100 || answers.heightCm > 250) {
-          return answers.unit === "lbs"
-            ? "Height must be between 3 ft 4 in and 8 ft 2 in."
-            : "Height must be between 100 and 250 cm.";
-        }
-        return null;
+        if (answers.weightKg == null) found.weightKg = "Enter your weight.";
+        else limit("weightKg");
+        if (answers.heightCm == null) found.heightCm = "Enter your height.";
+        else limit("heightCm");
+        break;
       case 2:
-        return answers.activityLevel ? null : "Choose the option closest to your week.";
+        if (!answers.activityLevel) found.activityLevel = "Choose the option closest to your week.";
+        break;
       case 3:
-        return answers.goal ? null : "Choose a goal. You can change it later in Settings.";
+        if (!answers.goal) found.goal = "Choose a goal. You can change it later in Settings.";
+        break;
       case 4:
-        if (answers.stepGoal != null && (answers.stepGoal < 500 || answers.stepGoal > 100_000)) {
-          return "The step goal must be between 500 and 100,000.";
-        }
-        if (answers.waterGoalMl != null && (answers.waterGoalMl < 250 || answers.waterGoalMl > 10_000)) {
-          return "The water goal must be between 250 and 10,000 ml.";
-        }
-        return null;
-      default:
-        return null;
+        limit("stepGoal");
+        limit("waterGoalMl");
+        break;
     }
+    return found;
   };
 
   const finish = async () => {
     setIsSaving(true);
-    setError(null);
+    setFormError(null);
     try {
       await api("/api/onboarding", {
         method: "POST",
@@ -181,7 +198,7 @@ export function OnboardingFlow({ userName, initialWeightUnit }: OnboardingFlowPr
           goal: answers.goal,
           stepGoal: answers.stepGoal ?? 8000,
           waterGoalMl: answers.waterGoalMl ?? suggestedWaterMl(answers.weightKg),
-          weightUnit: answers.unit,
+          weightUnit: unit,
           timezone: detectDeviceTimeZone(),
         },
       });
@@ -190,18 +207,19 @@ export function OnboardingFlow({ userName, initialWeightUnit }: OnboardingFlowPr
       } catch {
         // Nothing to clear.
       }
-      router.replace("/");
+      router.replace("/dashboard");
       router.refresh();
     } catch (err) {
-      setError(errorMessage(err, "Your answers could not be saved. Please try again."));
+      setFormError(errorMessage(err, "Your answers could not be saved. Please try again."));
       setIsSaving(false);
     }
   };
 
   const next = () => {
-    const issue = problem();
-    if (issue) {
-      setError(issue);
+    const found = problems();
+    if (Object.keys(found).length > 0) {
+      setErrors(found);
+      focusFirstInvalid(formRef.current);
       return;
     }
     if (step === STEP_TITLES.length - 1) {
@@ -216,52 +234,40 @@ export function OnboardingFlow({ userName, initialWeightUnit }: OnboardingFlowPr
   };
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-app px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] text-ink">
+    <main className="mx-auto flex min-h-dvh w-full max-w-[440px] flex-col bg-canvas px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] text-ink">
       <header className="flex items-center gap-2">
         {step > 0 ? (
-          <button
-            type="button"
+          <IconButton
+            label="Previous question"
+            icon={<ArrowLeft className="h-5 w-5" />}
             onClick={() => update({ step: step - 1 })}
-            aria-label="Previous question"
-            className="grid h-11 w-11 -ms-2 place-items-center rounded-full text-zinc-300 active:bg-white/10 cursor-pointer"
-          >
-            <ArrowLeft className="h-5 w-5" aria-hidden="true" />
-          </button>
+            className="-ms-2"
+          />
         ) : (
           <span className="h-11 w-9" aria-hidden="true" />
         )}
         <div className="flex-1">
-          <p className="text-sm text-zinc-400">
-            Step {step + 1} of {STEP_TITLES.length}
+          <p className="text-[13px] text-ink-2">
+            Step <span className="font-mono tabular-nums">{step + 1}</span> of{" "}
+            <span className="font-mono tabular-nums">{STEP_TITLES.length}</span>
           </p>
-          <div
-            role="progressbar"
-            aria-label="Setup progress"
-            aria-valuemin={1}
-            aria-valuemax={STEP_TITLES.length}
-            aria-valuenow={step + 1}
-            className="mt-1 h-1.5 overflow-hidden rounded-full bg-surface-2"
-          >
-            <div
-              className="h-full rounded-full bg-emerald-500 transition-[width] duration-300 motion-reduce:transition-none"
-              style={{ width: `${((step + 1) / STEP_TITLES.length) * 100}%` }}
-            />
-          </div>
+          <ProgressTrack value={step + 1} max={STEP_TITLES.length} tone="accent" label="Setup progress" className="mt-1.5" />
         </div>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           disabled={isSigningOut}
           onClick={() => {
             setIsSigningOut(true);
             void logout();
           }}
-          className="min-h-11 rounded-xl px-2 text-sm font-medium text-zinc-400 hover:text-white cursor-pointer"
         >
           Sign out
-        </button>
+        </Button>
       </header>
 
       <form
+        ref={formRef}
         className="mt-8 flex flex-1 flex-col"
         onSubmit={(event) => {
           event.preventDefault();
@@ -269,18 +275,15 @@ export function OnboardingFlow({ userName, initialWeightUnit }: OnboardingFlowPr
         }}
         noValidate
       >
-        <h1 ref={headingRef} tabIndex={-1} className="text-2xl font-bold text-white outline-none">
+        <h1 ref={headingRef} tabIndex={-1} className="text-title text-ink outline-none">
           {step === 0 && userName ? `Hi ${userName.split(" ")[0]}. ${STEP_TITLES[0]}` : STEP_TITLES[step]}
         </h1>
 
         <div className="mt-6 flex-1 space-y-6">
           {step === 0 && (
             <>
-              <p className="text-base text-zinc-400">
-                These answers are used to estimate how many calories you burn in a day.
-              </p>
-              <fieldset>
-                <legend className="mb-2 text-sm font-medium text-zinc-200">Sex</legend>
+              <p className="text-sm leading-6 text-ink-2">These answers are used to estimate how many calories you burn in a day.</p>
+              <ChoiceGroup legend="Sex" error={errors.sex} errorId="onboarding-sex-error">
                 <div className="grid grid-cols-2 gap-3">
                   {(["male", "female"] as const).map((value) => (
                     <ChoiceButton
@@ -289,10 +292,11 @@ export function OnboardingFlow({ userName, initialWeightUnit }: OnboardingFlowPr
                       onSelect={() => update({ sex: value })}
                       label={value === "male" ? "Male" : "Female"}
                       name="sex"
+                      errorId={errors.sex ? "onboarding-sex-error" : undefined}
                     />
                   ))}
                 </div>
-              </fieldset>
+              </ChoiceGroup>
               <Input
                 id="onboarding-birth-date"
                 label="Date of birth"
@@ -302,6 +306,9 @@ export function OnboardingFlow({ userName, initialWeightUnit }: OnboardingFlowPr
                 max={youngest}
                 autoComplete="bday"
                 onChange={(event) => update({ birthDate: event.target.value })}
+                isInvalid={Boolean(errors.birthDate)}
+                errorMessage={errors.birthDate}
+                inputClassName="font-mono tabular-nums"
               />
             </>
           )}
@@ -310,68 +317,72 @@ export function OnboardingFlow({ userName, initialWeightUnit }: OnboardingFlowPr
             <>
               <SegmentedControl
                 label="Units"
-                value={answers.unit}
-                onChange={(unit) => update({ unit })}
+                value={unit}
+                onChange={(value) => update({ unit: value })}
                 options={[
                   { value: "kg", label: "kg and cm" },
                   { value: "lbs", label: "lbs and ft" },
                 ]}
                 className="w-full"
               />
-              <div className="space-y-1.5">
-                <p className="text-sm font-medium text-zinc-200">Weight</p>
+              <div>
+                <p className={LABEL}>Weight</p>
                 <NumberField
-                  label={`Weight in ${answers.unit}`}
-                  value={answers.weightKg == null ? null : fromKg(answers.weightKg, answers.unit, 1)}
-                  onChange={(value) => update({ weightKg: value == null ? null : toKg(value, answers.unit) })}
+                  label={`Weight in ${unit}`}
+                  value={answers.weightKg == null ? null : fromKg(answers.weightKg, unit, 1)}
+                  onChange={(value) => update({ weightKg: value == null ? null : toKg(value, unit) })}
                   decimals={1}
-                  min={0}
-                  max={answers.unit === "lbs" ? 700 : 320}
-                  suffix={answers.unit}
+                  suffix={unit}
+                  errorMessage={errors.weightKg}
                 />
               </div>
-              <div className="space-y-1.5">
-                <p className="text-sm font-medium text-zinc-200">Height</p>
-                {answers.unit === "kg" ? (
+              <div>
+                <p className={LABEL}>Height</p>
+                {unit === "kg" ? (
                   <NumberField
                     label="Height in centimetres"
                     value={answers.heightCm}
                     onChange={(value) => update({ heightCm: value })}
                     decimals={1}
-                    min={0}
-                    max={260}
                     suffix="cm"
+                    errorMessage={errors.heightCm}
                   />
                 ) : (
-                  <div className="grid grid-cols-2 gap-3">
-                    <NumberField
-                      label="Height, feet"
-                      value={feet}
-                      onChange={(value) =>
-                        update({ heightCm: value == null ? null : inchesToCm(value * 12 + (inches || 0), 1) })
-                      }
-                      min={0}
-                      max={8}
-                      suffix="ft"
-                    />
-                    <NumberField
-                      label="Height, inches"
-                      value={inches}
-                      onChange={(value) => update({ heightCm: inchesToCm((feet || 0) * 12 + (value || 0), 1) })}
-                      decimals={1}
-                      min={0}
-                      max={11.9}
-                      suffix="in"
-                    />
-                  </div>
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <NumberField
+                        label="Height, feet"
+                        value={feet}
+                        onChange={(value) => update({ heightCm: value == null ? null : inchesToCm(value * 12 + (inches || 0), 1) })}
+                        max={8}
+                        suffix="ft"
+                        isInvalid={Boolean(errors.heightCm)}
+                        describedBy={errors.heightCm ? "onboarding-height-error" : undefined}
+                      />
+                      <NumberField
+                        label="Height, inches"
+                        value={inches}
+                        onChange={(value) => update({ heightCm: inchesToCm((feet || 0) * 12 + (value || 0), 1) })}
+                        decimals={1}
+                        max={11.9}
+                        suffix="in"
+                        isInvalid={Boolean(errors.heightCm)}
+                        describedBy={errors.heightCm ? "onboarding-height-error" : undefined}
+                      />
+                    </div>
+                    {errors.heightCm && (
+                      <p id="onboarding-height-error" className="mt-1.5 text-xs text-danger">
+                        {errors.heightCm}
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             </>
           )}
 
           {step === 2 && (
-            <fieldset>
-              <legend className="sr-only">Activity level</legend>
+            <ChoiceGroup legend="Activity level" hideLegend error={errors.activityLevel} errorId="onboarding-activity-error">
               <div className="space-y-2">
                 {ACTIVITY_OPTIONS.map((option) => (
                   <ChoiceButton
@@ -381,16 +392,16 @@ export function OnboardingFlow({ userName, initialWeightUnit }: OnboardingFlowPr
                     label={option.label}
                     detail={option.detail}
                     name="activity"
+                    errorId={errors.activityLevel ? "onboarding-activity-error" : undefined}
                   />
                 ))}
               </div>
-            </fieldset>
+            </ChoiceGroup>
           )}
 
           {step === 3 && (
             <>
-              <fieldset>
-                <legend className="sr-only">Goal</legend>
+              <ChoiceGroup legend="Goal" hideLegend error={errors.goal} errorId="onboarding-goal-error">
                 <div className="space-y-2">
                   {GOAL_OPTIONS.map((option) => (
                     <ChoiceButton
@@ -400,22 +411,28 @@ export function OnboardingFlow({ userName, initialWeightUnit }: OnboardingFlowPr
                       label={option.label}
                       detail={option.detail}
                       name="goal"
+                      errorId={errors.goal ? "onboarding-goal-error" : undefined}
                     />
                   ))}
                 </div>
-              </fieldset>
+              </ChoiceGroup>
               {answers.goal && targets.calories != null && (
-                <div role="status" className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-                  <p className="text-sm text-emerald-200">Your daily targets</p>
-                  <p className="mt-1 text-xl font-bold text-white tabular-nums">
-                    {targets.calories.toLocaleString("en-US")} kcal
+                <div role="status" className="rounded-card border border-line bg-surface p-4">
+                  <p className="text-[13px] font-medium text-ink-2">Your daily targets</p>
+                  <p className="mt-1 font-mono text-title tabular-nums text-ink">
+                    {targets.calories.toLocaleString("en-US")}
+                    <span className="ms-1 font-sans text-sm font-medium text-ink-2">kcal</span>
                     {targets.protein != null && (
-                      <span className="text-base font-semibold text-zinc-300"> · {targets.protein} g protein</span>
+                      <>
+                        <span className="mx-2 text-ink-3" aria-hidden="true">
+                          ·
+                        </span>
+                        {targets.protein}
+                        <span className="ms-1 font-sans text-sm font-medium text-ink-2">g protein</span>
+                      </>
                     )}
                   </p>
-                  <p className="mt-1 text-sm text-zinc-400">
-                    An estimate to start from. You can set your own numbers in Settings.
-                  </p>
+                  <p className="mt-1.5 text-[13px] text-ink-3">An estimate to start from. You can set your own numbers in Settings.</p>
                 </div>
               )}
             </>
@@ -423,37 +440,35 @@ export function OnboardingFlow({ userName, initialWeightUnit }: OnboardingFlowPr
 
           {step === 4 && (
             <>
-              <p className="text-base text-zinc-400">Suggested starting points. Change them if you like.</p>
-              <div className="space-y-1.5">
-                <p className="text-sm font-medium text-zinc-200">Steps per day</p>
+              <p className="text-sm leading-6 text-ink-2">Suggested starting points. Change them if you like.</p>
+              <div>
+                <p className={LABEL}>Steps per day</p>
                 <NumberField
                   label="Steps per day"
                   value={answers.stepGoal}
                   onChange={(value) => update({ stepGoal: value })}
-                  min={0}
-                  max={100_000}
                   suffix="steps"
+                  errorMessage={errors.stepGoal}
                 />
               </div>
-              <div className="space-y-1.5">
-                <p className="text-sm font-medium text-zinc-200">Water per day</p>
+              <div>
+                <p className={LABEL}>Water per day</p>
                 <NumberField
                   label="Water per day in millilitres"
                   value={answers.waterGoalMl}
                   onChange={(value) => update({ waterGoalMl: value })}
-                  min={0}
-                  max={10_000}
                   suffix="ml"
+                  errorMessage={errors.waterGoalMl}
                 />
               </div>
             </>
           )}
         </div>
 
-        <div className="sticky bottom-0 -mx-4 mt-6 space-y-3 bg-app px-4 pb-1 pt-3">
-          {error && (
-            <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-3 text-sm text-red-300">
-              {error}
+        <div className="sticky bottom-0 -mx-4 mt-6 space-y-3 bg-canvas px-4 pb-1 pt-3">
+          {formError && (
+            <p role="alert" className="rounded-control border border-line bg-surface px-3 py-2.5 text-sm text-danger">
+              {formError}
             </p>
           )}
           <Button type="submit" size="lg" className="w-full" isLoading={isSaving}>
@@ -465,39 +480,80 @@ export function OnboardingFlow({ userName, initialWeightUnit }: OnboardingFlowPr
   );
 }
 
+function ChoiceGroup({
+  legend,
+  hideLegend = false,
+  error,
+  errorId,
+  children,
+}: {
+  legend: string;
+  hideLegend?: boolean;
+  error?: string;
+  errorId: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <fieldset>
+      <legend className={hideLegend ? "sr-only" : LABEL}>{legend}</legend>
+      {children}
+      {error && (
+        <p id={errorId} className="mt-2 text-xs text-danger">
+          {error}
+        </p>
+      )}
+    </fieldset>
+  );
+}
+
 function ChoiceButton({
   selected,
   onSelect,
   label,
   detail,
   name,
+  errorId,
 }: {
   selected: boolean;
   onSelect: () => void;
   label: string;
   detail?: string;
   name: string;
+  /** Set while the group has a problem: the radios point at its message. */
+  errorId?: string;
 }) {
   return (
     <label
       className={cn(
-        "flex min-h-14 cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 has-focus-visible:outline-[1.5px] has-focus-visible:outline-offset-2 has-focus-visible:outline-emerald-400/80",
-        selected ? "border-emerald-500 bg-emerald-500/15" : "border-line bg-surface"
+        "flex min-h-14 cursor-pointer items-center gap-3 rounded-card border px-4 py-3 transition-colors has-focus-visible:outline-[1.5px] has-focus-visible:outline-offset-2 has-focus-visible:outline-accent",
+        selected
+          ? "border-accent bg-accent-soft"
+          : errorId
+            ? "border-danger bg-surface"
+            : "border-line bg-surface hover:border-line-strong"
       )}
     >
-      <input type="radio" name={name} checked={selected} onChange={onSelect} className="sr-only" />
+      <input
+        type="radio"
+        name={name}
+        checked={selected}
+        onChange={onSelect}
+        aria-describedby={errorId}
+        data-invalid={errorId ? "" : undefined}
+        className="sr-only"
+      />
       <span
         aria-hidden="true"
         className={cn(
-          "grid h-6 w-6 shrink-0 place-items-center rounded-full border",
-          selected ? "border-emerald-500 bg-emerald-500 text-zinc-950" : "border-zinc-500"
+          "grid h-5 w-5 shrink-0 place-items-center rounded-full border",
+          selected ? "border-accent bg-accent text-ink-inverse" : "border-line-strong"
         )}
       >
-        {selected && <Check className="h-4 w-4" />}
+        {selected && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
       </span>
       <span className="min-w-0">
-        <span className="block text-base font-semibold text-white">{label}</span>
-        {detail && <span className="block text-sm text-zinc-400">{detail}</span>}
+        <span className="block text-[15px] font-medium text-ink">{label}</span>
+        {detail && <span className="block text-[13px] text-ink-2">{detail}</span>}
       </span>
     </label>
   );

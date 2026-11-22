@@ -23,8 +23,12 @@ object AppConfig {
         if (BuildConfig.DEBUG) addAll(DEBUG_LOCAL_ORIGINS)
     }
 
-    /** Start page URL (with trailing slash). */
-    val startUrl: String get() = "$APP_ORIGIN/"
+    /**
+     * Start page: Today. "/" is the public landing page; the web app sends a
+     * signed-in visitor from there to /dashboard and a signed-out one inside
+     * this app to /login, so older builds that still start at "/" keep working.
+     */
+    val startUrl: String get() = "$APP_ORIGIN/dashboard"
 
     /** "scheme://host[:port]" in lower case, or null for anything that is not http(s). */
     fun normalizeOrigin(url: String?): String? {

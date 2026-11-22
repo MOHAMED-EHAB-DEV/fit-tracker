@@ -4,7 +4,7 @@ import React, { useRef, useState } from "react";
 import Link from "next/link";
 import { Dumbbell, Plus, Pencil, Archive, ArchiveRestore, Activity, Timer, ImageOff, ListX } from "lucide-react";
 import { DataTable, type Column } from "@/components/admin/DataTable";
-import { ConfirmModal } from "@/components/admin/ConfirmModal";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Select } from "@/components/ui/Select";
 import { Chip } from "@/components/ui/Chip";
 import { useToast } from "@/components/ui/Toast";
@@ -23,18 +23,19 @@ import {
 } from "@/constants/exercise";
 import { MUSCLES_BY_GROUP, type MuscleGroup } from "@/lib/workouts/taxonomy";
 import type { AdminExerciseRow, ExerciseUsage } from "@/lib/admin/exercises";
+import { buttonClasses } from "@/components/ui/button-styles";
 
 const PAGE_SIZE = 30;
 
 const actionClass =
-  "min-h-11 min-w-11 flex items-center justify-center rounded-lg text-zinc-300 transition cursor-pointer";
+  "min-h-11 min-w-11 flex items-center justify-center rounded-chip text-ink-2 transition cursor-pointer";
 
 const label = (map: Record<string, string>, value: string) => map[value] || value;
 
 function TrackingIcon({ type }: { type: string }) {
-  if (type === "duration") return <Timer className="w-4 h-4 text-cyan-400" aria-hidden="true" />;
-  if (type === "cardio") return <Activity className="w-4 h-4 text-rose-400" aria-hidden="true" />;
-  return <Dumbbell className="w-4 h-4 text-zinc-300" aria-hidden="true" />;
+  if (type === "duration") return <Timer className="w-4 h-4 text-ink-2" aria-hidden="true" />;
+  if (type === "cardio") return <Activity className="w-4 h-4 text-ink-2" aria-hidden="true" />;
+  return <Dumbbell className="w-4 h-4 text-ink-2" aria-hidden="true" />;
 }
 
 export function AdminExercisesClient() {
@@ -127,20 +128,20 @@ export function AdminExercisesClient() {
           href={`/admin/exercises/${row.id}`}
           className="flex items-center gap-3 min-h-11 rounded"
         >
-          <span className="w-9 h-9 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0">
+          <span className="w-9 h-9 rounded-chip bg-surface border border-line flex items-center justify-center shrink-0">
             <TrackingIcon type={row.trackingType} />
           </span>
           <span className="min-w-0">
             <span className="flex flex-wrap items-center gap-1.5">
-              <span className="font-semibold text-zinc-100 text-sm">{row.name}</span>
+              <span className="font-semibold text-ink text-sm">{row.name}</span>
               {row.isCustom && (
-                <Chip size="sm" variant="flat" color="primary" className="text-xs">User&apos;s custom</Chip>
+                <Chip size="sm" tone="accent" className="text-xs">User&apos;s custom</Chip>
               )}
               {row.archivedAt && (
-                <Chip size="sm" variant="flat" color="warning" className="text-xs">Archived</Chip>
+                <Chip size="sm" tone="warn" className="text-xs">Archived</Chip>
               )}
             </span>
-            <span className="block text-xs text-zinc-400">{label(TRACKING_TYPE_LABELS, row.trackingType)}</span>
+            <span className="block text-xs text-ink-2">{label(TRACKING_TYPE_LABELS, row.trackingType)}</span>
           </span>
         </Link>
       ),
@@ -149,43 +150,43 @@ export function AdminExercisesClient() {
       key: "primaryMuscle",
       label: "Muscle",
       sortable: true,
-      render: (row) => <span className="text-sm text-zinc-300">{row.primaryMuscle}</span>,
+      render: (row) => <span className="text-sm text-ink-2">{row.primaryMuscle}</span>,
     },
     {
       key: "equipment",
       label: "Equipment",
       sortable: true,
-      render: (row) => <span className="text-sm text-zinc-300">{label(EQUIPMENT_LABELS, row.equipment)}</span>,
+      render: (row) => <span className="text-sm text-ink-2">{label(EQUIPMENT_LABELS, row.equipment)}</span>,
     },
     {
       key: "category",
       label: "Category",
       sortable: true,
-      render: (row) => <span className="text-sm text-zinc-300">{label(CATEGORY_LABELS, row.category)}</span>,
+      render: (row) => <span className="text-sm text-ink-2">{label(CATEGORY_LABELS, row.category)}</span>,
     },
     {
       key: "metValue",
       label: "MET",
       sortable: true,
-      render: (row) => <span className="font-mono text-sm text-zinc-300 tabular-nums">{row.metValue.toFixed(1)}</span>,
+      render: (row) => <span className="font-mono text-sm text-ink-2 tabular-nums">{row.metValue.toFixed(1)}</span>,
     },
     {
       key: "completeness",
       label: "Content",
       render: (row) =>
         row.imageCount > 0 && row.instructionCount > 0 ? (
-          <span className="text-xs text-emerald-300 tabular-nums">
+          <span className="text-xs text-ink tabular-nums">
             {row.imageCount} image{row.imageCount === 1 ? "" : "s"}, {row.instructionCount} step{row.instructionCount === 1 ? "" : "s"}
           </span>
         ) : (
           <span className="flex flex-col gap-1">
             {row.imageCount === 0 && (
-              <span className="inline-flex items-center gap-1 text-xs text-amber-300">
+              <span className="inline-flex items-center gap-1 text-xs text-warn">
                 <ImageOff className="w-3.5 h-3.5" aria-hidden="true" /> No images
               </span>
             )}
             {row.instructionCount === 0 && (
-              <span className="inline-flex items-center gap-1 text-xs text-amber-300">
+              <span className="inline-flex items-center gap-1 text-xs text-warn">
                 <ListX className="w-3.5 h-3.5" aria-hidden="true" /> No steps
               </span>
             )}
@@ -200,20 +201,20 @@ export function AdminExercisesClient() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Exercise catalog</h1>
-          <p className="text-zinc-400 text-sm mt-0.5 tabular-nums">
+          <h1 className="text-2xl font-semibold text-ink tracking-tight">Exercise catalog</h1>
+          <p className="text-ink-2 text-sm mt-0.5 tabular-nums">
             {list.pagination.total.toLocaleString()} exercise{list.pagination.total === 1 ? "" : "s"} match these filters
           </p>
         </div>
         <Link
           href="/admin/exercises/new"
-          className="inline-flex items-center justify-center gap-2 min-h-11 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-bold self-start sm:self-auto"
+          className={buttonClasses({ variant: "primary", className: "gap-2 self-start sm:self-auto" })}
         >
           <Plus className="w-4 h-4" aria-hidden="true" /> Add exercise
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-zinc-900/60 border border-zinc-800/60 rounded-2xl p-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-surface border border-line rounded-card p-4">
         <Select label="Muscle group" value={filters.muscleGroup} onChange={setFilter("muscleGroup")} options={[{ value: "", label: "All groups" }, ...MUSCLE_GROUP_OPTIONS]} />
         <Select label="Muscle" searchable value={filters.muscle} onChange={setFilter("muscle")} options={[{ value: "", label: "All muscles" }, ...muscleOptions]} />
         <Select label="Equipment" searchable value={filters.equipment} onChange={setFilter("equipment")} options={[{ value: "", label: "All equipment" }, ...EQUIPMENT_SELECT_OPTIONS]} />
@@ -279,7 +280,7 @@ export function AdminExercisesClient() {
           <div className="flex items-center justify-end gap-1">
             <Link
               href={`/admin/exercises/${row.id}`}
-              className={`${actionClass} hover:text-white hover:bg-zinc-800/60`}
+              className={`${actionClass} hover:text-ink hover:bg-elevated`}
               title="Edit"
               aria-label={`Edit ${row.name}`}
             >
@@ -292,7 +293,7 @@ export function AdminExercisesClient() {
                   setModalError(null);
                   setTarget({ row, action: "restore" });
                 }}
-                className={`${actionClass} hover:text-emerald-300 hover:bg-emerald-500/10`}
+                className={`${actionClass} hover:text-ink hover:bg-elevated`}
                 title="Restore"
                 aria-label={`Restore ${row.name}`}
               >
@@ -302,7 +303,7 @@ export function AdminExercisesClient() {
               <button
                 type="button"
                 onClick={() => void openArchive(row)}
-                className={`${actionClass} hover:text-amber-300 hover:bg-amber-500/10`}
+                className={`${actionClass} hover:text-warn hover:bg-elevated`}
                 title="Archive"
                 aria-label={`Archive ${row.name}`}
               >
@@ -313,9 +314,9 @@ export function AdminExercisesClient() {
         )}
       />
 
-      <ConfirmModal
+      <ConfirmDialog
         isOpen={Boolean(target)}
-        onClose={() => {
+        onCancel={() => {
           if (!modalBusy) setTarget(null);
         }}
         onConfirm={runAction}
@@ -326,18 +327,17 @@ export function AdminExercisesClient() {
             : `Archive "${target?.row.name ?? ""}"? It disappears from the exercise picker. Routines that contain it and logged workouts keep it, and you can restore it at any time.`
         }
         confirmLabel={target?.action === "restore" ? "Restore" : "Archive"}
-        confirmVariant={target?.action === "restore" ? "primary" : "warning"}
-        isLoading={modalBusy}
+        isWorking={modalBusy}
         error={modalError}
       >
         {target?.action === "archive" && (
-          <p className="text-sm text-zinc-300" aria-live="polite">
+          <p className="text-sm text-ink-2" aria-live="polite">
             {usageError
               ? `Usage could not be checked: ${usageError}`
               : usageText ?? "Checking where it is used…"}
           </p>
         )}
-      </ConfirmModal>
+      </ConfirmDialog>
     </div>
   );
 }

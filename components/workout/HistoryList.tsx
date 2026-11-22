@@ -2,8 +2,11 @@
 
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, ChevronRight, Trophy } from "lucide-react";
+import { ChevronRight, Dumbbell, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { buttonClasses } from "@/components/ui/button-styles";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 import { useUser } from "@/context/UserContext";
 import { api, errorMessage } from "@/lib/client/api";
 import { formatVolume } from "@/lib/fitness/units";
@@ -59,87 +62,78 @@ export function HistoryList({ initialSessions, initialCursor }: HistoryListProps
     }
   };
 
-  return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <header className="flex items-center gap-2">
-        <Link
-          href="/workouts"
-          aria-label="Back to Train"
-          className="grid h-11 w-11 -ms-2 place-items-center rounded-full text-zinc-300 active:bg-white/10"
-        >
-          <ArrowLeft className="h-5 w-5" aria-hidden="true" />
-        </Link>
-        <h1 className="text-2xl font-bold text-white">Workout history</h1>
-      </header>
-
-      {sessions.length === 0 ? (
-        <div className="rounded-3xl border border-dashed border-line px-4 py-12 text-center">
-          <p className="text-base font-semibold text-white">No workouts yet</p>
-          <p className="mt-1 text-sm text-zinc-400">Every workout you finish is kept here.</p>
-          <Link
-            href="/workouts"
-            className="mt-4 inline-flex min-h-11 items-center rounded-xl bg-emerald-500 px-5 text-sm font-bold text-zinc-950"
-          >
-            Go to Train
+  if (sessions.length === 0) {
+    return (
+      <EmptyState
+        icon={<Dumbbell className="h-5 w-5" />}
+        title="No workouts yet"
+        description="Every workout you finish is kept here, with its sets and records."
+        actions={
+          <Link href="/workouts" className={buttonClasses({ variant: "secondary" })}>
+            Go to Workouts
           </Link>
-        </div>
-      ) : (
-        months.map((month) => (
-          <section key={month.key} aria-labelledby={`month-${month.key}`} className="space-y-2">
-            <h2 id={`month-${month.key}`} className="flex items-baseline justify-between px-1">
-              <span className="text-base font-semibold text-white">{month.label}</span>
-              <span className="text-sm text-zinc-400">{pluralize(month.items.length, "workout")}</span>
-            </h2>
-            <ul className="divide-y divide-line overflow-hidden rounded-3xl border border-line bg-surface">
-              {month.items.map((session) => {
-                const groups = muscleGroupSummary(session.muscleGroups);
-                return (
-                  <li key={session.id}>
-                    <Link
-                      href={`/workouts/history/${session.id}`}
-                      className="flex min-h-16 items-center gap-3 px-4 py-3 active:bg-white/5"
-                    >
-                      <span className="w-12 shrink-0 text-center">
-                        <span className="block text-xs text-zinc-400">
-                          {formatDateString(session.localDate, { weekday: "short" })}
-                        </span>
-                        <span className="block text-xl font-bold text-white tabular-nums">
-                          {Number(session.localDate.slice(8, 10))}
-                        </span>
+        }
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {months.map((month) => (
+        <section key={month.key} aria-labelledby={`month-${month.key}`} className="space-y-2">
+          <SectionHeader id={`month-${month.key}`} title={month.label} meta={pluralize(month.items.length, "workout")} />
+          <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
+            {month.items.map((session) => {
+              const groups = muscleGroupSummary(session.muscleGroups);
+              const details = [
+                formatDurationShort(session.durationSec),
+                pluralize(session.totals.completedSets, "set"),
+                session.totals.volumeKg > 0 ? formatVolume(session.totals.volumeKg, weightUnit) : null,
+              ].filter(Boolean);
+              return (
+                <li key={session.id}>
+                  <Link
+                    href={`/workouts/history/${session.id}`}
+                    className="flex min-h-16 items-center gap-3 px-3.5 py-2.5 transition-colors hover:bg-elevated/60 active:bg-elevated"
+                  >
+                    <span className="w-9 shrink-0 text-center" aria-hidden="true">
+                      <span className="block text-xs text-ink-3">{formatDateString(session.localDate, { weekday: "short" })}</span>
+                      <span className="block font-mono text-[17px] font-semibold leading-6 tabular-nums text-ink">
+                        {Number(session.localDate.slice(8, 10))}
                       </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-base font-semibold text-white">{session.name}</span>
-                        <span className="block truncate text-sm text-zinc-400">
-                          {formatDurationShort(session.durationSec)} · {pluralize(session.totals.completedSets, "set")}
-                          {session.totals.volumeKg > 0 ? ` · ${formatVolume(session.totals.volumeKg, weightUnit)}` : ""}
-                        </span>
-                        {groups && <span className="block truncate text-sm text-zinc-400">{groups}</span>}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="sr-only">{formatDateString(session.localDate, { weekday: "long", month: "long", day: "numeric" })}: </span>
+                      <span className="block truncate text-sm font-medium text-ink">{session.name}</span>
+                      <span className="mt-0.5 block truncate text-xs text-ink-3">
+                        {details.join(" · ")}
+                        {groups ? ` · ${groups}` : ""}
                       </span>
-                      {session.totals.prCount > 0 && (
-                        <span className="flex shrink-0 items-center gap-1 text-sm font-semibold text-amber-300">
-                          <Trophy className="h-4 w-4" aria-hidden="true" />
-                          {session.totals.prCount}
-                          <span className="sr-only">personal records</span>
-                        </span>
-                      )}
-                      <ChevronRight className="h-5 w-5 shrink-0 text-zinc-500" aria-hidden="true" />
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        ))
-      )}
+                    </span>
+                    {session.totals.prCount > 0 && (
+                      <span className="flex shrink-0 items-center gap-1 font-mono text-[13px] font-semibold tabular-nums text-warn">
+                        <Trophy className="h-3.5 w-3.5" aria-hidden="true" />
+                        {session.totals.prCount}
+                        <span className="sr-only">{session.totals.prCount === 1 ? "personal record" : "personal records"}</span>
+                      </span>
+                    )}
+                    <ChevronRight className="h-4 w-4 shrink-0 text-ink-3" aria-hidden="true" />
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ))}
 
       {error && (
-        <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+        <p role="alert" className="rounded-control border border-line bg-surface px-3 py-2.5 text-sm text-danger">
           {error}
         </p>
       )}
 
       {cursor && (
-        <Button variant="bordered" className="w-full" isLoading={isLoading} onClick={() => void loadMore()}>
+        <Button variant="secondary" fullWidth isLoading={isLoading} onClick={() => void loadMore()}>
           Show older workouts
         </Button>
       )}

@@ -3,7 +3,7 @@
 import React, { useCallback, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
-import { Modal } from "@/components/ui/Modal";
+import { Sheet } from "@/components/ui/Sheet";
 import { useToast } from "@/components/ui/Toast";
 import { api, ApiError, errorMessage } from "@/lib/client/api";
 import { markDashboardStale } from "@/lib/dashboard/stale";
@@ -17,6 +17,9 @@ export interface StartInput {
   startedAt?: string;
   name?: string;
 }
+
+/** What a call to `start` did: navigation began, the open-workout sheet is showing, it failed (a toast says why), or it was ignored. */
+export type StartResult = "started" | "conflict" | "error" | "busy";
 
 interface Conflict {
   pending: StartInput;
@@ -55,16 +58,17 @@ export function useStartWorkout(active: { id: string; name: string } | null) {
 
   const isBusy = busyKey !== null || isNavigating;
 
-  const start = async (input: StartInput, key: string = "start"): Promise<void> => {
-    if (isBusy) return;
+  const start = async (input: StartInput, key: string = "start"): Promise<StartResult> => {
+    if (isBusy) return "busy";
     setError(null);
     if (active) {
       setConflict({ pending: input, sessionId: active.id, sessionName: active.name });
-      return;
+      return "conflict";
     }
     setBusyKey(key);
     try {
       await create(input);
+      return "started";
     } catch (err) {
       if (err instanceof ApiError && err.status === 409 && typeof err.details?.sessionId === "string") {
         setConflict({
@@ -72,9 +76,10 @@ export function useStartWorkout(active: { id: string; name: string } | null) {
           sessionId: err.details.sessionId,
           sessionName: typeof err.details.sessionName === "string" ? err.details.sessionName : "Workout",
         });
-      } else {
-        toast(errorMessage(err), "error");
+        return "conflict";
       }
+      toast(errorMessage(err), "error");
+      return "error";
     } finally {
       setBusyKey(null);
     }
@@ -103,7 +108,7 @@ export function useStartWorkout(active: { id: string; name: string } | null) {
   };
 
   const dialog = (
-    <Modal
+    <Sheet
       isOpen={Boolean(conflict)}
       onClose={() => {
         if (!isBusy) setConflict(null);
@@ -114,8 +119,7 @@ export function useStartWorkout(active: { id: string; name: string } | null) {
       footer={
         <>
           <Button
-            variant="bordered"
-            className="text-red-300 border-red-500/30"
+            variant="danger"
             isLoading={busyKey === "replace"}
             disabled={isBusy}
             onClick={() => void discardAndStart()}
@@ -136,16 +140,16 @@ export function useStartWorkout(active: { id: string; name: string } | null) {
         </>
       }
     >
-      <p className="text-base text-zinc-300">
+      <p className="text-sm leading-5 text-ink-2">
         &ldquo;{conflict?.sessionName}&rdquo; is not finished yet. Only one workout can be open at a time: resume it,
         or discard it to start a new one.
       </p>
       {error && (
-        <p role="alert" className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+        <p role="alert" className="mt-3 rounded-control border border-line bg-surface px-3 py-2.5 text-sm text-danger">
           {error}
         </p>
       )}
-    </Modal>
+    </Sheet>
   );
 
   return { start, open, busyKey, isBusy, isNavigating, dialog };

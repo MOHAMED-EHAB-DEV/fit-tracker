@@ -36,6 +36,6 @@ export async function getAdminSession(): Promise<AdminUser | null> {
 export async function requireAdminPage(): Promise<AdminUser> {
   const user = await getFullUser();
   if (!user) redirect(LOGIN_REDIRECT);
-  if (user.role !== "admin") redirect("/");
+  if (user.role !== "admin") redirect("/dashboard");
   return user as unknown as AdminUser;
 }

@@ -60,12 +60,14 @@ development server at the production database.**
 | `bun run start` | Serve a production build |
 | `bun run lint` | ESLint |
 | `bun run typecheck` | TypeScript (`tsc --noEmit`) |
+| `bun run lint:tokens` | Design-token check: no raw palette classes or hex colours in `app/` and `components/` (`--strict` in CI) |
 | `bun run test` / `test:watch` | Vitest (unit and integration tests on an in-memory MongoDB) |
 | `bun run bump[:patch\|:minor\|:major]` | Bump `version.json` (Android `versionName`/`versionCode`) |
 
 The same checks run in CI (`.github/workflows/ci.yml`) on every push and pull
 request: install with the frozen lockfile, `next typegen` + type-check, lint,
-tests, and a build with dummy environment values.
+the design-token check, and a build with dummy environment values. The tests
+run locally only (`tests/` is not in the repository).
 
 ## Environment variables
 
@@ -112,6 +114,44 @@ FitTrackerAndroid/  Android wrapper app
 scripts/          dev-local.mjs, bump-version.mjs
 tests/            Vitest suites
 ```
+
+## Design
+
+The interface follows one system, "Calibrated Matte, glass chrome": matte
+content on a warm neutral canvas, glass only on the chrome (tab bar, page
+header, sheets, popovers, toasts), mono numerals, one cobalt accent. The full
+spec and the reference mockups are in `docs/design/` (`README.md`, `PLAN.md`,
+`mockup-*.html`).
+
+- **Tokens** live in `app/globals.css`: colours (`canvas`, `surface`,
+  `elevated`, `recessed`, `line`, `line-strong`, `ink`, `ink-2`, `ink-3`,
+  `ink-inverse`, `accent`, `accent-soft`, `ok`, `warn`, `danger`, `scrim`),
+  radii (`rounded-card` 14px, `rounded-control` 10px, `rounded-chip` 6px), type
+  roles (`text-display`, `text-title`, `text-section`), the glass utilities
+  (`glass-chrome`, `glass-chrome-top`, `glass-sheet`, `glass-float`) and the
+  layout variables (`--nav-height`, `--rail-width`, `--dock-height`). Screens use
+  these names only; `bun run lint:tokens` fails on raw palette classes or hex
+  colours.
+- **Themes**: light by default, dark from the system, or chosen in Settings →
+  Appearance (System / Light / Dark, kept on the device). `THEME_INIT_SCRIPT`
+  (`lib/ui/theme.ts`) sets `html[data-theme]` before the first paint.
+- **Fonts**: IBM Plex Sans and IBM Plex Mono (numbers, times, weights).
+- **Shared parts** in `components/ui/`: Button, IconButton, Input, Textarea,
+  NumberField, Select, SegmentedControl / SegmentedNav, Chip / FilterChip,
+  Checkbox, Tick, Sheet (bottom sheet on phones, centred dialog from 768px),
+  ConfirmDialog, Popover, Calendar, DateStepper, Surface, Stat, ProgressTrack,
+  SuggestedCard, Toast, EmptyState, Skeleton. `/ui-kit` shows them all (in
+  development only).
+- **Rules**: one primary button per view; reversible deletes happen at once with
+  Undo in a toast, irreversible ones ask first (ConfirmDialog); anything the AI
+  prepares waits in a Suggested card until accepted; sheets for tasks, popovers
+  for small choices; a user-chosen colour appears only as a 3px bar; sentence
+  case everywhere.
+- **Brand**: `components/shared/BrandMark.tsx` (mark and wordmark, fixed
+  `--brand-*` colours). The icons in `public/icons/` and `app/favicon.ico` are
+  drawn from the same geometry; the Android launcher icon, notification icon
+  and colours (`FitTrackerAndroid/app/src/main/res/`, light and `values-night`)
+  match it.
 
 ## Workout data model
 

@@ -1,0 +1,1111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FitTracker — Personal fitness tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { -webkit-font-smoothing: antialiased; }
+  a { color: inherit; text-decoration: none; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+
+  /* ===== DESIGN TOKENS (DEFAULT: DARK + SIGNAL COBALT) ===== */
+  .page-root {
+    --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+    --r-card: 14px;
+    --r-ctrl: 10px;
+    --r-chip: 6px;
+    --r-pill: 9999px;
+    --user-teal: #2CA58D;
+    --user-violet: #8B6CE8;
+    --user-sky: #3E8ED0;
+
+    --bg-canvas: #0C0D0F;
+    --bg-surface: #141619;
+    --bg-elevated: #1C1F24;
+    --bg-recessed: #090A0C;
+    --border-subtle: #242830;
+    --border-strong: #373D48;
+    --ink-primary: #F2F4F7;
+    --ink-secondary: #9CA3AF;
+    --ink-muted: #7C8594;
+    --ink-inverse: #0C0D0F;
+    --status-ok: #3FB978;
+    --status-warn: #E5A93C;
+    --status-danger: #E85454;
+    --tick-color: rgba(12, 13, 15, 0.55);
+    --accent: #4C82FB;
+    --accent-soft: rgba(76, 130, 251, 0.14);
+
+    /* Glass Chrome Tokens */
+    --glass-chrome-bg: rgba(16, 18, 22, 0.82);
+    --glass-live-tint: rgba(76, 130, 251, 0.08);
+    --glass-blur-chrome: blur(20px) saturate(160%);
+    --glass-border: rgba(255, 255, 255, 0.09);
+    --glass-specular: inset 0 1px 0 rgba(255, 255, 255, 0.10);
+    --glass-shadow-bar: 0 -6px 20px rgba(0, 0, 0, 0.32);
+    --glass-shadow-top: 0 6px 20px rgba(0, 0, 0, 0.24);
+    --glass-fallback-chrome: #111317;
+
+    min-height: 100vh;
+    background: var(--bg-canvas);
+    color: var(--ink-primary);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.55;
+  }
+
+  /* LIGHT THEME OVERRIDE */
+  .page-root:has(#t-light:checked) {
+    --bg-canvas: #F5F4F0;
+    --bg-surface: #FFFFFF;
+    --bg-elevated: #ECEAE2;
+    --bg-recessed: #E6E3DA;
+    --border-subtle: #E1DED5;
+    --border-strong: #C5C0B4;
+    --ink-primary: #171715;
+    --ink-secondary: #57564F;
+    --ink-muted: #6A685F;
+    --ink-inverse: #FFFFFF;
+    --status-ok: #1D7A4C;
+    --status-warn: #B4690E;
+    --status-danger: #C4322B;
+    --tick-color: rgba(245, 244, 240, 0.75);
+    --accent: #2563EB;
+    --accent-soft: rgba(37, 99, 235, 0.10);
+
+    --glass-chrome-bg: rgba(245, 244, 240, 0.84);
+    --glass-live-tint: rgba(37, 99, 235, 0.06);
+    --glass-blur-chrome: blur(20px) saturate(140%);
+    --glass-border: rgba(23, 23, 21, 0.10);
+    --glass-specular: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+    --glass-shadow-bar: 0 -6px 20px rgba(23, 23, 21, 0.06);
+    --glass-shadow-top: 0 6px 20px rgba(23, 23, 21, 0.06);
+    --glass-fallback-chrome: #F5F4F0;
+  }
+
+  /* ===== GLASS CHROME + FALLBACKS ===== */
+  .glass-header {
+    background: var(--glass-chrome-bg);
+    -webkit-backdrop-filter: var(--glass-blur-chrome);
+    backdrop-filter: var(--glass-blur-chrome);
+    border-bottom: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow-top);
+  }
+  .glass-chrome {
+    background: var(--glass-chrome-bg);
+    -webkit-backdrop-filter: var(--glass-blur-chrome);
+    backdrop-filter: var(--glass-blur-chrome);
+    border-top: 1px solid var(--glass-border);
+    box-shadow: var(--glass-specular), var(--glass-shadow-bar);
+  }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass-header, .glass-chrome { background: var(--glass-fallback-chrome); border-color: var(--border-subtle); }
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .glass-header, .glass-chrome { background: var(--glass-fallback-chrome); -webkit-backdrop-filter: none; backdrop-filter: none; border-color: var(--border-subtle); }
+  }
+
+  /* ===== MOTION ===== */
+  @keyframes pulse-live {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.42; }
+  }
+  .live-dot {
+    width: 7px; height: 7px; border-radius: var(--r-pill); background: var(--accent);
+    animation: pulse-live 2.2s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+
+  /* ===== LAYOUT PRIMITIVES ===== */
+  .container { width: 100%; max-width: 1120px; margin: 0 auto; padding-inline: 24px; }
+  .section { padding-block: 72px; border-top: 1px solid var(--border-subtle); }
+  .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .icon { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; flex-shrink: 0; }
+  .icon-sm { width: 15px; height: 15px; }
+  .icon-xs { width: 13px; height: 13px; }
+
+  .btn-primary {
+    height: 46px; padding: 0 20px; border: 0; border-radius: var(--r-ctrl);
+    background: var(--ink-primary); color: var(--ink-inverse);
+    font: 600 14px/1 var(--font-sans); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap;
+    transition: opacity 160ms ease;
+  }
+  .btn-primary:hover { opacity: 0.9; }
+  .btn-secondary {
+    height: 46px; padding: 0 18px; border-radius: var(--r-ctrl);
+    background: var(--bg-elevated); color: var(--ink-primary);
+    border: 1px solid var(--border-subtle); font: 500 14px/1 var(--font-sans); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap;
+    transition: border-color 160ms ease;
+  }
+  .btn-secondary:hover { border-color: var(--border-strong); }
+  .btn-sm { height: 36px; padding: 0 13px; font-size: 13px; border-radius: var(--r-chip); }
+
+  /* ===== STICKY GLASS HEADER ===== */
+  .site-header { position: sticky; top: 0; z-index: 40; }
+  .header-inner { height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .brand { display: inline-flex; align-items: center; gap: 9px; font-size: 16px; font-weight: 600; letter-spacing: -0.02em; }
+  .brand-mark { width: 28px; height: 28px; border-radius: 7px; overflow: hidden; flex-shrink: 0; display: block; }
+  .nav-links { display: flex; align-items: center; gap: 26px; font-size: 14px; color: var(--ink-secondary); }
+  .nav-links a { transition: color 150ms ease; }
+  .nav-links a:hover { color: var(--ink-primary); }
+  .header-right { display: flex; align-items: center; gap: 10px; }
+  .signin-link { font-size: 13px; font-weight: 500; color: var(--ink-secondary); padding: 6px 8px; transition: color 150ms ease; white-space: nowrap; }
+  .signin-link:hover { color: var(--ink-primary); }
+
+  /* Header Dark/Light Switch */
+  .theme-switch {
+    display: inline-flex; padding: 2px; border-radius: var(--r-chip);
+    background: var(--bg-surface); border: 1px solid var(--border-subtle); gap: 2px;
+  }
+  .theme-opt {
+    width: 28px; height: 26px; border-radius: 4px; cursor: pointer;
+    color: var(--ink-muted); display: inline-flex; align-items: center; justify-content: center;
+    transition: background 150ms ease, color 150ms ease;
+  }
+  .page-root:has(#t-dark:checked) label[for="t-dark"],
+  .page-root:has(#t-light:checked) label[for="t-light"] {
+    background: var(--bg-elevated); color: var(--ink-primary);
+  }
+
+  /* ===== HERO ===== */
+  .hero { padding-top: 56px; padding-bottom: 64px; }
+  .hero-copy { max-width: 660px; }
+  .hero-h1 {
+    font-size: clamp(32px, 4.4vw, 48px); font-weight: 600;
+    line-height: 1.1; letter-spacing: -0.03em; color: var(--ink-primary);
+  }
+  .hero-sub {
+    margin-top: 16px; font-size: clamp(16px, 1.8vw, 18px);
+    line-height: 1.5; color: var(--ink-secondary); max-width: 580px;
+  }
+  .hero-actions { margin-top: 26px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; }
+  .hero-note { margin-top: 14px; font-size: 13px; color: var(--ink-muted); display: flex; flex-wrap: wrap; gap: 6px 14px; }
+  .hero-note a { color: var(--ink-secondary); border-bottom: 1px solid var(--border-strong); padding-bottom: 1px; }
+  .hero-vignettes {
+    margin-top: 40px; display: grid; grid-template-columns: 1fr 1.08fr; gap: 20px; align-items: start;
+  }
+
+  /* ===== APP COMPONENT VIGNETTES (REUSED FROM APP SYSTEM) ===== */
+  .vignette {
+    background: var(--bg-surface); border: 1px solid var(--border-subtle);
+    border-radius: var(--r-card); overflow: hidden; position: relative;
+  }
+  .vig-topbar {
+    height: 44px; padding: 0 14px; border-bottom: 1px solid var(--border-subtle);
+    display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 600;
+  }
+  .vig-muted { font-size: 12px; font-weight: 400; color: var(--ink-muted); }
+  .vig-body { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  .matte-card { background: var(--bg-canvas); border: 1px solid var(--border-subtle); border-radius: var(--r-card); overflow: hidden; }
+  .matte-pad { padding: 14px; }
+
+  /* Vernier Track */
+  .track { position: relative; height: 6px; width: 100%; border-radius: 3px; background: var(--bg-elevated); overflow: hidden; }
+  .track-sm { height: 4px; border-radius: 2px; }
+  .track-fill { height: 100%; background: var(--ink-primary); border-radius: inherit; }
+  .track-fill-accent { background: var(--accent); }
+  .track::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(90deg, transparent 0, transparent calc(25% - 1px), var(--tick-color) calc(25% - 1px), var(--tick-color) 25%);
+  }
+
+  /* Today Vignette */
+  .week-strip {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px;
+    padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--border-subtle);
+  }
+  .day-cell { display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 12px; color: var(--ink-muted); }
+  .day-dot { width: 18px; height: 4px; border-radius: 2px; background: var(--bg-elevated); }
+  .day-done .day-dot { background: var(--ink-primary); }
+  .day-today { color: var(--ink-primary); font-weight: 600; }
+  .day-today .day-dot { background: var(--accent); }
+  .cal-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+  .cal-hero { font-size: 28px; font-weight: 500; letter-spacing: -0.03em; line-height: 1; }
+  .cal-unit { font-size: 14px; color: var(--ink-secondary); margin-inline-start: 4px; font-family: var(--font-sans); }
+  .macro-row { display: grid; grid-template-columns: 1.25fr 1fr 1fr; border-top: 1px solid var(--border-subtle); }
+  .macro-cell { padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+  .macro-cell + .macro-cell { border-inline-start: 1px solid var(--border-subtle); }
+  .cell-label { font-size: 12px; color: var(--ink-muted); }
+  .cell-val { font-size: 14px; font-weight: 500; color: var(--ink-primary); white-space: nowrap; }
+  .cell-val span { color: var(--ink-muted); font-weight: 400; font-size: 12px; }
+  .move-row { display: grid; grid-template-columns: 0.84fr 1.16fr; border-top: 1px solid var(--border-subtle); }
+  .move-cell { padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .move-cell + .move-cell { border-inline-start: 1px solid var(--border-subtle); }
+  .move-stack { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+  .water-add {
+    height: 36px; padding: 0 9px; border-radius: var(--r-chip); flex-shrink: 0;
+    background: var(--bg-elevated); border: 1px solid var(--border-strong);
+    color: var(--ink-primary); font: 500 12px/1 var(--font-mono); white-space: nowrap;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+
+  /* Live Session Vignette (with Glass Dock over Exercise Ledger) */
+  .session-progress {
+    position: relative; height: 3px; width: 100%; background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .session-progress-fill { height: 100%; background: var(--ink-primary); }
+  .session-progress::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(90deg, transparent 0, transparent calc(16.666% - 1.5px), var(--bg-canvas) calc(16.666% - 1.5px), var(--bg-canvas) 16.666%);
+  }
+  .sync-chip { display: inline-flex; align-items: center; gap: 4px; color: var(--status-ok); font-size: 12px; font-weight: 500; }
+  .sync-dot { width: 6px; height: 6px; border-radius: var(--r-pill); background: currentColor; }
+  .ex-head { padding: 12px 12px 9px; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .ex-title { font-size: 16px; font-weight: 600; letter-spacing: -0.015em; }
+  .rest-chip {
+    height: 26px; padding: 0 8px; border-radius: var(--r-chip);
+    background: var(--bg-canvas); border: 1px solid var(--border-subtle);
+    font-size: 12px; color: var(--ink-secondary); display: inline-flex; align-items: center; gap: 4px;
+  }
+  .set-grid {
+    display: grid; grid-template-columns: 32px 54px minmax(0, 1fr) minmax(0, 0.9fr) 44px;
+    gap: 6px; padding: 0 10px; align-items: center;
+  }
+  .set-colhead {
+    height: 26px; font-size: 12px; font-weight: 500; color: var(--ink-muted);
+    border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle);
+    background: var(--bg-recessed);
+  }
+  .col-c { text-align: center; }
+  .set-row { min-height: 46px; padding-block: 4px; border-bottom: 1px solid var(--border-subtle); }
+  .set-row-done { background: var(--bg-canvas); }
+  .set-row-active { background: var(--bg-surface); box-shadow: inset 3px 0 0 var(--accent); }
+  .set-badge {
+    width: 32px; height: 32px; border-radius: var(--r-chip);
+    background: var(--bg-surface); border: 1px solid var(--border-subtle);
+    font-size: 12px; font-weight: 600; color: var(--ink-secondary);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .set-badge-active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .num-cell {
+    height: 36px; border-radius: var(--r-chip); background: var(--bg-elevated);
+    border: 1px solid var(--border-strong); color: var(--ink-muted);
+    font: 500 14px/1 var(--font-mono); display: flex; align-items: center; justify-content: center;
+  }
+  .set-row-done .num-cell { background: transparent; border-color: transparent; color: var(--ink-secondary); }
+  .done-btn {
+    width: 44px; height: 36px; border-radius: var(--r-chip);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .done-btn-done { background: var(--bg-elevated); border: 1px solid var(--border-subtle); color: var(--ink-primary); }
+  .done-btn-active { background: var(--ink-primary); border: 1px solid var(--ink-primary); color: var(--ink-inverse); }
+  .pr-line { grid-column: 2 / 5; font-size: 12px; color: var(--status-warn); font-weight: 600; display: flex; gap: 8px; }
+  .ex-under { padding: 12px; border-bottom: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center; }
+  .vig-ledger-wrap { position: relative; padding-bottom: 108px; }
+  .vig-dock { position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; }
+  .vig-rest { padding: 8px 12px; border-bottom: 1px solid var(--glass-border); background: var(--glass-live-tint); }
+  .vig-rest-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+  .rest-clock { font-size: 19px; font-weight: 600; color: var(--accent); letter-spacing: -0.02em; }
+  .rest-pills { display: flex; gap: 5px; }
+  .rest-pill {
+    height: 28px; padding: 0 8px; border-radius: var(--r-chip);
+    background: var(--bg-elevated); border: 1px solid var(--border-subtle);
+    font: 500 12px/1 var(--font-mono); color: var(--ink-primary); display: inline-flex; align-items: center;
+  }
+  .vig-dock-btns { padding: 8px 12px 10px; display: grid; grid-template-columns: auto 1fr; gap: 8px; }
+
+  /* ===== GYM FLOOR 3-FACT LEDGER ===== */
+  .facts-band { padding-block: 44px; border-top: 1px solid var(--border-subtle); }
+  .facts-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    border: 1px solid var(--border-subtle); border-radius: var(--r-card);
+    background: var(--bg-surface); overflow: hidden;
+  }
+  .fact-cell { padding: 22px; display: flex; flex-direction: column; gap: 8px; }
+  .fact-cell + .fact-cell { border-inline-start: 1px solid var(--border-subtle); }
+  .fact-num { font-size: 12px; color: var(--accent); font-weight: 600; }
+  .fact-title { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+  .fact-desc { font-size: 14px; color: var(--ink-secondary); }
+
+  /* ===== SECTION HEADINGS ===== */
+  .sec-head { max-width: 600px; margin-bottom: 44px; }
+  .sec-label { font-size: 13px; font-weight: 500; color: var(--accent); margin-bottom: 8px; display: block; }
+  .sec-h2 { font-size: clamp(24px, 3vw, 32px); font-weight: 600; letter-spacing: -0.025em; line-height: 1.18; }
+  .sec-sub { margin-top: 10px; font-size: 15px; color: var(--ink-secondary); }
+
+  /* ===== FIVE FEATURE ROWS (ALTERNATING ON DESKTOP) ===== */
+  .features-stack { display: flex; flex-direction: column; gap: 56px; }
+  .feat-row { display: grid; grid-template-columns: 1fr 1.08fr; gap: 48px; align-items: center; }
+  .feat-flip .feat-copy { order: 2; }
+  .feat-copy { display: flex; flex-direction: column; gap: 12px; }
+  .feat-kicker {
+    display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: var(--ink-secondary);
+  }
+  .feat-h3 { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; }
+  .feat-p { font-size: 15px; color: var(--ink-secondary); }
+  .feat-list { list-style: none; display: flex; flex-direction: column; gap: 6px; margin-top: 4px; font-size: 14px; color: var(--ink-secondary); }
+  .feat-list li { display: flex; align-items: center; gap: 8px; }
+  .feat-list svg { color: var(--ink-muted); }
+
+  /* Feature Vignette Specifics */
+  .week-assign { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+  .wa-day {
+    padding: 7px 2px; border-radius: var(--r-chip); background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle); display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 12px;
+  }
+  .wa-today { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .wa-open { background: transparent; border-style: dashed; border-color: var(--border-strong); color: var(--ink-muted); }
+  .list-row { padding: 11px 13px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .list-row + .list-row { border-top: 1px solid var(--border-subtle); }
+  .row-title { font-size: 14px; font-weight: 600; }
+  .row-sub { font-size: 12px; color: var(--ink-muted); margin-top: 2px; }
+
+  /* Dashed Suggested AI Card */
+  .suggested-card {
+    background: var(--bg-canvas); border: 1.5px dashed var(--border-strong);
+    border-radius: var(--r-card); padding: 13px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .sug-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .sug-badge {
+    height: 24px; padding: 0 8px; border-radius: var(--r-chip);
+    background: var(--bg-elevated); border: 1px solid var(--border-subtle);
+    font-size: 12px; font-weight: 500; color: var(--ink-secondary); display: inline-flex; align-items: center; gap: 5px;
+  }
+  .sug-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+  /* Plan Vignette */
+  .user-bar { width: 3px; height: 28px; border-radius: 2px; flex-shrink: 0; }
+  .mini-dots { display: flex; gap: 4px; margin-top: 5px; }
+  .m-dot { width: 12px; height: 4px; border-radius: 2px; background: var(--bg-elevated); }
+  .m-dot-done { background: var(--ink-secondary); }
+  .m-dot-today { background: var(--accent); }
+  .habit-check {
+    width: 26px; height: 26px; border-radius: var(--r-chip); flex-shrink: 0;
+    border: 1.5px solid var(--border-strong); display: inline-flex; align-items: center; justify-content: center;
+  }
+  .habit-check-done { background: var(--ink-primary); border-color: var(--ink-primary); color: var(--ink-inverse); }
+
+  /* Coach Vignette */
+  .chat-msg { padding: 10px 12px; border-radius: var(--r-ctrl); font-size: 13px; line-height: 1.45; }
+  .chat-user { background: var(--bg-elevated); color: var(--ink-primary); align-self: flex-end; max-width: 85%; }
+  .chat-ai { background: var(--bg-canvas); border: 1px solid var(--border-subtle); color: var(--ink-secondary); }
+
+  /* ===== AI THAT ASKS FIRST + ANDROID + TRUST ===== */
+  .two-col-band { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
+  .widget-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .widget-tile {
+    background: var(--bg-surface); border: 1px solid var(--border-subtle);
+    border-radius: var(--r-card); padding: 14px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .widget-wide { grid-column: 1 / -1; }
+  .trust-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
+  }
+  .trust-card {
+    background: var(--bg-surface); border: 1px solid var(--border-subtle);
+    border-radius: var(--r-card); padding: 20px; display: flex; flex-direction: column; gap: 9px;
+  }
+  .trust-icon {
+    width: 34px; height: 34px; border-radius: var(--r-chip);
+    background: var(--bg-elevated); border: 1px solid var(--border-subtle);
+    color: var(--ink-primary); display: inline-flex; align-items: center; justify-content: center;
+  }
+
+  /* ===== FAQ (CSS-ONLY NATIVE DETAILS) ===== */
+  .faq-list {
+    max-width: 780px; border: 1px solid var(--border-subtle);
+    border-radius: var(--r-card); background: var(--bg-surface); overflow: hidden;
+  }
+  .faq-item + .faq-item { border-top: 1px solid var(--border-subtle); }
+  .faq-item summary {
+    list-style: none; cursor: pointer; padding: 18px 20px;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    font-size: 15px; font-weight: 600; color: var(--ink-primary);
+  }
+  .faq-item summary::-webkit-details-marker { display: none; }
+  .faq-plus { color: var(--ink-muted); transition: transform 180ms ease; }
+  .faq-item[open] .faq-plus { transform: rotate(45deg); color: var(--accent); }
+  .faq-answer { padding: 0 20px 18px; font-size: 14px; color: var(--ink-secondary); max-width: 660px; }
+
+  /* ===== FINAL CTA & FOOTER ===== */
+  .final-cta {
+    background: var(--bg-surface); border: 1px solid var(--border-subtle);
+    border-radius: var(--r-card); padding: 40px 32px;
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 24px;
+  }
+  .site-footer {
+    border-top: 1px solid var(--border-subtle); padding-block: 28px;
+    font-size: 13px; color: var(--ink-muted);
+  }
+  .footer-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+  .footer-links { display: flex; flex-wrap: wrap; gap: 20px; }
+  .footer-links a:hover { color: var(--ink-primary); }
+
+  /* ===== RESPONSIVE BREAKPOINTS (MOBILE 390px) ===== */
+  @media (max-width: 899px) {
+    .hero-vignettes, .feat-row, .two-col-band { grid-template-columns: 1fr; gap: 24px; }
+    .feat-flip .feat-copy { order: 0; }
+    .facts-grid { grid-template-columns: 1fr; }
+    .fact-cell + .fact-cell { border-inline-start: 0; border-top: 1px solid var(--border-subtle); }
+    .trust-grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 767px) {
+    .container { padding-inline: 16px; }
+    .nav-links { display: none; }
+    .header-inner { gap: 8px; }
+    .header-right { gap: 6px; }
+    .header-right .btn-primary { height: 34px; padding: 0 11px; font-size: 13px; border-radius: var(--r-chip); }
+    .signin-link { padding: 6px 4px; }
+    .hero { padding-top: 32px; padding-bottom: 44px; }
+    .section { padding-block: 48px; }
+    .trust-grid { grid-template-columns: 1fr; }
+    .final-cta { padding: 26px 20px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page-root">
+  <!-- CSS-ONLY THEME STATE -->
+  <input class="sr-only" type="radio" name="theme" id="t-dark" checked />
+  <input class="sr-only" type="radio" name="theme" id="t-light" />
+
+  <!-- ==================== STICKY GLASS HEADER ==================== -->
+  <header class="site-header glass-header">
+    <div class="container header-inner">
+      <a class="brand" href="#">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="28" height="28" viewBox="0 0 96 96" fill="none">
+            <rect width="96" height="96" rx="22" fill="#0E1014" />
+            <rect x="0.75" y="0.75" width="94.5" height="94.5" rx="21.25" stroke="rgba(255,255,255,0.12)" stroke-width="1.5" />
+            <rect x="16" y="30" width="7" height="24" rx="2.5" fill="#7C8594" />
+            <rect x="26" y="22" width="10" height="40" rx="3" fill="#F2F4F7" />
+            <rect x="36" y="39" width="24" height="6" fill="#F2F4F7" />
+            <rect x="60" y="22" width="10" height="40" rx="3" fill="#F2F4F7" />
+            <rect x="73" y="30" width="7" height="24" rx="2.5" fill="#7C8594" />
+            <rect x="46.5" y="36" width="3" height="12" rx="1.5" fill="var(--accent)" />
+            <rect x="20" y="72" width="56" height="5" rx="2.5" fill="#242830" />
+            <rect x="20" y="72" width="38" height="5" rx="2.5" fill="var(--accent)" />
+          </svg>
+        </span>
+        <span>FitTracker</span>
+      </a>
+
+      <nav class="nav-links" aria-label="Primary">
+        <a href="#features">Features</a>
+        <a href="#android">Android</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+
+      <div class="header-right">
+        <div class="theme-switch" role="group" aria-label="Appearance">
+          <label class="theme-opt" for="t-dark" title="Dark theme" aria-label="Dark theme">
+            <svg class="icon icon-xs" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+          </label>
+          <label class="theme-opt" for="t-light" title="Light theme" aria-label="Light theme">
+            <svg class="icon icon-xs" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-14.93 1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+          </label>
+        </div>
+        <a class="signin-link" href="/login">Sign in</a>
+        <a class="btn-primary btn-sm" href="/signup">Get started</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- ==================== HERO ==================== -->
+    <section class="hero">
+      <div class="container">
+        <div class="hero-copy">
+          <h1 class="hero-h1">A personal fitness tracker built like an instrument.</h1>
+          <p class="hero-sub">Log sets in one tap, see calories left for the day, and keep your plan, habits, and body trends in one calm workspace.</p>
+          <div class="hero-actions">
+            <a class="btn-primary" href="/signup">Get started</a>
+            <a class="btn-secondary" href="/login">Sign in</a>
+          </div>
+          <div class="hero-note">
+            <span>Installable web app (PWA)</span>
+            <span>·</span>
+            <a href="#android">Get the Android app</a>
+          </div>
+        </div>
+
+        <!-- TWO REAL APP UI VIGNETTES -->
+        <div class="hero-vignettes">
+          <!-- Vignette 1: Today -->
+          <div class="vignette" aria-label="Today screen preview">
+            <div class="vig-topbar">
+              <span>Sat, Nov 21</span>
+              <span class="vig-muted">Today</span>
+            </div>
+            <div class="vig-body">
+              <div class="matte-card matte-pad">
+                <div class="week-strip">
+                  <div class="day-cell day-done"><span>M</span><span class="day-dot"></span></div>
+                  <div class="day-cell day-done"><span>T</span><span class="day-dot"></span></div>
+                  <div class="day-cell"><span>W</span><span class="day-dot"></span></div>
+                  <div class="day-cell day-done"><span>T</span><span class="day-dot"></span></div>
+                  <div class="day-cell"><span>F</span><span class="day-dot"></span></div>
+                  <div class="day-cell day-today"><span>S</span><span class="day-dot"></span></div>
+                  <div class="day-cell"><span>S</span><span class="day-dot"></span></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px">
+                  <span style="font-size:16px;font-weight:600">Upper body A</span>
+                  <span class="vig-muted">Scheduled</span>
+                </div>
+                <div class="vig-muted" style="margin-bottom:12px">6 exercises · 18 sets</div>
+                <div class="btn-primary" style="height:42px;width:100%;pointer-events:none">
+                  <svg class="icon icon-sm" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+                  Start workout
+                </div>
+              </div>
+
+              <div class="matte-card">
+                <div class="matte-pad">
+                  <div class="cal-top">
+                    <div><span class="cal-hero mono">750</span><span class="cal-unit">kcal left</span></div>
+                    <span class="vig-muted mono">1,650 of 2,400</span>
+                  </div>
+                  <div class="track"><div class="track-fill" style="width:68.75%"></div></div>
+                </div>
+                <div class="macro-row">
+                  <div class="macro-cell">
+                    <span class="cell-label">Protein</span>
+                    <span class="cell-val mono">142<span> / 180 g</span></span>
+                    <div class="track track-sm"><div class="track-fill" style="width:79%"></div></div>
+                  </div>
+                  <div class="macro-cell"><span class="cell-label">Carbs</span><span class="cell-val mono">158<span> g</span></span></div>
+                  <div class="macro-cell"><span class="cell-label">Fat</span><span class="cell-val mono">49<span> g</span></span></div>
+                </div>
+                <div class="move-row">
+                  <div class="move-cell">
+                    <div class="move-stack">
+                      <span class="cell-label">Steps</span>
+                      <span class="cell-val mono">6,420<span> / 10k</span></span>
+                      <div class="track track-sm"><div class="track-fill" style="width:64%"></div></div>
+                    </div>
+                  </div>
+                  <div class="move-cell">
+                    <div class="move-stack">
+                      <span class="cell-label">Water</span>
+                      <span class="cell-val mono">1.5<span> / 2.5 L</span></span>
+                      <div class="track track-sm"><div class="track-fill" style="width:60%"></div></div>
+                    </div>
+                    <span class="water-add">+250 ml</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Vignette 2: Live Session with Glass Dock -->
+          <div class="vignette" aria-label="Live workout session preview">
+            <div class="vig-topbar">
+              <span>Upper body A</span>
+              <div style="display:flex;align-items:center;gap:10px">
+                <span class="mono vig-muted">24:10</span>
+                <span class="sync-chip"><span class="sync-dot"></span>Saved</span>
+              </div>
+            </div>
+            <div class="session-progress"><div class="session-progress-fill" style="width:27.8%"></div></div>
+            <div class="vig-ledger-wrap">
+              <div class="ex-head">
+                <div>
+                  <div class="ex-title">Barbell bench press</div>
+                  <div class="vig-muted">Last time · <span class="mono">80×8, 80×8, 80×7</span></div>
+                </div>
+                <span class="rest-chip mono">2:00</span>
+              </div>
+              <div class="set-grid set-colhead">
+                <span class="col-c">Set</span><span class="col-c">Prev</span><span class="col-c">kg</span><span class="col-c">Reps</span><span class="col-c">Done</span>
+              </div>
+              <div class="set-grid set-row set-row-done">
+                <span class="set-badge">W</span><span class="col-c vig-muted mono">60×10</span>
+                <div class="num-cell">60</div><div class="num-cell">10</div>
+                <span class="done-btn done-btn-done"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>
+              </div>
+              <div class="set-grid set-row set-row-done">
+                <span class="set-badge mono">1</span><span class="col-c vig-muted mono">80×8</span>
+                <div class="num-cell">80</div><div class="num-cell">8</div>
+                <span class="done-btn done-btn-done"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>
+              </div>
+              <div class="set-grid set-row set-row-done">
+                <span class="set-badge mono">2</span><span class="col-c vig-muted mono">80×8</span>
+                <div class="num-cell">82.5</div><div class="num-cell">8</div>
+                <span class="done-btn done-btn-done"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>
+                <div class="pr-line"><span>New PR</span></div>
+              </div>
+              <div class="set-grid set-row set-row-active">
+                <span class="set-badge set-badge-active mono">3</span><span class="col-c vig-muted mono">80×7</span>
+                <div class="num-cell">80</div><div class="num-cell">8</div>
+                <span class="done-btn done-btn-active"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>
+              </div>
+              <!-- Upcoming exercises pass visibly behind glass dock -->
+              <div class="ex-under">
+                <div><div class="row-title">Incline dumbbell press</div><div class="row-sub"><span class="mono">0 / 3</span> sets · Last <span class="mono">30 kg × 10</span></div></div>
+                <svg class="icon icon-sm" style="color:var(--ink-muted)" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+              </div>
+              <div class="ex-under">
+                <div><div class="row-title">Weighted pull-up</div><div class="row-sub"><span class="mono">0 / 3</span> sets · Last <span class="mono">+10 kg × 8</span></div></div>
+                <svg class="icon icon-sm" style="color:var(--ink-muted)" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+              </div>
+
+              <!-- Glass Live Session Dock -->
+              <div class="vig-dock glass-chrome">
+                <div class="vig-rest">
+                  <div class="track track-sm"><div class="track-fill track-fill-accent" style="width:65%"></div></div>
+                  <div class="vig-rest-row">
+                    <div style="display:flex;align-items:center;gap:8px">
+                      <span class="live-dot"></span>
+                      <span class="vig-muted">Rest</span>
+                      <span class="rest-clock mono">01:18</span>
+                    </div>
+                    <div class="rest-pills">
+                      <span class="rest-pill">-15s</span>
+                      <span class="rest-pill">+15s</span>
+                      <span class="rest-pill" style="font-family:var(--font-sans);color:var(--ink-secondary)">Skip</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="vig-dock-btns">
+                  <span class="btn-secondary btn-sm" style="height:38px;pointer-events:none">Finish</span>
+                  <span class="btn-primary btn-sm" style="height:38px;width:100%;pointer-events:none">Log set <span class="mono">3 · 80 kg × 8</span></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== BUILT FOR THE GYM FLOOR ==================== -->
+    <section class="facts-band" aria-label="Built for the gym floor">
+      <div class="container">
+        <div class="facts-grid">
+          <div class="fact-cell">
+            <span class="fact-num mono">01</span>
+            <h2 class="fact-title">One-tap repeated sets</h2>
+            <p class="fact-desc">Every open set prefills last session's weight and reps as ghost values so logging a repeated set takes one tap.</p>
+          </div>
+          <div class="fact-cell">
+            <span class="fact-num mono">02</span>
+            <h2 class="fact-title">Rest timer in the thumb zone</h2>
+            <p class="fact-desc">The live rest timer and next-set button sit docked at the bottom edge for one-handed use between sets.</p>
+          </div>
+          <div class="fact-cell">
+            <span class="fact-num mono">03</span>
+            <h2 class="fact-title">Keeps logging offline</h2>
+            <p class="fact-desc">Workouts save locally when gym reception drops and sync automatically once your connection returns.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== ONE JOB PER SCREEN ==================== -->
+    <section class="section" id="features">
+      <div class="container">
+        <div class="sec-head">
+          <span class="sec-label">One job per screen</span>
+          <h2 class="sec-h2">Five focused spaces, one shared visual grammar.</h2>
+          <p class="sec-sub">Training, nutrition, daily schedule, body check-ins, and Coach each keep one primary action in front of you.</p>
+        </div>
+
+        <div class="features-stack">
+          <!-- 1. TRAIN -->
+          <div class="feat-row">
+            <div class="feat-copy">
+              <span class="feat-kicker">
+                <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="m6.5 6.5 11 11M21 21l-1-1M3 3l1 1M18 22l4-4M2 6l4-4M3 10l7-7M14 21l7-7"/></svg>
+                Train
+              </span>
+              <h3 class="feat-h3">Routines, weekly plan, and complete workout history.</h3>
+              <p class="feat-p">Build routines, assign them across a seven-day week strip, and track personal records as you log each session.</p>
+              <ul class="feat-list">
+                <li><svg class="icon icon-xs" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Prefilled set rows and automatic PR detection</li>
+                <li><svg class="icon icon-xs" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Full workout history and per-exercise records</li>
+              </ul>
+            </div>
+            <div class="vignette">
+              <div class="vig-body">
+                <div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:8px;font-size:12px;color:var(--ink-muted)">
+                    <span style="font-weight:600;color:var(--ink-secondary)">Week plan</span>
+                    <span>Tap day to assign</span>
+                  </div>
+                  <div class="week-assign">
+                    <div class="wa-day"><span class="vig-muted">M</span><span>U-A</span></div>
+                    <div class="wa-day"><span class="vig-muted">T</span><span>L-A</span></div>
+                    <div class="wa-day"><span class="vig-muted">W</span><span class="vig-muted">Rest</span></div>
+                    <div class="wa-day"><span class="vig-muted">T</span><span>U-B</span></div>
+                    <div class="wa-day"><span class="vig-muted">F</span><span class="vig-muted">Rest</span></div>
+                    <div class="wa-day wa-today"><span>S</span><span>U-A</span></div>
+                    <div class="wa-day wa-open"><span>S</span><span>+</span></div>
+                  </div>
+                </div>
+                <div class="matte-card">
+                  <div class="list-row">
+                    <div><div class="row-title">Upper body A</div><div class="row-sub"><span class="mono">6</span> exercises · Last <span class="mono">3d</span> ago</div></div>
+                    <span class="btn-secondary btn-sm" style="height:32px;pointer-events:none">Start</span>
+                  </div>
+                  <div class="list-row">
+                    <div><div class="row-title">Lower body A</div><div class="row-sub"><span class="mono">5</span> exercises · Last <span class="mono">2d</span> ago</div></div>
+                    <span class="btn-secondary btn-sm" style="height:32px;pointer-events:none">Start</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. EAT -->
+          <div class="feat-row feat-flip">
+            <div class="feat-copy">
+              <span class="feat-kicker">
+                <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2M7 2v20M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>
+                Eat
+              </span>
+              <h3 class="feat-h3">See calories left and scan meal photos before saving.</h3>
+              <p class="feat-p">Track daily meals and macros against your target, or scan a photo of your plate to get an AI estimate you can review and edit first.</p>
+              <ul class="feat-list">
+                <li><svg class="icon icon-xs" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Remaining calories and protein, carbs, and fat</li>
+                <li><svg class="icon icon-xs" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Photo meal scan shown as an editable suggestion</li>
+              </ul>
+            </div>
+            <div class="vignette">
+              <div class="vig-body">
+                <div class="suggested-card">
+                  <div class="sug-head">
+                    <span class="sug-badge">
+                      <svg class="icon icon-xs" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>
+                      Suggested
+                    </span>
+                    <span class="vig-muted">Photo scan · Review before saving</span>
+                  </div>
+                  <div>
+                    <div class="row-title">Grilled salmon and quinoa</div>
+                    <div class="row-sub mono">540 kcal · 44 g P · 38 g C · 22 g F</div>
+                  </div>
+                  <div class="sug-btns">
+                    <span class="btn-primary btn-sm" style="width:100%;pointer-events:none">Accept</span>
+                    <span class="btn-secondary btn-sm" style="width:100%;pointer-events:none">Dismiss</span>
+                  </div>
+                </div>
+                <div class="matte-card">
+                  <div class="list-row">
+                    <div><div class="row-title">Chicken rice bowl</div><div class="row-sub mono">13:15 · 54 g P</div></div>
+                    <span class="cell-val mono">680<span> kcal</span></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. PLAN -->
+          <div class="feat-row">
+            <div class="feat-copy">
+              <span class="feat-kicker">
+                <svg class="icon icon-sm" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h.01M12 14h.01M16 14h.01"/></svg>
+                Plan
+              </span>
+              <h3 class="feat-h3">Day planner with repeating events and daily habits.</h3>
+              <p class="feat-p">Keep scheduled sessions, repeating reminders, and daily habit checklists in one calm rhythm alongside your training.</p>
+              <ul class="feat-list">
+                <li><svg class="icon icon-xs" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Repeating schedule events with reminders</li>
+                <li><svg class="icon icon-xs" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Daily habits with seven-day completion strips</li>
+              </ul>
+            </div>
+            <div class="vignette">
+              <div class="vig-body">
+                <div class="matte-card">
+                  <div class="list-row">
+                    <div style="display:flex;align-items:center;gap:10px">
+                      <span class="user-bar" style="background:var(--user-sky)"></span>
+                      <div>
+                        <div class="row-title">Physio shoulder check</div>
+                        <div class="row-sub mono">18:30 · Weekly reminder</div>
+                      </div>
+                    </div>
+                    <svg class="icon icon-sm" style="color:var(--ink-muted)" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+                  </div>
+                  <div class="list-row">
+                    <div style="display:flex;align-items:center;gap:10px">
+                      <span class="user-bar" style="background:var(--user-teal)"></span>
+                      <div>
+                        <div class="row-title">Creatine 5 g</div>
+                        <div class="mini-dots">
+                          <span class="m-dot m-dot-done"></span><span class="m-dot m-dot-done"></span><span class="m-dot m-dot-done"></span><span class="m-dot m-dot-done"></span><span class="m-dot m-dot-done"></span><span class="m-dot m-dot-done"></span><span class="m-dot m-dot-done"></span>
+                        </div>
+                      </div>
+                    </div>
+                    <span class="habit-check habit-check-done"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>
+                  </div>
+                  <div class="list-row">
+                    <div style="display:flex;align-items:center;gap:10px">
+                      <span class="user-bar" style="background:var(--user-violet)"></span>
+                      <div>
+                        <div class="row-title">Evening walk · 20 min</div>
+                        <div class="mini-dots">
+                          <span class="m-dot m-dot-done"></span><span class="m-dot m-dot-done"></span><span class="m-dot m-dot-done"></span><span class="m-dot"></span><span class="m-dot m-dot-done"></span><span class="m-dot m-dot-done"></span><span class="m-dot m-dot-today"></span>
+                        </div>
+                      </div>
+                    </div>
+                    <span class="habit-check"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. BODY -->
+          <div class="feat-row feat-flip">
+            <div class="feat-copy">
+              <span class="feat-kicker">
+                <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                Body
+              </span>
+              <h3 class="feat-h3">Weight check-ins, measurements, and private photos.</h3>
+              <p class="feat-p">Log weight in seconds or record a full check-in with body fat, measurements, and private progress photos over a clear trend chart.</p>
+              <ul class="feat-list">
+                <li><svg class="icon icon-xs" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Daily weigh-in points with a trend line</li>
+                <li><svg class="icon icon-xs" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Body fat, measurements, and private photos</li>
+              </ul>
+            </div>
+            <div class="vignette">
+              <div class="vig-body">
+                <div class="matte-card matte-pad">
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
+                    <div><span class="cal-hero mono">78.4</span><span class="cal-unit">kg</span></div>
+                    <span class="mono" style="font-size:12px;color:var(--status-ok);font-weight:500">-0.6 kg</span>
+                  </div>
+                  <svg style="width:100%;height:auto;display:block" viewBox="0 0 328 118" aria-label="Weight trend chart">
+                    <line x1="28" y1="14" x2="322" y2="14" stroke="var(--border-subtle)" stroke-width="1" stroke-dasharray="2 3" />
+                    <line x1="28" y1="54" x2="322" y2="54" stroke="var(--border-subtle)" stroke-width="1" stroke-dasharray="2 3" />
+                    <line x1="28" y1="94" x2="322" y2="94" stroke="var(--border-subtle)" stroke-width="1" />
+                    <text x="22" y="18" text-anchor="end" fill="var(--ink-muted)" font-size="11" font-family="var(--font-mono)">80</text>
+                    <text x="22" y="58" text-anchor="end" fill="var(--ink-muted)" font-size="11" font-family="var(--font-mono)">79</text>
+                    <text x="22" y="98" text-anchor="end" fill="var(--ink-muted)" font-size="11" font-family="var(--font-mono)">78</text>
+                    <circle cx="40" cy="48" r="2.6" fill="var(--ink-secondary)" />
+                    <circle cx="78" cy="42" r="2.6" fill="var(--ink-secondary)" />
+                    <circle cx="116" cy="58" r="2.6" fill="var(--ink-secondary)" />
+                    <circle cx="154" cy="54" r="2.6" fill="var(--ink-secondary)" />
+                    <circle cx="192" cy="68" r="2.6" fill="var(--ink-secondary)" />
+                    <circle cx="230" cy="64" r="2.6" fill="var(--ink-secondary)" />
+                    <circle cx="268" cy="76" r="2.6" fill="var(--ink-secondary)" />
+                    <path d="M 40 48 C 90 50, 140 56, 192 64 C 242 70, 282 75, 314 78" fill="none" stroke="var(--accent)" stroke-width="2.25" stroke-linecap="round" />
+                    <circle cx="314" cy="78" r="4" fill="var(--accent)" stroke="var(--bg-canvas)" stroke-width="2" />
+                    <text x="34" y="113" fill="var(--ink-muted)" font-size="11" font-family="var(--font-mono)">Oct 23</text>
+                    <text x="322" y="113" text-anchor="end" fill="var(--ink-muted)" font-size="11" font-family="var(--font-mono)">Nov 21</text>
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5. COACH -->
+          <div class="feat-row">
+            <div class="feat-copy">
+              <span class="feat-kicker">
+                <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                Coach
+              </span>
+              <h3 class="feat-h3">AI chat that proposes changes and waits for your approval.</h3>
+              <p class="feat-p">Open Coach from any screen to review your logs or adjust targets. Proposed updates appear as clear suggestion cards and nothing is saved until you accept.</p>
+              <ul class="feat-list">
+                <li><svg class="icon icon-xs" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Explicit Accept or Dismiss on every proposal</li>
+                <li><svg class="icon icon-xs" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Works with your own AI key if you prefer</li>
+              </ul>
+            </div>
+            <div class="vignette">
+              <div class="vig-body">
+                <div class="chat-msg chat-user">Should I raise my bench press target for Upper body A?</div>
+                <div class="chat-msg chat-ai">You completed 82.5 kg for 8 reps on your latest session. You can update the routine target below.</div>
+                <div class="suggested-card">
+                  <div class="sug-head">
+                    <span class="sug-badge">Suggested</span>
+                    <span class="vig-muted">Routine update</span>
+                  </div>
+                  <div>
+                    <div class="row-title">Barbell bench press</div>
+                    <div class="row-sub mono">80 kg → 82.5 kg · 3 × 8</div>
+                  </div>
+                  <div class="sug-btns">
+                    <span class="btn-primary btn-sm" style="width:100%;pointer-events:none">Accept</span>
+                    <span class="btn-secondary btn-sm" style="width:100%;pointer-events:none">Dismiss</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== ANDROID EXTRAS ==================== -->
+    <section class="section" id="android">
+      <div class="container two-col-band">
+        <div>
+          <span class="sec-label">Web and Android</span>
+          <h2 class="sec-h2">Install on the web, or add native Android tools.</h2>
+          <p class="sec-sub">FitTracker runs as an installable web app (PWA). The Android app adds a step counter, home-screen widgets, and planner reminders.</p>
+          <div style="margin-top:24px;display:flex;flex-wrap:wrap;gap:10px">
+            <a class="btn-primary" href="/android">
+              <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+              Get the Android app
+            </a>
+            <a class="btn-secondary" href="/signup">Get started on web</a>
+          </div>
+        </div>
+
+        <div class="widget-grid" aria-label="Android widget previews">
+          <div class="widget-tile">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span class="cell-label">Step counter</span>
+              <svg class="icon icon-xs" style="color:var(--ink-muted)" viewBox="0 0 24 24"><path d="M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z"/><path d="M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z"/></svg>
+            </div>
+            <div class="cell-val mono" style="font-size:20px">6,420<span> / 10k</span></div>
+            <div class="track track-sm"><div class="track-fill" style="width:64%"></div></div>
+          </div>
+          <div class="widget-tile">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span class="cell-label">Planner reminder</span>
+              <svg class="icon icon-xs" style="color:var(--accent)" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+            </div>
+            <div class="row-title">Upper body A</div>
+            <div class="vig-muted mono">17:30 · Scheduled</div>
+          </div>
+          <div class="widget-tile widget-wide">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <div><span class="cell-label" style="display:block;margin-bottom:2px">Home-screen widget</span><span class="cell-val mono" style="font-size:20px">750</span> <span class="vig-muted">kcal left</span></div>
+              <span class="vig-muted mono">142 g P · 1.5 L water</span>
+            </div>
+            <div class="track track-sm"><div class="track-fill track-fill-accent" style="width:68.75%"></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== YOUR DATA STAYS YOURS ==================== -->
+    <section class="section" aria-label="Privacy and ownership">
+      <div class="container">
+        <div class="sec-head">
+          <span class="sec-label">Ownership</span>
+          <h2 class="sec-h2">Your data stays yours.</h2>
+        </div>
+        <div class="trust-grid">
+          <div class="trust-card">
+            <span class="trust-icon"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M2 20h.01M7 20v-4M12 20v-8M17 20V8M22 4v16"/></svg></span>
+            <h3 class="fact-title">Offline logging</h3>
+            <p class="fact-desc">Log workouts without a signal; changes sync automatically when you are back online.</p>
+          </div>
+          <div class="trust-card">
+            <span class="trust-icon"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></span>
+            <h3 class="fact-title">Full data export</h3>
+            <p class="fact-desc">Export all of your workout, nutrition, habit, and body check-in records whenever you need them.</p>
+          </div>
+          <div class="trust-card">
+            <span class="trust-icon"><svg class="icon icon-sm" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+            <h3 class="fact-title">Private progress photos</h3>
+            <p class="fact-desc">Body check-in photos stay private to your account and are never shared publicly.</p>
+          </div>
+          <div class="trust-card">
+            <span class="trust-icon"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4M21 2l-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></svg></span>
+            <h3 class="fact-title">Bring your own AI key</h3>
+            <p class="fact-desc">Connect your own AI key in Settings for meal scans and Coach proposals.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== FAQ ==================== -->
+    <section class="section" id="faq">
+      <div class="container">
+        <div class="sec-head">
+          <span class="sec-label">FAQ</span>
+          <h2 class="sec-h2">Common questions.</h2>
+        </div>
+
+        <div class="faq-list">
+          <details class="faq-item" open>
+            <summary>
+              <span>Does FitTracker keep working when the gym has no signal?</span>
+              <svg class="icon icon-sm faq-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            </summary>
+            <p class="faq-answer">Yes. Active workouts keep logging offline and sync automatically once your connection returns.</p>
+          </details>
+          <details class="faq-item">
+            <summary>
+              <span>What does the Android app add compared to the web app?</span>
+              <svg class="icon icon-sm faq-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            </summary>
+            <p class="faq-answer">The web app can be installed as a PWA on your device. The Android app adds a step counter, home-screen widgets, and planner reminders.</p>
+          </details>
+          <details class="faq-item">
+            <summary>
+              <span>Can AI features edit my meals or routines automatically?</span>
+              <svg class="icon icon-sm faq-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            </summary>
+            <p class="faq-answer">No. Meal photo scans and Coach proposals always appear as suggested cards so you can review and choose Accept or Dismiss before anything is saved.</p>
+          </details>
+          <details class="faq-item">
+            <summary>
+              <span>Can I export my data and use my own AI key?</span>
+              <svg class="icon icon-sm faq-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            </summary>
+            <p class="faq-answer">Yes. You can export all of your data, your progress photos stay private, and you can connect your own AI key in Settings.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== FINAL CTA ==================== -->
+    <section class="section" style="padding-bottom:64px">
+      <div class="container">
+        <div class="final-cta">
+          <div>
+            <h2 class="sec-h2">Ready for your next session.</h2>
+            <p class="sec-sub" style="margin-top:6px">Create an account on the web or install the Android app.</p>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:10px">
+            <a class="btn-primary" href="/signup">Get started</a>
+            <a class="btn-secondary" href="/android">Get the Android app</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ==================== QUIET FOOTER ==================== -->
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div class="brand" style="font-size:14px">
+        <span class="brand-mark" style="width:22px;height:22px;border-radius:5px" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 96 96" fill="none">
+            <rect width="96" height="96" rx="22" fill="#0E1014" />
+            <rect x="26" y="22" width="10" height="40" rx="3" fill="#F2F4F7" />
+            <rect x="36" y="39" width="24" height="6" fill="#F2F4F7" />
+            <rect x="60" y="22" width="10" height="40" rx="3" fill="#F2F4F7" />
+            <rect x="46.5" y="36" width="3" height="12" rx="1.5" fill="var(--accent)" />
+            <rect x="20" y="72" width="56" height="5" rx="2.5" fill="#242830" />
+            <rect x="20" y="72" width="38" height="5" rx="2.5" fill="var(--accent)" />
+          </svg>
+        </span>
+        <span>FitTracker</span>
+      </div>
+      <div class="footer-links">
+        <a href="#features">Features</a>
+        <a href="#android">Android</a>
+        <a href="#faq">FAQ</a>
+        <a href="/login">Sign in</a>
+        <a href="/signup">Get started</a>
+      </div>
+    </div>
+  </footer>
+</div>
+
+</body>
+</html>

@@ -26,7 +26,7 @@ export default function RootError({
           Try again
         </button>
       }
-      secondaryHref="/"
+      secondaryHref="/dashboard"
       secondaryLabel="Go to Today"
     />
   );

@@ -1,11 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { AUTH_LINK_CLASS, AuthCard, FormError } from "@/components/auth/AuthCard";
+import { AUTH_LINK_CLASS, AuthCard, EMAIL_PATTERN, EMAIL_PROBLEM, FormError, focusFirstInvalid } from "@/components/auth/AuthCard";
 import { PasswordField } from "@/components/auth/PasswordField";
 import { api, errorMessage } from "@/lib/client/api";
 import { detectDeviceTimeZone } from "@/lib/time";
@@ -29,17 +29,23 @@ export function SignupForm() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ name?: string; email?: string; password?: string }>({});
+  const formRef = useRef<HTMLFormElement>(null);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (isLoading) return;
     setError(null);
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      setPasswordError(`Use at least ${MIN_PASSWORD_LENGTH} characters.`);
+    const problems = {
+      name: name.trim() ? undefined : "Enter your name.",
+      email: EMAIL_PATTERN.test(email.trim()) ? undefined : EMAIL_PROBLEM,
+      password: password.length >= MIN_PASSWORD_LENGTH ? undefined : `Use at least ${MIN_PASSWORD_LENGTH} characters.`,
+    };
+    setFieldErrors(problems);
+    if (problems.name || problems.email || problems.password) {
+      focusFirstInvalid(formRef.current);
       return;
     }
-    setPasswordError(null);
     setIsLoading(true);
     try {
       await api("/api/auth/signup", {
@@ -74,7 +80,7 @@ export function SignupForm() {
         </>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-4">
         <FormError message={error} />
 
         <Input
@@ -82,10 +88,15 @@ export function SignupForm() {
           label="Name"
           type="text"
           value={name}
-          onChange={(event) => setName(event.target.value)}
+          onChange={(event) => {
+            setName(event.target.value);
+            setFieldErrors((prev) => ({ ...prev, name: undefined }));
+          }}
           autoComplete="name"
           required
           maxLength={80}
+          isInvalid={Boolean(fieldErrors.name)}
+          errorMessage={fieldErrors.name}
         />
 
         <Input
@@ -94,12 +105,17 @@ export function SignupForm() {
           type="email"
           inputMode="email"
           value={email}
-          onChange={(event) => setEmail(event.target.value)}
+          onChange={(event) => {
+            setEmail(event.target.value);
+            setFieldErrors((prev) => ({ ...prev, email: undefined }));
+          }}
           autoComplete="email"
           autoCapitalize="none"
           spellCheck={false}
           required
           maxLength={254}
+          isInvalid={Boolean(fieldErrors.email)}
+          errorMessage={fieldErrors.email}
         />
 
         <PasswordField
@@ -107,11 +123,11 @@ export function SignupForm() {
           value={password}
           onChange={(value) => {
             setPassword(value);
-            if (passwordError && value.length >= MIN_PASSWORD_LENGTH) setPasswordError(null);
+            if (fieldErrors.password && value.length >= MIN_PASSWORD_LENGTH) setFieldErrors((prev) => ({ ...prev, password: undefined }));
           }}
           autoComplete="new-password"
           hint={`At least ${MIN_PASSWORD_LENGTH} characters.`}
-          error={passwordError}
+          error={fieldErrors.password}
         />
 
         <Button type="submit" size="lg" className="w-full" isLoading={isLoading}>

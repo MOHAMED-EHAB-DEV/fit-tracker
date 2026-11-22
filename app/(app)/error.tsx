@@ -25,7 +25,7 @@ export default function AppError({
           Try again
         </button>
       }
-      secondaryHref="/"
+      secondaryHref="/dashboard"
       secondaryLabel="Go to Today"
     />
   );

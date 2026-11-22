@@ -6,40 +6,55 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
 import { AlertCircle, CheckCircle2, Info, TriangleAlert, X } from "lucide-react";
+import { OVERLAY_ROOT_ATTRIBUTE } from "@/lib/ui/overlay-stack";
+import { cn } from "@/lib/utils";
 
 const subscribeNoop = () => () => undefined;
 
-// ─────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────
-
 export type ToastVariant = "success" | "error" | "warning" | "info";
 
-export interface ToastItem {
+export interface ToastAction {
+  /** Short verb: "Undo", "Retry", "View". */
+  label: string;
+  onClick: () => void;
+}
+
+export interface ToastOptions {
+  /** Milliseconds on screen. Defaults: 7s for errors and actions, 5s warnings, 3.5s otherwise. */
+  duration?: number;
+  /** One button inside the toast (Undo after a delete). The toast closes when it is pressed. */
+  action?: ToastAction;
+}
+
+interface ToastItem {
   id: string;
   message: string;
   variant: ToastVariant;
   duration: number;
+  action?: ToastAction;
   exiting?: boolean;
-  /** internal — timestamp when the current timer segment started */
+  /** When the current timer segment started. */
   startedAt?: number;
-  /** internal — ms remaining when last paused */
+  /** Time left when the timer was last paused. */
   remaining?: number;
 }
 
 interface ToastContextValue {
-  toast: (message: string, variant?: ToastVariant, duration?: number) => void;
+  /**
+   * Shows a toast and returns its id. The third argument is either a
+   * duration in ms (older call sites) or { duration, action }.
+   */
+  toast: (message: string, variant?: ToastVariant, options?: number | ToastOptions) => string;
+  /** Closes a toast early (e.g. once the deletion it offered to undo is final). */
+  dismiss: (id: string) => void;
 }
-
-// ─────────────────────────────────────────────
-// Context
-// ─────────────────────────────────────────────
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
@@ -49,104 +64,44 @@ export function useToast() {
   return ctx;
 }
 
-// ─────────────────────────────────────────────
-// Constants
-// ─────────────────────────────────────────────
-
-const MAX_VISIBLE_TOASTS = 5;
-const EXIT_DURATION = 280;
-
-// ─────────────────────────────────────────────
-// Variant config — static, never recreated
-// ─────────────────────────────────────────────
+const MAX_VISIBLE_TOASTS = 3;
+const EXIT_DURATION = 220;
 
 interface VariantStyle {
-  border: string;
-  iconColor: string;
-  glow: string;
-  /** ARIA role — "alert" for urgent (error/warning), "status" for info/success */
+  icon: React.ReactNode;
+  /** Status colour for the icon only. */
+  iconClass: string;
+  /** "alert" for urgent (error / warning), "status" for the rest. */
   role: "alert" | "status";
-  /** aria-live — "assertive" for urgent, "polite" for non-urgent */
   liveMode: "assertive" | "polite";
 }
 
-const VARIANT_STYLES: Record<ToastVariant, VariantStyle> = {
+const VARIANTS: Record<ToastVariant, VariantStyle> = {
   success: {
-    border: "rgba(16, 185, 129, 0.35)",
-    iconColor: "#34d399",
-    glow: "rgba(16, 185, 129, 0.12)",
+    icon: <CheckCircle2 className="h-[18px] w-[18px]" aria-hidden="true" />,
+    iconClass: "text-ok",
     role: "status",
     liveMode: "polite",
   },
   error: {
-    border: "rgba(239, 68, 68, 0.35)",
-    iconColor: "#f87171",
-    glow: "rgba(239, 68, 68, 0.10)",
+    icon: <AlertCircle className="h-[18px] w-[18px]" aria-hidden="true" />,
+    iconClass: "text-danger",
     role: "alert",
     liveMode: "assertive",
   },
   warning: {
-    border: "rgba(234, 179, 8, 0.35)",
-    iconColor: "#facc15",
-    glow: "rgba(234, 179, 8, 0.10)",
+    icon: <TriangleAlert className="h-[18px] w-[18px]" aria-hidden="true" />,
+    iconClass: "text-warn",
     role: "alert",
     liveMode: "assertive",
   },
   info: {
-    border: "rgba(99, 102, 241, 0.35)",
-    iconColor: "#818cf8",
-    glow: "rgba(99, 102, 241, 0.10)",
+    icon: <Info className="h-[18px] w-[18px]" aria-hidden="true" />,
+    iconClass: "text-ink-2",
     role: "status",
     liveMode: "polite",
   },
 };
-
-/** Icons rendered once per variant — stable references */
-const VARIANT_ICONS: Record<ToastVariant, React.ReactNode> = {
-  success: <CheckCircle2 className="w-4 h-4 shrink-0" aria-hidden="true" />,
-  error: <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />,
-  warning: <TriangleAlert className="w-4 h-4 shrink-0" aria-hidden="true" />,
-  info: <Info className="w-4 h-4 shrink-0" aria-hidden="true" />,
-};
-
-// ─────────────────────────────────────────────
-// Static styles — extracted to avoid re-creation
-// ─────────────────────────────────────────────
-
-const dismissBtnStyle: React.CSSProperties = {
-  flexShrink: 0,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  width: "36px",
-  height: "36px",
-  margin: "-6px -8px -6px 0",
-  borderRadius: "10px",
-  border: "none",
-  background: "transparent",
-  color: "#a1a1aa",
-  cursor: "pointer",
-  transition: "color 0.15s, background 0.15s",
-};
-
-const dismissIconStyle: React.CSSProperties = { width: "16px", height: "16px" };
-
-const containerStyle: React.CSSProperties = {
-  position: "fixed",
-  top: "max(1rem, env(safe-area-inset-top))",
-  left: "50%",
-  transform: "translateX(-50%)",
-  zIndex: 80,
-  display: "flex",
-  flexDirection: "column",
-  gap: "8px",
-  alignItems: "center",
-  pointerEvents: "none",
-};
-
-// ─────────────────────────────────────────────
-// Single Toast Card — memoized
-// ─────────────────────────────────────────────
 
 const ToastCard = memo(function ToastCard({
   item,
@@ -159,78 +114,49 @@ const ToastCard = memo(function ToastCard({
   onPause: (id: string) => void;
   onResume: (id: string) => void;
 }) {
-  const cfg = VARIANT_STYLES[item.variant];
-
-  const cardStyle: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-    padding: "10px 14px 10px 12px",
-    borderRadius: "16px",
-    background: "rgba(9, 9, 11, 0.92)",
-    border: `1px solid ${cfg.border}`,
-    boxShadow: `0 8px 32px -4px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04), inset 0 0 40px 0 ${cfg.glow}`,
-    backdropFilter: "blur(20px)",
-    WebkitBackdropFilter: "blur(20px)",
-    color: "#f4f4f5",
-    fontSize: "13px",
-    fontWeight: 600,
-    lineHeight: 1.4,
-    maxWidth: "360px",
-    minWidth: "220px",
-    pointerEvents: "all",
-    userSelect: "none",
-  };
+  const style = VARIANTS[item.variant];
 
   return (
     <div
-      role={cfg.role}
-      aria-live={cfg.liveMode}
+      role={style.role}
+      aria-live={style.liveMode}
       aria-atomic="true"
-      className={item.exiting ? "toast-exit" : "toast-enter"}
       onMouseEnter={() => onPause(item.id)}
       onMouseLeave={() => onResume(item.id)}
       onFocus={() => onPause(item.id)}
       onBlur={() => onResume(item.id)}
       onTouchStart={() => onPause(item.id)}
       onTouchEnd={() => onResume(item.id)}
-      style={cardStyle}
+      className={cn(
+        "glass-float pointer-events-auto flex w-full min-h-12 items-center gap-2.5 rounded-control py-1.5 ps-3 pe-1.5 text-sm font-medium text-ink",
+        item.exiting ? "toast-exit" : "toast-enter"
+      )}
     >
-      {/* Decorative icon — hidden from screen readers */}
-      <span style={{ color: cfg.iconColor, flexShrink: 0, display: "flex" }}>
-        {VARIANT_ICONS[item.variant]}
-      </span>
-
-      {/* Message */}
-      <span style={{ flex: 1 }}>{item.message}</span>
-
-      {/* Dismiss — visible focus ring for keyboard users */}
+      <span className={cn("flex shrink-0", style.iconClass)}>{style.icon}</span>
+      <span className="min-w-0 flex-1 py-1.5 leading-5">{item.message}</span>
+      {item.action && (
+        <button
+          type="button"
+          onClick={() => {
+            item.action?.onClick();
+            onRemove(item.id);
+          }}
+          className="inline-flex min-h-9 shrink-0 items-center rounded-chip px-3 text-sm font-semibold text-accent transition-colors hover:bg-elevated cursor-pointer"
+        >
+          {item.action.label}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => onRemove(item.id)}
         aria-label="Dismiss notification"
-        className="toast-dismiss-btn"
-        style={dismissBtnStyle}
-        onMouseEnter={(e) => {
-          const el = e.currentTarget;
-          el.style.color = "#f4f4f5";
-          el.style.background = "rgba(255,255,255,0.08)";
-        }}
-        onMouseLeave={(e) => {
-          const el = e.currentTarget;
-          el.style.color = "#71717a";
-          el.style.background = "transparent";
-        }}
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-chip text-ink-3 transition-colors hover:bg-elevated hover:text-ink cursor-pointer"
       >
-        <X style={dismissIconStyle} aria-hidden="true" />
+        <X className="h-4 w-4" aria-hidden="true" />
       </button>
     </div>
   );
 });
-
-// ─────────────────────────────────────────────
-// Portal container
-// ─────────────────────────────────────────────
 
 function ToastContainer({
   items,
@@ -253,28 +179,27 @@ function ToastContainer({
   if (!mounted || items.length === 0) return null;
 
   return createPortal(
-    <div aria-label="Notifications" data-overlay-root="" style={containerStyle}>
-      {items.map((item) => (
-        <ToastCard
-          key={item.id}
-          item={item}
-          onRemove={onRemove}
-          onPause={onPause}
-          onResume={onResume}
-        />
-      ))}
+    <div
+      aria-label="Notifications"
+      {...{ [OVERLAY_ROOT_ATTRIBUTE]: "" }}
+      // In the thumb zone: just above the tab bar, the minimised workout or the
+      // live-session dock (--dock-height), never at the top of the screen.
+      className="toast-region pointer-events-none fixed inset-x-0 z-[80] flex flex-col items-center gap-2 px-3"
+    >
+      <div className="flex w-full max-w-[420px] flex-col gap-2">
+        {items.map((item) => (
+          <ToastCard key={item.id} item={item} onRemove={onRemove} onPause={onPause} onResume={onResume} />
+        ))}
+      </div>
     </div>,
     document.body
   );
 }
 
-// ─────────────────────────────────────────────
-// Provider
-// ─────────────────────────────────────────────
-
-let _uid = 0;
-function genId() {
-  return `toast-${++_uid}-${Date.now()}`;
+let uid = 0;
+function nextId() {
+  uid += 1;
+  return `toast-${uid}-${Date.now()}`;
 }
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
@@ -282,29 +207,25 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const remove = useCallback((id: string) => {
-    // Clear any pending auto-dismiss timer
     const existing = timers.current.get(id);
     if (existing) {
       clearTimeout(existing);
       timers.current.delete(id);
     }
-
-    // Start exit animation
-    setItems((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, exiting: true } : t))
-    );
-    // Remove from DOM after animation
-    const t = setTimeout(() => {
+    setItems((prev) => prev.map((t) => (t.id === id ? { ...t, exiting: true } : t)));
+    const exit = setTimeout(() => {
       setItems((prev) => prev.filter((toast) => toast.id !== id));
       timers.current.delete(`exit-${id}`);
     }, EXIT_DURATION);
-    timers.current.set(`exit-${id}`, t);
+    timers.current.set(`exit-${id}`, exit);
   }, []);
 
   const scheduleRemove = useCallback(
     (id: string, delay: number) => {
-      const t = setTimeout(() => remove(id), delay);
-      timers.current.set(id, t);
+      timers.current.set(
+        id,
+        setTimeout(() => remove(id), delay)
+      );
     },
     [remove]
   );
@@ -328,49 +249,41 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     (id: string) => {
       setItems((prev) => {
         const item = prev.find((t) => t.id === id);
-        if (!item || item.exiting) return prev;
+        if (!item || item.exiting || timers.current.has(id)) return prev;
         const remaining = item.remaining ?? item.duration;
         if (remaining <= 0) {
           setTimeout(() => remove(id), 0);
           return prev;
         }
         scheduleRemove(id, remaining);
-        return prev.map((t) =>
-          t.id === id ? { ...t, startedAt: Date.now() } : t
-        );
+        return prev.map((t) => (t.id === id ? { ...t, startedAt: Date.now() } : t));
       });
     },
     [remove, scheduleRemove]
   );
 
   const toast = useCallback(
-    (message: string, variant: ToastVariant = "info", requestedDuration?: number) => {
-      // Errors stay long enough to be read; everything else is brief.
-      const duration = requestedDuration ?? (variant === "error" ? 7000 : variant === "warning" ? 5000 : 3500);
-      const id = genId();
+    (message: string, variant: ToastVariant = "info", options?: number | ToastOptions) => {
+      const opts: ToastOptions = typeof options === "number" ? { duration: options } : options || {};
+      // Errors and toasts with an action stay long enough to be read and used.
+      const duration =
+        opts.duration ?? (variant === "error" || opts.action ? 7000 : variant === "warning" ? 5000 : 3500);
+      const id = nextId();
       const now = Date.now();
 
       setItems((prev) => {
-        // Evict oldest non-exiting toasts when at capacity
         let next = [...prev];
         const active = next.filter((t) => !t.exiting);
         if (active.length >= MAX_VISIBLE_TOASTS) {
           const oldest = active[0];
-          // Immediately mark for exit
-          next = next.map((t) =>
-            t.id === oldest.id ? { ...t, exiting: true } : t
-          );
-          setTimeout(() => {
-            setItems((p) => p.filter((t) => t.id !== oldest.id));
-          }, EXIT_DURATION);
+          next = next.map((t) => (t.id === oldest.id ? { ...t, exiting: true } : t));
+          setTimeout(() => setItems((p) => p.filter((t) => t.id !== oldest.id)), EXIT_DURATION);
         }
-        return [
-          ...next,
-          { id, message, variant, duration, startedAt: now, remaining: duration },
-        ];
+        return [...next, { id, message, variant, duration, action: opts.action, startedAt: now, remaining: duration }];
       });
 
       scheduleRemove(id, duration);
+      return id;
     },
     [scheduleRemove]
   );
@@ -382,8 +295,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  const value = useMemo(() => ({ toast, dismiss: remove }), [toast, remove]);
+
   return (
-    <ToastContext.Provider value={{ toast }}>
+    <ToastContext.Provider value={value}>
       {children}
       <ToastContainer items={items} onRemove={remove} onPause={pause} onResume={resume} />
     </ToastContext.Provider>

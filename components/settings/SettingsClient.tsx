@@ -1,26 +1,32 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Download, ExternalLink, LogOut, RefreshCw, ShieldCheck } from "lucide-react";
+import { ChevronRight, Download, ExternalLink } from "lucide-react";
 import versionData from "@/version.json";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/Input";
 import { NumberField } from "@/components/ui/NumberField";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Select } from "@/components/ui/Select";
+import { Sheet } from "@/components/ui/Sheet";
 import { useToast } from "@/components/ui/Toast";
-import { useUnsavedChanges } from "@/components/admin/useUnsavedChanges";
+import { AppearanceSetting } from "@/components/settings/AppearanceSetting";
 import { useUser, type ClientUser } from "@/context/UserContext";
 import { useIsNativeApp } from "@/hooks/useIsNativeApp";
+import { useTheme } from "@/hooks/useTheme";
 import { api, errorMessage } from "@/lib/client/api";
 import { logout } from "@/lib/client/logout";
 import { automaticTargets } from "@/lib/fitness/targets";
 import { cmToInches, fromKg, inchesToCm, normalizeWeightUnit, toKg, type WeightUnit } from "@/lib/fitness/units";
+import { profileLimitProblem, type ProfileLimitKey } from "@/lib/users/limits";
+import { THEME_OPTIONS } from "@/lib/ui/theme";
 import {
   detectDeviceTimeZone,
+  formatDateString,
   isValidDateString,
   localDateString,
   normalizeWeekStart,
@@ -28,13 +34,8 @@ import {
   type WeekdayKey,
 } from "@/lib/time";
 import { updateProfileSettingsAction, type SettingsPayload } from "@/lib/users/actions";
-import {
-  ANDROID_RELEASES_URL,
-  getNativeAppVersion,
-  openExternalLink,
-  saveFile,
-  triggerAppUpdateCheck,
-} from "@/services/webview-bridge";
+import { ANDROID_RELEASES_URL, getNativeAppVersion, openExternalLink, saveFile, triggerAppUpdateCheck } from "@/services/webview-bridge";
+import { cn } from "@/lib/utils";
 import type { ActivityLevel, FitnessGoal, Sex } from "@/types/fitness";
 
 interface FormState {
@@ -60,6 +61,9 @@ interface FormState {
   weekStartDay: WeekdayKey;
 }
 
+type SheetKey = "about" | "goal" | "targets" | "daily" | "appearance" | "units" | "timezone" | "week" | "rest" | "ai" | "name";
+type Errors = Partial<Record<keyof FormState | "key", string>>;
+
 const ACTIVITY_OPTIONS: Array<{ value: ActivityLevel; label: string }> = [
   { value: "sedentary", label: "Mostly sitting (desk job, little exercise)" },
   { value: "light", label: "Lightly active (exercise 1 to 3 days a week)" },
@@ -67,23 +71,17 @@ const ACTIVITY_OPTIONS: Array<{ value: ActivityLevel; label: string }> = [
   { value: "active", label: "Very active (hard exercise 6 to 7 days a week)" },
   { value: "very_active", label: "Extremely active (physical job or two sessions a day)" },
 ];
-
 const GOAL_OPTIONS: Array<{ value: FitnessGoal; label: string }> = [
   { value: "cut", label: "Lose fat" },
   { value: "maintain", label: "Maintain" },
   { value: "bulk", label: "Build muscle" },
 ];
-
 const WEEK_START_OPTIONS: Array<{ value: WeekdayKey; label: string }> = [
   { value: "saturday", label: "Saturday" },
   { value: "sunday", label: "Sunday" },
   { value: "monday", label: "Monday" },
 ];
-
 const REST_OPTIONS = [0, 30, 45, 60, 90, 120, 150, 180, 240, 300];
-
-const LABEL_CLASS = "block text-sm font-medium text-zinc-200";
-const HELP_CLASS = "text-sm text-zinc-400";
 
 function toDateInput(value: unknown): string {
   if (!value) return "";
@@ -118,6 +116,19 @@ function fromUser(user: ClientUser | null): FormState {
   };
 }
 
+function autoFor(form: FormState) {
+  return automaticTargets({
+    sex: form.sex,
+    birthDate: form.birthDate || null,
+    age: form.age,
+    weightKg: form.weightKg,
+    heightCm: form.heightCm,
+    activityLevel: form.activityLevel,
+    goal: form.goal,
+    calorieAdjustment: form.calorieAdjustment,
+  });
+}
+
 function listTimeZones(current: string, device: string): string[] {
   let zones: string[] = [];
   try {
@@ -128,169 +139,249 @@ function listTimeZones(current: string, device: string): string[] {
   return Array.from(new Set([current, device, "UTC", ...zones])).sort((a, b) => a.localeCompare(b));
 }
 
-/** The first problem that would make the server reject the form, in plain words. */
-function findProblem(form: FormState, today: string): string | null {
-  if (!form.name.trim()) return "Enter your name.";
-  if (form.birthDate && (!isValidDateString(form.birthDate) || form.birthDate >= today)) {
-    return "Check your date of birth.";
-  }
-  // Same range as the server (and as body check-ins, which can set this weight).
-  if (form.weightKg != null && (form.weightKg < 20 || form.weightKg > 400)) {
-    return form.weightUnit === "lbs" ? "Weight must be between 44 and 881 lbs." : "Weight must be between 20 and 400 kg.";
-  }
-  if (form.heightCm != null && (form.heightCm < 100 || form.heightCm > 250)) {
-    return form.weightUnit === "lbs"
-      ? "Height must be between 3 ft 4 in and 8 ft 2 in."
-      : "Height must be between 100 and 250 cm.";
-  }
-  if (form.age != null && !form.birthDate && (form.age < 10 || form.age > 100)) return "Age must be between 10 and 100.";
-  if (form.targetCalories != null && (form.targetCalories < 800 || form.targetCalories > 10_000)) {
-    return "The calorie target must be between 800 and 10,000 kcal.";
-  }
-  if (form.targetProteinG != null && form.targetProteinG > 600) return "The protein target must be at most 600 g.";
-  if (form.targetCarbsG != null && form.targetCarbsG > 1500) return "The carbs target must be at most 1,500 g.";
-  if (form.targetFatG != null && form.targetFatG > 500) return "The fat target must be at most 500 g.";
-  if (form.targetFiberG != null && form.targetFiberG > 150) return "The fibre target must be at most 150 g.";
-  if (form.calorieAdjustment != null && form.calorieAdjustment > 1500) {
-    return "The daily calorie change must be at most 1,500 kcal.";
-  }
-  if (form.stepGoal != null && (form.stepGoal < 500 || form.stepGoal > 100_000)) {
-    return "The step goal must be between 500 and 100,000.";
-  }
-  if (form.waterGoalMl != null && (form.waterGoalMl < 250 || form.waterGoalMl > 10_000)) {
-    return "The water goal must be between 250 and 10,000 ml.";
-  }
-  return null;
+function restLabel(seconds: number): string {
+  if (seconds === 0) return "Off";
+  if (seconds < 60) return `${seconds} seconds`;
+  return `${Math.floor(seconds / 60)} min${seconds % 60 ? ` ${seconds % 60} s` : ""}`;
 }
 
+function ageFrom(form: FormState, today: string): number | null {
+  if (form.birthDate && isValidDateString(form.birthDate)) {
+    const [by, bm, bd] = form.birthDate.split("-").map(Number);
+    const [ty, tm, td] = today.split("-").map(Number);
+    return ty - by - (tm < bm || (tm === bm && td < bd) ? 1 : 0);
+  }
+  return form.age;
+}
+
+const FOOTER_LINK =
+  "inline-flex min-h-8 items-center rounded-control px-2 text-xs text-ink-2 underline-offset-2 transition-colors hover:text-ink hover:underline cursor-pointer";
+
+/** One row of a settings group: a label, the current value and a chevron (rows that open a sheet). */
+function SettingRow({
+  label,
+  value,
+  onClick,
+  href,
+  tone = "ink",
+  trailing = "chevron",
+}: {
+  label: string;
+  value?: React.ReactNode;
+  onClick?: () => void;
+  href?: string;
+  tone?: "ink" | "danger";
+  trailing?: "chevron" | "download" | "none";
+}) {
+  const TrailingIcon = trailing === "download" ? Download : trailing === "chevron" ? ChevronRight : null;
+  const content = (
+    <>
+      <span className={cn("shrink-0 text-sm font-medium", tone === "danger" ? "text-danger" : "text-ink")}>{label}</span>
+      <span className="flex min-w-0 items-center gap-1.5">
+        {value !== undefined && <span className="truncate text-end text-[13px] text-ink-3">{value}</span>}
+        {(onClick || href) && TrailingIcon && <TrailingIcon className="h-4 w-4 shrink-0 text-ink-3" aria-hidden="true" />}
+      </span>
+    </>
+  );
+  const className = "flex min-h-12 w-full items-center justify-between gap-4 px-3.5 py-2.5 text-start";
+  const interactive = "transition-colors hover:bg-elevated/60 active:bg-elevated cursor-pointer";
+  if (href) {
+    return (
+      <li>
+        <Link href={href} className={cn(className, interactive)}>
+          {content}
+        </Link>
+      </li>
+    );
+  }
+  if (onClick) {
+    return (
+      <li>
+        <button type="button" onClick={onClick} aria-haspopup={trailing === "chevron" ? "dialog" : undefined} className={cn(className, interactive)}>
+          {content}
+        </button>
+      </li>
+    );
+  }
+  return <li className={className}>{content}</li>;
+}
+
+function SettingGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  const id = `settings-${title.toLowerCase().replace(/\W+/g, "-")}`;
+  return (
+    <section aria-labelledby={id} className="space-y-2">
+      <SectionHeader id={id} title={title} />
+      <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">{children}</ul>
+    </section>
+  );
+}
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return <p className="mb-1.5 text-[13px] font-medium text-ink-2">{children}</p>;
+}
+
+/**
+ * Settings: three groups of rows (Body and targets · Preferences · Account
+ * and data). Each row opens its own sheet; Save checks the fields there and
+ * saves just those values.
+ */
 export function SettingsClient() {
   const router = useRouter();
   const { toast } = useToast();
   const { user, refreshUser } = useUser();
+  const { preference } = useTheme();
   const isNative = useIsNativeApp();
 
-  const [baseline, setBaseline] = useState<FormState>(() => fromUser(user));
-  const [form, setForm] = useState<FormState>(baseline);
+  const current = useMemo(() => fromUser(user), [user]);
+  const [open, setOpen] = useState<SheetKey | null>(null);
+  const [shown, setShown] = useState<SheetKey | null>(null);
+  const [draft, setDraft] = useState<FormState>(current);
+  const [errors, setErrors] = useState<Errors>({});
+  const [formError, setFormError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const [newKey, setNewKey] = useState("");
-  const [removeKey, setRemoveKey] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isSignOutAllOpen, setIsSignOutAllOpen] = useState(false);
   const [isSigningOutAll, setIsSigningOutAll] = useState(false);
   const [signOutAllError, setSignOutAllError] = useState<string | null>(null);
   const [isSigningOut, setIsSigningOut] = useState(false);
 
-  const hasSavedKey = Boolean(user?.preferences?.hasCustomGeminiKey) && !removeKey;
-  const isDirty = JSON.stringify(form) !== JSON.stringify(baseline) || newKey.trim().length > 0 || removeKey;
-  useUnsavedChanges(isDirty && !isSaving);
-
   const deviceZone = useMemo(() => detectDeviceTimeZone(), []);
-  const timeZones = useMemo(() => listTimeZones(form.timezone, deviceZone), [form.timezone, deviceZone]);
-  const today = localDateString(new Date(), form.timezone);
+  const timeZones = useMemo(() => listTimeZones(draft.timezone, deviceZone), [draft.timezone, deviceZone]);
+  const today = localDateString(new Date(), current.timezone);
   const nativeVersion = isNative ? getNativeAppVersion() : null;
+  const autoNow = autoFor(current);
+  const autoDraft = autoFor(draft);
+  const unit = current.weightUnit;
+  const hasCustomKey = Boolean(user?.preferences?.hasCustomGeminiKey);
 
-  const auto = useMemo(
-    () =>
-      automaticTargets({
-        sex: form.sex,
-        birthDate: form.birthDate || null,
-        age: form.age,
-        weightKg: form.weightKg,
-        heightCm: form.heightCm,
-        activityLevel: form.activityLevel,
-        goal: form.goal,
-        calorieAdjustment: form.calorieAdjustment,
-      }),
-    [form.sex, form.birthDate, form.age, form.weightKg, form.heightCm, form.activityLevel, form.goal, form.calorieAdjustment]
-  );
-
+  const openSheet = (key: SheetKey) => {
+    setDraft(fromUser(user));
+    setErrors({});
+    setFormError(null);
+    setNewKey("");
+    setShown(key);
+    setOpen(key);
+  };
+  const close = () => {
+    if (!saving) setOpen(null);
+  };
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
-    setError(null);
-    setForm((current) => ({ ...current, [key]: value }));
+    setErrors((prev) => ({ ...prev, [key]: undefined }));
+    setFormError(null);
+    setDraft((prev) => ({ ...prev, [key]: value }));
   };
 
-  const heightInches = form.heightCm == null ? null : cmToInches(form.heightCm, 1);
-  const feet = heightInches == null ? null : Math.floor(heightInches / 12);
-  const inches = heightInches == null || feet == null ? null : Math.round((heightInches - feet * 12) * 10) / 10;
-
-  const hasCustomTargets =
-    form.targetCalories != null ||
-    form.targetProteinG != null ||
-    form.targetCarbsG != null ||
-    form.targetFatG != null ||
-    form.targetFiberG != null;
-
-  const save = async (event?: React.FormEvent) => {
-    event?.preventDefault();
-    if (isSaving) return;
-    const problem = findProblem(form, today);
-    if (problem) {
-      setError(problem);
-      return;
-    }
-    const key = newKey.trim();
-    if (key && key.length < 10) {
-      setError("That API key looks too short. Paste the whole key.");
-      return;
-    }
-
-    setIsSaving(true);
-    setError(null);
-    const payload: SettingsPayload = {
-      name: form.name.trim(),
-      fitnessProfile: {
-        ...(form.sex ? { sex: form.sex } : {}),
-        birthDate: form.birthDate || null,
-        // The age is only used when there is no date of birth.
-        ...(form.birthDate ? {} : { age: form.age }),
-        weightKg: form.weightKg,
-        heightCm: form.heightCm,
-        ...(form.activityLevel ? { activityLevel: form.activityLevel } : {}),
-        ...(form.goal ? { goal: form.goal } : {}),
-        calorieAdjustment: form.goal === "maintain" ? null : form.calorieAdjustment,
-        targetCalories: form.targetCalories,
-        targetProteinG: form.targetProteinG,
-        targetCarbsG: form.targetCarbsG,
-        targetFatG: form.targetFatG,
-        targetFiberG: form.targetFiberG,
-      },
-      preferences: {
-        stepGoal: form.stepGoal,
-        waterGoalMl: form.waterGoalMl,
-        restTimerDefaultSec: form.restTimerDefaultSec,
-        weightUnit: form.weightUnit,
-        timezone: form.timezone,
-        weekStartDay: form.weekStartDay,
-      },
-      ...(key ? { customGeminiApiKey: key } : {}),
-      ...(removeKey && !key ? { removeCustomGeminiApiKey: true } : {}),
+  /** Checks the fields of one sheet; returns false when something is wrong. */
+  const validate = (key: SheetKey): boolean => {
+    const next: Errors = {};
+    const limit = (field: keyof FormState, limitKey: ProfileLimitKey) => {
+      const problem = profileLimitProblem(limitKey, draft[field] as number | null, unit);
+      if (problem) next[field] = problem;
     };
+    if (key === "about") {
+      if (draft.birthDate && (!isValidDateString(draft.birthDate) || draft.birthDate >= today)) next.birthDate = "Check your date of birth.";
+      if (!draft.birthDate) limit("age", "age");
+      limit("weightKg", "weightKg");
+      limit("heightCm", "heightCm");
+    }
+    if (key === "goal" && draft.goal !== "maintain") limit("calorieAdjustment", "calorieAdjustment");
+    if (key === "targets") {
+      limit("targetCalories", "targetCalories");
+      limit("targetProteinG", "targetProteinG");
+      limit("targetCarbsG", "targetCarbsG");
+      limit("targetFatG", "targetFatG");
+      limit("targetFiberG", "targetFiberG");
+    }
+    if (key === "daily") {
+      limit("stepGoal", "stepGoal");
+      limit("waterGoalMl", "waterGoalMl");
+    }
+    if (key === "name" && !draft.name.trim()) next.name = "Enter your name.";
+    if (key === "ai" && newKey.trim() && !/^[A-Za-z0-9_-]{10,200}$/.test(newKey.trim())) {
+      next.key = "That does not look like a Gemini API key. Paste the whole key.";
+    }
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  };
 
+  const payloadFor = (key: SheetKey, options: { removeKey?: boolean } = {}): SettingsPayload => {
+    const base: SettingsPayload = { name: key === "name" ? draft.name.trim() : current.name || draft.name.trim() || "You", fitnessProfile: {} };
+    switch (key) {
+      case "about":
+        return {
+          ...base,
+          fitnessProfile: {
+            ...(draft.sex ? { sex: draft.sex } : {}),
+            birthDate: draft.birthDate || null,
+            // The age is only used when there is no date of birth.
+            ...(draft.birthDate ? {} : { age: draft.age }),
+            weightKg: draft.weightKg,
+            heightCm: draft.heightCm,
+            ...(draft.activityLevel ? { activityLevel: draft.activityLevel } : {}),
+          },
+        };
+      case "goal":
+        return {
+          ...base,
+          fitnessProfile: {
+            ...(draft.goal ? { goal: draft.goal } : {}),
+            calorieAdjustment: draft.goal === "maintain" ? null : draft.calorieAdjustment,
+          },
+        };
+      case "targets":
+        return {
+          ...base,
+          fitnessProfile: {
+            targetCalories: draft.targetCalories,
+            targetProteinG: draft.targetProteinG,
+            targetCarbsG: draft.targetCarbsG,
+            targetFatG: draft.targetFatG,
+            targetFiberG: draft.targetFiberG,
+          },
+        };
+      case "daily":
+        return { ...base, preferences: { stepGoal: draft.stepGoal, waterGoalMl: draft.waterGoalMl } };
+      case "units":
+        return { ...base, preferences: { weightUnit: draft.weightUnit } };
+      case "timezone":
+        return { ...base, preferences: { timezone: draft.timezone } };
+      case "week":
+        return { ...base, preferences: { weekStartDay: draft.weekStartDay } };
+      case "rest":
+        return { ...base, preferences: { restTimerDefaultSec: draft.restTimerDefaultSec } };
+      case "ai":
+        return options.removeKey ? { ...base, removeCustomGeminiApiKey: true } : { ...base, customGeminiApiKey: newKey.trim() };
+      default:
+        return base;
+    }
+  };
+
+  const save = async (key: SheetKey, options: { removeKey?: boolean } = {}) => {
+    if (saving) return;
+    if (!options.removeKey && !validate(key)) {
+      // Move to the first field with a problem once the messages are shown.
+      window.setTimeout(() => formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus(), 0);
+      return;
+    }
+    setSaving(true);
+    setFormError(null);
     try {
-      const result = await updateProfileSettingsAction(payload);
+      const result = await updateProfileSettingsAction(payloadFor(key, options));
       if (!result.success) {
-        setError(result.error || "Your settings could not be saved. Please try again.");
+        setFormError(result.error || "Your settings could not be saved. Please try again.");
         return;
       }
-      setBaseline(form);
-      setNewKey("");
-      setRemoveKey(false);
       await refreshUser();
       router.refresh();
-      toast("Settings saved", "success");
+      setOpen(null);
+      toast(options.removeKey ? "Your key was removed" : "Saved", "success");
     } catch {
-      setError("Your settings could not be saved. Check your connection and try again.");
+      setFormError("Your settings could not be saved. Check your connection and try again.");
     } finally {
-      setIsSaving(false);
+      setSaving(false);
     }
-  };
-
-  const discard = () => {
-    setForm(baseline);
-    setNewKey("");
-    setRemoveKey(false);
-    setError(null);
   };
 
   const exportData = async () => {
@@ -301,14 +392,11 @@ export function SettingsClient() {
       if (!response.ok) {
         const body = (await response.json().catch(() => null)) as { error?: string } | null;
         throw new Error(
-          body?.error ||
-            (response.status === 429
-              ? "You have exported several times recently. Try again in an hour."
-              : "The export could not be created.")
+          body?.error || (response.status === 429 ? "You have exported several times recently. Try again in an hour." : "The export could not be created.")
         );
       }
       const blob = await response.blob();
-      const saved = await saveFile(blob, `fit-tracker-export-${localDateString(new Date(), form.timezone)}.json`);
+      const saved = await saveFile(blob, `fit-tracker-export-${localDateString(new Date(), current.timezone)}.json`);
       if (saved) toast("Your data was exported", "success");
       else toast("The export could not be saved on this device.", "error");
     } catch (err) {
@@ -332,241 +420,261 @@ export function SettingsClient() {
     }
   };
 
-  const targetField = (
-    key: "targetCalories" | "targetProteinG" | "targetCarbsG" | "targetFatG" | "targetFiberG",
-    label: string,
-    unit: string,
-    automatic: number | null,
-    max: number
-  ) => (
-    <div className="space-y-1.5">
-      <p className={LABEL_CLASS}>{label}</p>
+  // ----- Row summaries -----
+  const weightText = (kg: number | null) => (kg == null ? null : `${fromKg(kg, unit, 1)} ${unit}`);
+  const heightText = (cm: number | null) => {
+    if (cm == null) return null;
+    if (unit === "kg") return `${Math.round(cm)} cm`;
+    const totalInches = Math.round(cmToInches(cm, 1));
+    return `${Math.floor(totalInches / 12)} ft ${totalInches % 12} in`;
+  };
+  const age = ageFrom(current, today);
+  const aboutSummary =
+    [current.sex === "male" ? "Male" : current.sex === "female" ? "Female" : null, age != null ? `${age}` : null, weightText(current.weightKg), heightText(current.heightCm)]
+      .filter(Boolean)
+      .join(" · ") || "Not set";
+  const goalSummary = current.goal
+    ? `${GOAL_OPTIONS.find((option) => option.value === current.goal)?.label}${
+        current.goal !== "maintain" && current.calorieAdjustment ? ` · ${current.goal === "cut" ? "−" : "+"}${current.calorieAdjustment} kcal` : ""
+      }`
+    : "Not set";
+  const effectiveCalories = current.targetCalories ?? autoNow.calories;
+  const effectiveProtein = current.targetProteinG ?? autoNow.protein;
+  const targetsSummary =
+    effectiveCalories != null
+      ? `${effectiveCalories.toLocaleString("en-US")} kcal${effectiveProtein != null ? ` · ${effectiveProtein} g protein` : ""}`
+      : "Add weight and height";
+  const dailySummary =
+    [current.stepGoal != null ? `${current.stepGoal.toLocaleString("en-US")} steps` : null, current.waterGoalMl != null ? `${current.waterGoalMl / 1000} L` : null]
+      .filter(Boolean)
+      .join(" · ") || "No goals";
+
+  // ----- Sheets -----
+  const heightInches = draft.heightCm == null ? null : cmToInches(draft.heightCm, 1);
+  const feet = heightInches == null ? null : Math.floor(heightInches / 12);
+  const inches = heightInches == null || feet == null ? null : Math.round((heightInches - feet * 12) * 10) / 10;
+
+  const targetField = (key: "targetCalories" | "targetProteinG" | "targetCarbsG" | "targetFatG" | "targetFiberG", label: string, suffix: string, automatic: number | null) => (
+    <div>
+      <FieldLabel>{label}</FieldLabel>
       <NumberField
-        label={`${label} target in ${unit}`}
-        value={form[key]}
+        label={`${label} target in ${suffix}`}
+        value={draft[key]}
         onChange={(value) => set(key, value)}
-        max={max}
-        suffix={unit}
+        suffix={suffix}
         placeholder={automatic != null ? String(automatic) : "–"}
+        errorMessage={errors[key]}
       />
-      <p className={HELP_CLASS}>
-        {form[key] != null
-          ? automatic != null
-            ? `Your own value. Automatic would be ${automatic.toLocaleString("en-US")} ${unit}.`
-            : "Your own value."
-          : automatic != null
-            ? "Automatic."
-            : "Add your weight and height to calculate it."}
-      </p>
+      {!errors[key] && (
+        <p className="mt-1.5 text-xs text-ink-3">
+          {draft[key] != null
+            ? automatic != null
+              ? `Your own value. Automatic: ${automatic.toLocaleString("en-US")} ${suffix}.`
+              : "Your own value."
+            : automatic != null
+              ? "Automatic."
+              : "Add your weight and height to calculate it."}
+        </p>
+      )}
     </div>
   );
 
-  return (
-    <div className="mx-auto max-w-2xl space-y-6 pb-24">
-      <h1 className="text-2xl font-bold text-white">Settings</h1>
+  const sheetTitle: Record<SheetKey, string> = {
+    about: "About you",
+    goal: "Goal",
+    targets: "Daily targets",
+    daily: "Steps and water",
+    appearance: "Appearance",
+    units: "Units",
+    timezone: "Time zone",
+    week: "Week starts on",
+    rest: "Rest timer",
+    ai: "AI features",
+    name: "Name",
+  };
 
-      <form onSubmit={save} className="space-y-6" noValidate>
-        <Section title="About you" description="Used to estimate how many calories you burn.">
-          <Input
-            id="settings-name"
-            label="Name"
-            value={form.name}
-            onChange={(event) => set("name", event.target.value.slice(0, 80))}
-            autoComplete="name"
-          />
-
-          <div className="space-y-1.5">
-            <p className={LABEL_CLASS}>Sex</p>
-            <SegmentedControl
-              label="Sex"
-              value={form.sex ?? ("" as Sex)}
-              onChange={(value) => set("sex", value)}
-              options={[
-                { value: "male", label: "Male" },
-                { value: "female", label: "Female" },
-              ]}
-              className="w-full"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Input
-              id="settings-birth-date"
-              label="Date of birth"
-              type="date"
-              value={form.birthDate}
-              max={today}
-              autoComplete="bday"
-              onChange={(event) => set("birthDate", event.target.value)}
-            />
-            {!form.birthDate && (
-              <div className="space-y-1.5">
-                <p className={LABEL_CLASS}>Age</p>
-                <NumberField
-                  label="Age in years"
-                  value={form.age}
-                  onChange={(value) => set("age", value)}
-                  max={100}
-                  suffix="years"
-                />
-                <p className={HELP_CLASS}>Only used until you add a date of birth.</p>
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <p className={LABEL_CLASS}>Weight</p>
-              <NumberField
-                label={`Weight in ${form.weightUnit}`}
-                value={form.weightKg == null ? null : fromKg(form.weightKg, form.weightUnit, 1)}
-                onChange={(value) => set("weightKg", value == null ? null : toKg(value, form.weightUnit))}
-                decimals={1}
-                max={form.weightUnit === "lbs" ? 700 : 320}
-                suffix={form.weightUnit}
+  const sheetBody = (key: SheetKey | null): React.ReactNode => {
+    switch (key) {
+      case "about":
+        return (
+          <div className="space-y-4">
+            <div>
+              <FieldLabel>Sex</FieldLabel>
+              <SegmentedControl
+                label="Sex"
+                value={draft.sex ?? ("" as Sex)}
+                onChange={(value) => set("sex", value)}
+                options={[
+                  { value: "male", label: "Male" },
+                  { value: "female", label: "Female" },
+                ]}
+                className="w-full"
               />
             </div>
-            <div className="space-y-1.5">
-              <p className={LABEL_CLASS}>Height</p>
-              {form.weightUnit === "kg" ? (
-                <NumberField
-                  label="Height in centimetres"
-                  value={form.heightCm}
-                  onChange={(value) => set("heightCm", value)}
-                  decimals={1}
-                  max={260}
-                  suffix="cm"
-                />
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  <NumberField
-                    label="Height, feet"
-                    value={feet}
-                    onChange={(value) =>
-                      set("heightCm", value == null ? null : inchesToCm(value * 12 + (inches || 0), 1))
-                    }
-                    max={8}
-                    suffix="ft"
-                  />
-                  <NumberField
-                    label="Height, inches"
-                    value={inches}
-                    onChange={(value) => set("heightCm", inchesToCm((feet || 0) * 12 + (value || 0), 1))}
-                    decimals={1}
-                    max={11.9}
-                    suffix="in"
-                  />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Input
+                id="settings-birth-date"
+                label="Date of birth"
+                type="date"
+                value={draft.birthDate}
+                max={today}
+                autoComplete="bday"
+                onChange={(event) => set("birthDate", event.target.value)}
+                isInvalid={Boolean(errors.birthDate)}
+                errorMessage={errors.birthDate}
+                inputClassName="font-mono tabular-nums"
+              />
+              {!draft.birthDate && (
+                <div>
+                  <FieldLabel>Age</FieldLabel>
+                  <NumberField label="Age in years" value={draft.age} onChange={(value) => set("age", value)} suffix="years" errorMessage={errors.age} />
                 </div>
               )}
             </div>
-          </div>
-
-          <Select<ActivityLevel>
-            id="settings-activity"
-            label="Activity level"
-            value={form.activityLevel}
-            onChange={(value) => set("activityLevel", value)}
-            options={ACTIVITY_OPTIONS}
-            placeholder="Choose…"
-          />
-
-          <div className="space-y-1.5">
-            <p className={LABEL_CLASS}>Goal</p>
-            <SegmentedControl
-              label="Goal"
-              value={form.goal ?? ("" as FitnessGoal)}
-              onChange={(value) => set("goal", value)}
-              options={GOAL_OPTIONS}
-              className="w-full"
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <FieldLabel>Weight</FieldLabel>
+                <NumberField
+                  label={`Weight in ${unit}`}
+                  value={draft.weightKg == null ? null : fromKg(draft.weightKg, unit, 1)}
+                  onChange={(value) => set("weightKg", value == null ? null : toKg(value, unit))}
+                  decimals={1}
+                 
+                  suffix={unit}
+                  errorMessage={errors.weightKg}
+                />
+              </div>
+              <div>
+                <FieldLabel>Height</FieldLabel>
+                {unit === "kg" ? (
+                  <NumberField label="Height in centimetres" value={draft.heightCm} onChange={(value) => set("heightCm", value)} decimals={1} suffix="cm" errorMessage={errors.heightCm} />
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <NumberField
+                        label="Height, feet"
+                        value={feet}
+                        onChange={(value) => set("heightCm", value == null ? null : inchesToCm(value * 12 + (inches || 0), 1))}
+                        max={8}
+                        suffix="ft"
+                        isInvalid={Boolean(errors.heightCm)}
+                        describedBy={errors.heightCm ? "settings-height-error" : undefined}
+                      />
+                      <NumberField
+                        label="Height, inches"
+                        value={inches}
+                        onChange={(value) => set("heightCm", inchesToCm((feet || 0) * 12 + (value || 0), 1))}
+                        decimals={1}
+                        max={11.9}
+                        suffix="in"
+                        isInvalid={Boolean(errors.heightCm)}
+                        describedBy={errors.heightCm ? "settings-height-error" : undefined}
+                      />
+                    </div>
+                    {errors.heightCm && (
+                      <p id="settings-height-error" className="mt-1.5 text-xs text-danger">
+                        {errors.heightCm}
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+            <Select<ActivityLevel>
+              id="settings-activity"
+              label="Activity level"
+              value={draft.activityLevel}
+              onChange={(value) => set("activityLevel", value)}
+              options={ACTIVITY_OPTIONS}
+              placeholder="Choose…"
             />
+            <p className="text-xs text-ink-3">Used to estimate how many calories you burn.</p>
           </div>
-
-          {form.goal && form.goal !== "maintain" && (
-            <div className="space-y-1.5">
-              <p className={LABEL_CLASS}>
-                {form.goal === "cut" ? "Calories below what you burn" : "Calories above what you burn"}
-              </p>
-              <NumberField
-                label="Daily calorie change for your goal"
-                value={form.calorieAdjustment}
-                onChange={(value) => set("calorieAdjustment", value)}
-                max={1500}
-                suffix="kcal"
-                placeholder={form.goal === "cut" ? "500" : "300"}
-              />
-              <p className={HELP_CLASS}>Leave empty for the standard amount.</p>
-            </div>
-          )}
-        </Section>
-
-        <Section
-          title="Daily targets"
-          description={
-            auto.tdee != null
-              ? `You burn about ${auto.tdee.toLocaleString("en-US")} kcal a day (an estimate from the answers above). Leave a field empty to use the automatic value.`
-              : "Leave a field empty to use the automatic value."
-          }
-        >
-          {targetField("targetCalories", "Calories", "kcal", auto.calories, 10_000)}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {targetField("targetProteinG", "Protein", "g", auto.protein, 600)}
-            {targetField("targetCarbsG", "Carbs", "g", auto.carbs, 1500)}
-            {targetField("targetFatG", "Fat", "g", auto.fat, 500)}
-            {targetField("targetFiberG", "Fibre", "g", auto.fiber, 150)}
+        );
+      case "goal":
+        return (
+          <div className="space-y-4">
+            <SegmentedControl label="Goal" value={draft.goal ?? ("" as FitnessGoal)} onChange={(value) => set("goal", value)} options={GOAL_OPTIONS} className="w-full" />
+            {draft.goal && draft.goal !== "maintain" && (
+              <div>
+                <FieldLabel>{draft.goal === "cut" ? "Calories below what you burn" : "Calories above what you burn"}</FieldLabel>
+                <NumberField
+                  label="Daily calorie change for your goal"
+                  value={draft.calorieAdjustment}
+                  onChange={(value) => set("calorieAdjustment", value)}
+                 
+                  suffix="kcal"
+                  placeholder={draft.goal === "cut" ? "500" : "300"}
+                  errorMessage={errors.calorieAdjustment}
+                />
+                {!errors.calorieAdjustment && <p className="mt-1.5 text-xs text-ink-3">Leave empty for the standard amount.</p>}
+              </div>
+            )}
           </div>
-          {hasCustomTargets && (
-            <Button
-              type="button"
-              variant="bordered"
-              onClick={() =>
-                setForm((current) => ({
-                  ...current,
-                  targetCalories: null,
-                  targetProteinG: null,
-                  targetCarbsG: null,
-                  targetFatG: null,
-                  targetFiberG: null,
-                }))
-              }
-            >
-              Use automatic values for all
-            </Button>
-          )}
-        </Section>
-
-        <Section title="Daily goals">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <p className={LABEL_CLASS}>Steps per day</p>
-              <NumberField
-                label="Steps per day"
-                value={form.stepGoal}
-                onChange={(value) => set("stepGoal", value)}
-                max={100_000}
-                suffix="steps"
-                placeholder="No goal"
-              />
+        );
+      case "targets":
+        return (
+          <div className="space-y-4">
+            <p className="text-[13px] leading-5 text-ink-2">
+              {autoDraft.tdee != null
+                ? `You burn about ${autoDraft.tdee.toLocaleString("en-US")} kcal a day. Leave a field empty to use the automatic value.`
+                : "Leave a field empty to use the automatic value."}
+            </p>
+            {targetField("targetCalories", "Calories", "kcal", autoDraft.calories)}
+            <div className="grid grid-cols-2 gap-3">
+              {targetField("targetProteinG", "Protein", "g", autoDraft.protein)}
+              {targetField("targetCarbsG", "Carbs", "g", autoDraft.carbs)}
+              {targetField("targetFatG", "Fat", "g", autoDraft.fat)}
+              {targetField("targetFiberG", "Fibre", "g", autoDraft.fiber)}
             </div>
-            <div className="space-y-1.5">
-              <p className={LABEL_CLASS}>Water per day</p>
+            {(draft.targetCalories != null || draft.targetProteinG != null || draft.targetCarbsG != null || draft.targetFatG != null || draft.targetFiberG != null) && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setErrors({});
+                  setDraft((prev) => ({ ...prev, targetCalories: null, targetProteinG: null, targetCarbsG: null, targetFatG: null, targetFiberG: null }));
+                }}
+              >
+                Use automatic values for all
+              </Button>
+            )}
+          </div>
+        );
+      case "daily":
+        return (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <FieldLabel>Steps per day</FieldLabel>
+              <NumberField label="Steps per day" value={draft.stepGoal} onChange={(value) => set("stepGoal", value)} suffix="steps" placeholder="No goal" errorMessage={errors.stepGoal} />
+            </div>
+            <div>
+              <FieldLabel>Water per day</FieldLabel>
               <NumberField
                 label="Water per day in millilitres"
-                value={form.waterGoalMl}
+                value={draft.waterGoalMl}
                 onChange={(value) => set("waterGoalMl", value)}
-                max={10_000}
+               
                 suffix="ml"
                 placeholder="No goal"
+                errorMessage={errors.waterGoalMl}
               />
             </div>
           </div>
-        </Section>
-
-        <Section title="Units and time">
-          <div className="space-y-1.5">
-            <p className={LABEL_CLASS}>Weight unit</p>
+        );
+      case "appearance":
+        return (
+          <div className="space-y-2">
+            <AppearanceSetting />
+            <p className="text-xs text-ink-3">Applies at once, on this device. System follows your phone or computer.</p>
+          </div>
+        );
+      case "units":
+        return (
+          <div className="space-y-2">
             <SegmentedControl
               label="Weight unit"
-              value={form.weightUnit}
+              value={draft.weightUnit}
               onChange={(value) => set("weightUnit", value)}
               options={[
                 { value: "kg", label: "Kilograms (kg)" },
@@ -574,217 +682,214 @@ export function SettingsClient() {
               ]}
               className="w-full"
             />
-            <p className={HELP_CLASS}>Changes how weights are shown. Nothing you logged is altered.</p>
+            <p className="text-xs text-ink-3">Changes how weights are shown. Nothing you logged is altered.</p>
           </div>
-
-          <div className="space-y-1.5">
+        );
+      case "timezone":
+        return (
+          <div className="space-y-3">
             <Select<string>
               id="settings-timezone"
               label="Time zone"
-              value={form.timezone}
+              value={draft.timezone}
               onChange={(value) => set("timezone", value)}
               options={timeZones.map((zone) => ({ value: zone, label: zone.replace(/_/g, " ") }))}
               searchable
             />
-            <p className={HELP_CLASS}>Decides when your day starts and ends.</p>
-            {form.timezone !== deviceZone && (
-              <Button type="button" variant="bordered" size="sm" onClick={() => set("timezone", deviceZone)}>
+            <p className="text-xs text-ink-3">Decides when your day starts and ends.</p>
+            {draft.timezone !== deviceZone && (
+              <Button variant="secondary" size="sm" onClick={() => set("timezone", deviceZone)}>
                 Use this device&apos;s zone ({deviceZone.replace(/_/g, " ")})
               </Button>
             )}
           </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Select<WeekdayKey>
-              id="settings-week-start"
-              label="Week starts on"
-              value={form.weekStartDay}
-              onChange={(value) => set("weekStartDay", value)}
-              options={WEEK_START_OPTIONS}
-            />
-            <Select<number>
-              id="settings-rest"
-              label="Rest timer after a set"
-              value={form.restTimerDefaultSec}
-              onChange={(value) => set("restTimerDefaultSec", value)}
-              options={Array.from(new Set([...REST_OPTIONS, form.restTimerDefaultSec]))
-                .sort((a, b) => a - b)
-                .map((seconds) => ({
-                  value: seconds,
-                  label:
-                    seconds === 0
-                      ? "Off"
-                      : seconds < 60
-                        ? `${seconds} seconds`
-                        : `${Math.floor(seconds / 60)} min${seconds % 60 ? ` ${seconds % 60} s` : ""}`,
-                }))}
-            />
-          </div>
-        </Section>
-
-        <Section
-          title="AI features"
-          description="The coach, photo meal estimates and the AI day plan use Google Gemini. With your own key they do not count against the shared daily limit."
-        >
-          <p className="text-base text-zinc-300">
-            {hasSavedKey ? "Your own key is saved and in use." : "Using the shared key, with a daily limit."}
-          </p>
-          <Input
-            id="settings-gemini-key"
-            label={hasSavedKey ? "Replace your key" : "Your Gemini API key (optional)"}
-            description="The key is stored encrypted and is never shown again or sent back to your browser."
-            type="password"
-            value={newKey}
-            onChange={(event) => {
-              setError(null);
-              setNewKey(event.target.value.slice(0, 200));
-            }}
-            autoComplete="off"
-            spellCheck={false}
-            placeholder={hasSavedKey ? "Paste a new key to replace it" : "Paste your key"}
+        );
+      case "week":
+        return (
+          <SegmentedControl label="Week starts on" value={draft.weekStartDay} onChange={(value) => set("weekStartDay", value)} options={WEEK_START_OPTIONS} className="w-full" />
+        );
+      case "rest":
+        return (
+          <Select<number>
+            id="settings-rest"
+            label="Rest timer after a set"
+            value={draft.restTimerDefaultSec}
+            onChange={(value) => set("restTimerDefaultSec", value)}
+            options={Array.from(new Set([...REST_OPTIONS, draft.restTimerDefaultSec]))
+              .sort((a, b) => a - b)
+              .map((seconds) => ({ value: seconds, label: restLabel(seconds) }))}
           />
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="bordered"
-              size="sm"
-              endContent={<ExternalLink className="h-4 w-4" />}
-              onClick={() => openExternalLink("https://aistudio.google.com/app/apikey")}
-            >
-              Get a free key
-            </Button>
-            {user?.preferences?.hasCustomGeminiKey && !removeKey && (
-              <Button
-                type="button"
-                variant="bordered"
-                size="sm"
-                className="text-red-300 border-red-500/30"
-                onClick={() => {
-                  setRemoveKey(true);
-                  setNewKey("");
-                }}
-              >
-                Remove my key
-              </Button>
-            )}
-          </div>
-          {removeKey && (
-            <p role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-sm text-amber-200">
-              Your key will be removed when you save.{" "}
-              <button type="button" onClick={() => setRemoveKey(false)} className="font-semibold underline cursor-pointer">
-                Keep it
-              </button>
+        );
+      case "ai":
+        return (
+          <div className="space-y-3">
+            <p className="text-[13px] leading-5 text-ink-2">
+              The Coach, meal scans and Plan my day use Google Gemini. With your own key they do not count against the shared daily limit.
             </p>
-          )}
-        </Section>
-
-        {isDirty && (
-          <div className="fixed inset-x-0 bottom-above-nav z-30 px-3 pointer-events-none">
-            <div className="pointer-events-auto mx-auto max-w-2xl rounded-2xl border border-line bg-zinc-900 p-3 shadow-xl shadow-black/50">
-              {error && (
-                <p role="alert" className="mb-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-                  {error}
-                </p>
+            <p className="text-sm text-ink">{hasCustomKey ? "Your own key is saved and in use." : "Using the shared key, with a daily limit."}</p>
+            <Input
+              id="settings-gemini-key"
+              label={hasCustomKey ? "Replace your key" : "Your Gemini API key (optional)"}
+              description="Stored encrypted; never shown again or sent back to your browser."
+              type="password"
+              value={newKey}
+              onChange={(event) => {
+                setErrors((prev) => ({ ...prev, key: undefined }));
+                setNewKey(event.target.value.slice(0, 200));
+              }}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={hasCustomKey ? "Paste a new key to replace it" : "Paste your key"}
+              isInvalid={Boolean(errors.key)}
+              errorMessage={errors.key}
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" size="sm" endContent={<ExternalLink className="h-3.5 w-3.5" />} onClick={() => openExternalLink("https://aistudio.google.com/app/apikey")}>
+                Get a free key
+              </Button>
+              {hasCustomKey && (
+                <Button variant="ghost" size="sm" className="text-danger hover:text-danger" disabled={saving} onClick={() => void save("ai", { removeKey: true })}>
+                  Remove my key
+                </Button>
               )}
-              <div className="flex items-center gap-2">
-                <p className="min-w-0 flex-1 text-sm text-zinc-300">Unsaved changes</p>
-                <Button type="button" variant="bordered" onClick={discard} disabled={isSaving}>
-                  Discard
-                </Button>
-                <Button type="submit" isLoading={isSaving}>
-                  Save
-                </Button>
-              </div>
             </div>
           </div>
-        )}
-      </form>
+        );
+      case "name":
+        return (
+          <Input
+            id="settings-name"
+            label="Name"
+            value={draft.name}
+            onChange={(event) => set("name", event.target.value.slice(0, 80))}
+            autoComplete="name"
+            data-autofocus
+            isInvalid={Boolean(errors.name)}
+            errorMessage={errors.name}
+          />
+        );
+      default:
+        return null;
+    }
+  };
 
-      <Section title="Account">
-        <p className="text-base text-zinc-300 break-all">Signed in as {user?.email}</p>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="bordered"
-            startContent={<LogOut className="h-4 w-4" />}
-            isLoading={isSigningOut}
-            onClick={() => {
-              setIsSigningOut(true);
-              void logout();
-            }}
-          >
-            Sign out
-          </Button>
-          <Button
-            variant="bordered"
-            onClick={() => {
-              setSignOutAllError(null);
-              setIsSignOutAllOpen(true);
-            }}
-          >
-            Sign out everywhere else
-          </Button>
-          {user?.role === "admin" && (
-            <Link
-              href="/admin"
-              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/15 px-4 text-sm font-medium text-zinc-200 hover:bg-white/5"
-            >
-              <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-              Admin panel
-            </Link>
+  // Appearance applies at once: its sheet only has Done.
+  const instant = shown === "appearance";
+  const aiNeedsKey = shown === "ai" && !newKey.trim();
+
+  return (
+    <div className="mx-auto max-w-[680px] space-y-5">
+      <SettingGroup title="Body and targets">
+        <SettingRow label="About you" value={aboutSummary} onClick={() => openSheet("about")} />
+        <SettingRow label="Goal" value={goalSummary} onClick={() => openSheet("goal")} />
+        <SettingRow label="Daily targets" value={targetsSummary} onClick={() => openSheet("targets")} />
+        <SettingRow label="Steps and water" value={dailySummary} onClick={() => openSheet("daily")} />
+      </SettingGroup>
+
+      <SettingGroup title="Preferences">
+        <SettingRow label="Appearance" value={THEME_OPTIONS.find((option) => option.value === preference)?.label} onClick={() => openSheet("appearance")} />
+        <SettingRow label="Units" value={unit === "kg" ? "Kilograms" : "Pounds"} onClick={() => openSheet("units")} />
+        <SettingRow label="Time zone" value={current.timezone.replace(/_/g, " ")} onClick={() => openSheet("timezone")} />
+        <SettingRow label="Week starts on" value={WEEK_START_OPTIONS.find((option) => option.value === current.weekStartDay)?.label} onClick={() => openSheet("week")} />
+        <SettingRow label="Rest timer" value={restLabel(current.restTimerDefaultSec)} onClick={() => openSheet("rest")} />
+        <SettingRow label="AI features" value={hasCustomKey ? "Your own key" : "Shared key"} onClick={() => openSheet("ai")} />
+      </SettingGroup>
+
+      <SettingGroup title="Account and data">
+        <SettingRow label="Name" value={current.name || "Not set"} onClick={() => openSheet("name")} />
+        <SettingRow label="Email" value={user?.email} />
+        <SettingRow label="Export my data" value={isExporting ? "Preparing…" : "JSON file"} onClick={() => void exportData()} trailing="download" />
+        {user?.role === "admin" && <SettingRow label="Admin panel" href="/admin/dashboard" />}
+        <SettingRow
+          label="Sign out everywhere else"
+          onClick={() => {
+            setSignOutAllError(null);
+            setIsSignOutAllOpen(true);
+          }}
+        />
+        <SettingRow
+          label={isSigningOut ? "Signing out…" : "Sign out"}
+          tone="danger"
+          onClick={() => {
+            if (isSigningOut) return;
+            setIsSigningOut(true);
+            void logout();
+          }}
+          trailing="none"
+        />
+      </SettingGroup>
+
+      <footer className="space-y-1 px-0.5 text-xs text-ink-3">
+        <p>
+          FitTracker <span className="font-mono tabular-nums">{versionData.versionName}</span>
+          {nativeVersion && (
+            <>
+              {" · Android app "}
+              <span className="font-mono tabular-nums">
+                {nativeVersion.versionName} ({nativeVersion.versionCode})
+              </span>
+            </>
           )}
-        </div>
-      </Section>
-
-      <Section
-        title="Your data"
-        description="Download everything you have logged: workouts, routines, records, meals, daily logs, habits, plans and check-ins."
-      >
-        <div>
-          <Button
-            variant="bordered"
-            startContent={<Download className="h-4 w-4" />}
-            isLoading={isExporting}
-            onClick={() => void exportData()}
-          >
-            Export my data (JSON)
-          </Button>
-        </div>
-      </Section>
-
-      <Section title="App">
-        <p className="text-base text-zinc-300">
-          {nativeVersion
-            ? `Android app version ${nativeVersion.versionName} (${nativeVersion.versionCode})`
-            : `Web version ${versionData.versionName}`}
+          {user?.createdAt && ` · Member since ${formatDateString(toDateInput(user.createdAt), { month: "long", year: "numeric" })}`}
         </p>
-        <div className="flex flex-wrap gap-2">
+        <div className="-ms-2 flex flex-wrap">
           {isNative ? (
             <>
-              <Button
-                variant="bordered"
-                startContent={<RefreshCw className="h-4 w-4" />}
-                onClick={() => triggerAppUpdateCheck()}
-              >
+              <button type="button" onClick={() => triggerAppUpdateCheck()} className={FOOTER_LINK}>
                 Check for updates
-              </Button>
-              <Link
-                href="/widgets"
-                className="inline-flex min-h-11 items-center rounded-xl border border-white/15 px-4 text-sm font-medium text-zinc-200 hover:bg-white/5"
-              >
+              </button>
+              <Link href="/widgets" className={FOOTER_LINK}>
                 Home screen widgets
               </Link>
             </>
           ) : (
-            <Button
-              variant="bordered"
-              endContent={<ExternalLink className="h-4 w-4" />}
-              onClick={() => openExternalLink(ANDROID_RELEASES_URL)}
-            >
+            <button type="button" onClick={() => openExternalLink(ANDROID_RELEASES_URL)} className={FOOTER_LINK}>
               Get the Android app
-            </Button>
+            </button>
           )}
         </div>
-      </Section>
+      </footer>
+
+      <Sheet
+        isOpen={open !== null}
+        onClose={close}
+        title={shown ? sheetTitle[shown] : "Settings"}
+        closeOnBackdropClick={!saving}
+        footer={
+          instant ? (
+            <Button fullWidth onClick={close}>
+              Done
+            </Button>
+          ) : (
+            <div className="grid w-full grid-cols-2 gap-2">
+              <Button variant="secondary" onClick={close} disabled={saving}>
+                Cancel
+              </Button>
+              <Button type="submit" form="settings-sheet-form" isLoading={saving} disabled={aiNeedsKey}>
+                Save
+              </Button>
+            </div>
+          )
+        }
+      >
+        <form
+          ref={formRef}
+          id="settings-sheet-form"
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (shown && !instant) void save(shown);
+          }}
+          className="space-y-3"
+        >
+          {formError && (
+            <p role="alert" className="rounded-control border border-line bg-surface px-3 py-2.5 text-sm text-danger">
+              {formError}
+            </p>
+          )}
+          {sheetBody(shown)}
+        </form>
+      </Sheet>
 
       <ConfirmDialog
         isOpen={isSignOutAllOpen}
@@ -797,24 +902,6 @@ export function SettingsClient() {
         error={signOutAllError}
       />
     </div>
-  );
-}
-
-function Section({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-3xl border border-line bg-surface p-4 sm:p-6">
-      <h2 className="text-lg font-bold text-white">{title}</h2>
-      {description && <p className="mt-1 text-sm text-zinc-400">{description}</p>}
-      <div className="mt-4 space-y-4">{children}</div>
-    </section>
   );
 }
 

@@ -4,12 +4,12 @@ import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Archive, ArchiveRestore, Save, Plus, Trash2, AlertTriangle, ChevronUp, ChevronDown } from "lucide-react";
-import { ConfirmModal } from "@/components/admin/ConfirmModal";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
-import { Card } from "@/components/ui/Card";
+import { Surface } from "@/components/ui/Surface";
 import { useToast } from "@/components/ui/Toast";
 import {
   ExerciseImageUploader,
@@ -353,13 +353,13 @@ export function ExerciseForm({ mode, initialExercise = null }: ExerciseFormProps
         <Link
           href="/admin/exercises"
           aria-label="Back to exercises"
-          className="min-h-11 min-w-11 flex items-center justify-center text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-xl transition"
+          className="min-h-11 min-w-11 flex items-center justify-center text-ink-2 hover:text-ink hover:bg-elevated rounded-control transition"
         >
           <ArrowLeft className="w-5 h-5" aria-hidden="true" />
         </Link>
         <div className="flex-1 min-w-48">
-          <h1 className="text-2xl font-extrabold text-white tracking-tight">{isEdit ? "Edit exercise" : "Add exercise"}</h1>
-          <p className="text-xs text-zinc-400">
+          <h1 className="text-2xl font-semibold text-ink tracking-tight">{isEdit ? "Edit exercise" : "Add exercise"}</h1>
+          <p className="text-xs text-ink-2">
             {isEdit
               ? exercise?.isCustom
                 ? "A user's custom exercise"
@@ -370,7 +370,7 @@ export function ExerciseForm({ mode, initialExercise = null }: ExerciseFormProps
         {isEdit && exercise && (
           <Button
             type="button"
-            variant="bordered"
+            variant="secondary"
             size="md"
             onClick={() => void openArchive()}
             startContent={
@@ -384,23 +384,23 @@ export function ExerciseForm({ mode, initialExercise = null }: ExerciseFormProps
       </div>
 
       {exercise?.archivedAt && (
-        <p className="flex items-start gap-2 text-sm text-amber-200 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
+        <p className="flex items-start gap-2 text-sm text-warn bg-elevated border border-line rounded-control p-3">
           <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" />
           This exercise is archived: users cannot add it, but their routines and history keep it. Restore it to make it available again.
         </p>
       )}
 
       {formError && (
-        <div role="alert" className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4 text-sm font-medium text-red-300 space-y-2">
+        <div role="alert" className="bg-surface border border-line rounded-card p-4 text-sm font-medium text-danger space-y-2">
           <p>{formError.message}</p>
           <div className="flex flex-wrap gap-2">
             {formError.existingId && (
-              <Link href={`/admin/exercises/${formError.existingId}`} className="inline-flex items-center min-h-11 px-3 rounded-lg bg-zinc-900 text-violet-300 underline">
+              <Link href={`/admin/exercises/${formError.existingId}`} className="inline-flex items-center min-h-11 px-3 rounded-chip bg-surface text-ink-2 underline">
                 Open the existing exercise
               </Link>
             )}
             {formError.stale && (
-              <Button type="button" variant="bordered" size="sm" onClick={() => window.location.reload()} className="min-h-11">
+              <Button type="button" variant="secondary" size="sm" onClick={() => window.location.reload()} className="min-h-11">
                 Reload latest version
               </Button>
             )}
@@ -408,8 +408,8 @@ export function ExerciseForm({ mode, initialExercise = null }: ExerciseFormProps
         </div>
       )}
 
-      <Card className="p-6 space-y-5">
-        <h2 className="text-sm font-extrabold text-white uppercase tracking-wider">Basics</h2>
+      <Surface className="p-5 sm:p-6 space-y-5">
+        <h2 className="text-sm font-semibold text-ink">Basics</h2>
 
         <Input
           label="Name *"
@@ -495,13 +495,13 @@ export function ExerciseForm({ mode, initialExercise = null }: ExerciseFormProps
             onChange={(value) => update("mechanic", value || "")}
           />
         </div>
-      </Card>
+      </Surface>
 
-      <Card className="p-6 space-y-3">
-        <h2 id="secondary-heading" className="text-sm font-extrabold text-white uppercase tracking-wider">
+      <Surface className="p-5 sm:p-6 space-y-3">
+        <h2 id="secondary-heading" className="text-sm font-semibold text-ink">
           Secondary muscles
         </h2>
-        <p className="text-sm text-zinc-400">Other muscles that work (up to {L.maxSecondaryMuscles}). The primary muscle is excluded.</p>
+        <p className="text-sm text-ink-2">Other muscles that work (up to {L.maxSecondaryMuscles}). The primary muscle is excluded.</p>
         <div className="flex flex-wrap gap-2" role="group" aria-labelledby="secondary-heading">
           {MUSCLES.map((muscle) => {
             const selected = form.secondaryMuscles.includes(muscle);
@@ -514,7 +514,7 @@ export function ExerciseForm({ mode, initialExercise = null }: ExerciseFormProps
                 disabled={isPrimary}
                 onClick={() => toggleSecondary(muscle)}
                 className={`min-h-11 px-3 rounded-full text-sm font-semibold border transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
-                  selected ? "bg-violet-600 border-violet-500 text-white" : "bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500"
+                  selected ? "bg-accent-soft border-accent text-accent" : "bg-surface border-line text-ink-2 hover:border-line-strong"
                 }`}
               >
                 {muscle}
@@ -523,14 +523,14 @@ export function ExerciseForm({ mode, initialExercise = null }: ExerciseFormProps
             );
           })}
         </div>
-      </Card>
+      </Surface>
 
-      <Card className="p-6 space-y-4">
+      <Surface className="p-5 sm:p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-extrabold text-white uppercase tracking-wider">Instructions</h2>
+          <h2 className="text-sm font-semibold text-ink">Instructions</h2>
           <Button
             type="button"
-            variant="flat"
+            variant="secondary"
             size="sm"
             disabled={form.instructions.length >= L.maxInstructions}
             onClick={() => setForm((current) => ({ ...current, instructions: [...current.instructions, newStep()] }))}
@@ -540,11 +540,11 @@ export function ExerciseForm({ mode, initialExercise = null }: ExerciseFormProps
             Add step
           </Button>
         </div>
-        {errors.instructions && <p className="text-sm text-red-300">{errors.instructions}</p>}
+        {errors.instructions && <p className="text-sm text-danger">{errors.instructions}</p>}
         <ol className="space-y-3">
           {form.instructions.map((step, index) => (
             <li key={step.key} className="flex items-start gap-2">
-              <span className="w-8 h-8 mt-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold flex items-center justify-center shrink-0" aria-hidden="true">
+              <span className="w-8 h-8 mt-2 rounded-control bg-elevated text-ink-2 text-xs font-semibold flex items-center justify-center shrink-0" aria-hidden="true">
                 {index + 1}
               </span>
               <Textarea
@@ -563,7 +563,7 @@ export function ExerciseForm({ mode, initialExercise = null }: ExerciseFormProps
                   onClick={() => moveStep(index, -1)}
                   disabled={index === 0}
                   aria-label={`Move step ${index + 1} up`}
-                  className="min-h-11 min-w-11 flex items-center justify-center rounded-xl text-zinc-300 hover:text-white disabled:opacity-30 cursor-pointer"
+                  className="min-h-11 min-w-11 flex items-center justify-center rounded-control text-ink-2 hover:text-ink disabled:opacity-30 cursor-pointer"
                 >
                   <ChevronUp className="w-4 h-4" aria-hidden="true" />
                 </button>
@@ -572,7 +572,7 @@ export function ExerciseForm({ mode, initialExercise = null }: ExerciseFormProps
                   onClick={() => moveStep(index, 1)}
                   disabled={index === form.instructions.length - 1}
                   aria-label={`Move step ${index + 1} down`}
-                  className="min-h-11 min-w-11 flex items-center justify-center rounded-xl text-zinc-300 hover:text-white disabled:opacity-30 cursor-pointer"
+                  className="min-h-11 min-w-11 flex items-center justify-center rounded-control text-ink-2 hover:text-ink disabled:opacity-30 cursor-pointer"
                 >
                   <ChevronDown className="w-4 h-4" aria-hidden="true" />
                 </button>
@@ -587,36 +587,36 @@ export function ExerciseForm({ mode, initialExercise = null }: ExerciseFormProps
                       current.instructions.length > 1 ? current.instructions.filter((s) => s.key !== step.key) : [newStep()],
                   }))
                 }
-                className="mt-1 min-h-11 min-w-11 flex items-center justify-center rounded-xl text-zinc-300 hover:text-red-300 cursor-pointer"
+                className="mt-1 min-h-11 min-w-11 flex items-center justify-center rounded-control text-ink-2 hover:text-danger cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" aria-hidden="true" />
               </button>
             </li>
           ))}
         </ol>
-      </Card>
+      </Surface>
 
-      <Card className="p-6 space-y-4">
-        <h2 className="text-sm font-extrabold text-white uppercase tracking-wider">Images</h2>
+      <Surface className="p-5 sm:p-6 space-y-4">
+        <h2 className="text-sm font-semibold text-ink">Images</h2>
         <ExerciseImageUploader images={images} setImages={setImages} />
-      </Card>
+      </Surface>
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-3 pb-8">
         {completenessWarnings.length > 0 && (
-          <p className="flex items-center gap-2 text-sm text-amber-200 sm:mr-auto">
+          <p className="flex items-center gap-2 text-sm text-warn sm:mr-auto">
             <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
             Users will see {completenessWarnings.join(" and ")} for this exercise.
           </p>
         )}
         <Link
           href="/admin/exercises"
-          className="inline-flex items-center justify-center px-4 min-h-11 text-sm text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-xl transition"
+          className="inline-flex items-center justify-center px-4 min-h-11 text-sm text-ink-2 hover:text-ink hover:bg-elevated rounded-control transition"
         >
           Cancel
         </Link>
         <Button
           type="submit"
-          variant="solid"
+          variant="primary"
           size="md"
           isLoading={isSaving}
           disabled={isSaving || navigating || (isEdit && !dirty)}
@@ -628,9 +628,9 @@ export function ExerciseForm({ mode, initialExercise = null }: ExerciseFormProps
       </div>
 
       {isEdit && exercise && (
-        <ConfirmModal
+        <ConfirmDialog
           isOpen={archiveOpen}
-          onClose={() => {
+          onCancel={() => {
             if (!archiveBusy) setArchiveOpen(false);
           }}
           onConfirm={runArchive}
@@ -641,16 +641,15 @@ export function ExerciseForm({ mode, initialExercise = null }: ExerciseFormProps
               : `Archive "${exercise.name}"? It disappears from the exercise picker. Routines that contain it and logged workouts keep it, and you can restore it at any time.`
           }
           confirmLabel={exercise.archivedAt ? "Restore" : "Archive"}
-          confirmVariant={exercise.archivedAt ? "primary" : "warning"}
-          isLoading={archiveBusy}
+          isWorking={archiveBusy}
           error={archiveError}
         >
           {!exercise.archivedAt && (
-            <p className="text-sm text-zinc-300" aria-live="polite">
+            <p className="text-sm text-ink-2" aria-live="polite">
               {usageError ? `Usage could not be checked: ${usageError}` : usage ? usageSummary(usage) : "Checking where it is used…"}
             </p>
           )}
-        </ConfirmModal>
+        </ConfirmDialog>
       )}
     </form>
   );

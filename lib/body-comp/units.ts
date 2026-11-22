@@ -9,9 +9,11 @@ import {
   MEASUREMENT_MAX_CM,
   MEASUREMENT_MIN_CM,
 } from "@/lib/validation/body-comp";
+import { PROFILE_LIMITS } from "@/lib/users/limits";
 
-export const BODY_WEIGHT_MIN_KG = 20;
-export const BODY_WEIGHT_MAX_KG = 400;
+/** The shared profile limit: a check-in can update the profile weight. */
+export const BODY_WEIGHT_MIN_KG = PROFILE_LIMITS.weightKg.min;
+export const BODY_WEIGHT_MAX_KG = PROFILE_LIMITS.weightKg.max;
 
 export function lengthUnitFor(weightUnit: WeightUnit): LengthUnit {
   return weightUnit === "lbs" ? "in" : "cm";

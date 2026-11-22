@@ -4,9 +4,9 @@
     <!-- Frosted glass translucent dark gradient -->
     <gradient
         android:angle="135"
-        android:startColor="#E616161B"
-        android:centerColor="#D9111114"
-        android:endColor="#E60A0A0D"
+        android:startColor="#E6141619"
+        android:centerColor="#D9141619"
+        android:endColor="#E60C0D0F"
         android:type="linear" />
     
     <!-- Subtle frosted rim light border -->

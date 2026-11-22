@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
-import { AUTH_LINK_CLASS, AuthCard, FormError } from "@/components/auth/AuthCard";
+import { buttonClasses } from "@/components/ui/button-styles";
+import { AUTH_LINK_CLASS, AuthCard, FormError, focusFirstInvalid } from "@/components/auth/AuthCard";
 import { PasswordField } from "@/components/auth/PasswordField";
 import { api, errorMessage } from "@/lib/client/api";
 
@@ -16,6 +17,7 @@ export function ResetPasswordForm({ token }: { token: string | null }) {
   const [error, setError] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<{ password?: string; confirmation?: string }>({});
   const [isDone, setIsDone] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -23,10 +25,12 @@ export function ResetPasswordForm({ token }: { token: string | null }) {
     setError(null);
     if (password.length < MIN_PASSWORD_LENGTH) {
       setFieldError({ password: `Use at least ${MIN_PASSWORD_LENGTH} characters.` });
+      focusFirstInvalid(formRef.current);
       return;
     }
     if (password !== confirmation) {
       setFieldError({ confirmation: "The two passwords do not match." });
+      focusFirstInvalid(formRef.current);
       return;
     }
     setFieldError({});
@@ -44,7 +48,7 @@ export function ResetPasswordForm({ token }: { token: string | null }) {
   if (!token) {
     return (
       <AuthCard title="This link is not valid">
-        <div className="space-y-4 text-base text-zinc-300">
+        <div className="space-y-4 text-sm leading-6 text-ink-2">
           <p>The reset link is incomplete or has already been used.</p>
           <Link href="/forgot-password" className={AUTH_LINK_CLASS}>
             Request a new link
@@ -57,11 +61,11 @@ export function ResetPasswordForm({ token }: { token: string | null }) {
   if (isDone) {
     return (
       <AuthCard title="Password changed">
-        <div role="status" className="space-y-4 text-base text-zinc-300">
+        <div role="status" className="space-y-4 text-sm leading-6 text-ink-2">
           <p>Your new password is saved. Every device that was signed in has been signed out.</p>
           <Link
             href="/login?expired=1"
-            className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-emerald-500 px-6 text-base font-bold text-zinc-950 hover:bg-emerald-400"
+            className={buttonClasses({ variant: "primary", size: "lg", className: "w-full" })}
           >
             Sign in
           </Link>
@@ -79,7 +83,7 @@ export function ResetPasswordForm({ token }: { token: string | null }) {
         </Link>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-4">
         <FormError message={error} />
         <PasswordField
           label="New password"

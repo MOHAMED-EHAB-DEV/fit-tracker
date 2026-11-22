@@ -1,12 +1,12 @@
 import React, { Suspense } from "react";
-import { Loader2 } from "lucide-react";
+import { ScreenSkeleton } from "@/components/ui/Skeleton";
 import { requirePageSession } from "@/lib/auth/session";
 import { getTodayHabitsData } from "@/lib/habits/service";
 import { HabitsPage } from "@/components/habits/HabitsPage";
 
 export const metadata = {
   title: "Habits",
-  description: "Track and build your daily life habits with comprehensive consistency analytics.",
+  description: "Tick off your daily habits and see how consistent you have been.",
 };
 
 async function HabitsContent() {
@@ -27,14 +27,7 @@ async function HabitsContent() {
 
 export default function Page() {
   return (
-    <Suspense
-      fallback={
-        <div role="status" className="flex items-center justify-center min-h-[60vh] text-zinc-400 gap-2">
-          <Loader2 className="w-6 h-6 animate-spin text-emerald-400" aria-hidden="true" />
-          <span className="font-semibold text-sm">Loading daily habits...</span>
-        </div>
-      }
-    >
+    <Suspense fallback={<ScreenSkeleton cards={2} />}>
       <HabitsContent />
     </Suspense>
   );

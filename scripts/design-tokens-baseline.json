@@ -1,0 +1,5 @@
+{
+  "note": "Raw colour values each not-yet-migrated file may still contain. Regenerate with `bun run lint:tokens --update-baseline` after a phase migrates files; it must only shrink.",
+  "total": 0,
+  "files": {}
+}

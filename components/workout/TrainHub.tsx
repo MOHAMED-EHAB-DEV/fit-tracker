@@ -3,51 +3,34 @@
 import React, { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  BookOpen,
-  CalendarDays,
-  Check,
-  ChevronRight,
-  Copy,
-  History,
-  MoreVertical,
-  Pencil,
-  Play,
-  Plus,
-  Trash2,
-  Trophy,
-} from "lucide-react";
+import { Check, ChevronRight, Copy, History, ListChecks, MoreHorizontal, Pencil, Play, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Drawer } from "@/components/ui/Drawer";
-import { Modal } from "@/components/ui/Modal";
+import { buttonClasses } from "@/components/ui/button-styles";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
+import { MenuItem, MenuSeparator, Popover } from "@/components/ui/Popover";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Select } from "@/components/ui/Select";
+import { Sheet } from "@/components/ui/Sheet";
+import { Surface } from "@/components/ui/Surface";
 import { useToast } from "@/components/ui/Toast";
 import { announceActiveSessionChange } from "@/components/workout/ActiveSessionBar";
-import { ExercisePicker } from "@/components/workout/ExercisePicker";
+import { StartWorkoutSheet } from "@/components/workout/StartWorkoutSheet";
+import { TrainNav } from "@/components/workout/TrainNav";
 import { useStartWorkout, type StartInput } from "@/components/workout/useStartWorkout";
 import { useUser } from "@/context/UserContext";
+import { useElapsed } from "@/hooks/useElapsed";
+import { useUndoableDelete } from "@/hooks/useUndoableDelete";
 import { api, ApiError, errorMessage } from "@/lib/client/api";
 import { markDashboardStale } from "@/lib/dashboard/stale";
-import { cn } from "@/lib/utils";
 import { formatVolume } from "@/lib/fitness/units";
-import { formatTimeInZone, type WeekdayKey } from "@/lib/time";
-import { formatDurationShort } from "@/lib/workouts/calc";
-import {
-  muscleGroupSummary,
-  pluralize,
-  relativeDayLabel,
-  relativeInstantLabel,
-  toDateTimeLocalValue,
-} from "@/lib/workouts/format";
+import { formatDateString, type WeekdayKey } from "@/lib/time";
+import { formatDuration, formatDurationShort } from "@/lib/workouts/calc";
+import { pluralize, relativeInstantLabel, toDateTimeLocalValue } from "@/lib/workouts/format";
 import { clearDraft, pruneDrafts } from "@/lib/workouts/session-state";
-import type {
-  RoutineDTO,
-  RoutineSummaryDTO,
-  SessionSummaryDTO,
-  WeeklyScheduleDayDTO,
-} from "@/lib/workouts/types";
+import { cn } from "@/lib/utils";
+import type { RoutineDTO, RoutineSummaryDTO, SessionSummaryDTO, WeeklyScheduleDayDTO } from "@/lib/workouts/types";
 
 export interface TemplateSummary {
   id: string;
@@ -67,7 +50,6 @@ interface TrainHubProps {
   todayKey: WeekdayKey;
   /** Workouts finished this week. */
   weekSessions: SessionSummaryDTO[];
-  recent: SessionSummaryDTO[];
   templates: TemplateSummary[];
 }
 
@@ -81,21 +63,20 @@ const WEEKDAY_LABELS: Record<WeekdayKey, string> = {
   saturday: "Saturday",
 };
 
-const SECTION_TITLE = "text-lg font-bold text-white";
-const CARD = "rounded-3xl border border-line bg-surface p-4";
+/** A routine's name in the 7-day strip: "Upper body A" -> "UBA", "Legs" -> "Legs" (the full name is in the label and tooltip). */
+export function routineTag(name: string): string {
+  const trimmed = name.trim();
+  if (trimmed.length <= 5) return trimmed;
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  if (words.length === 1) return trimmed.slice(0, 4);
+  return words
+    .slice(0, 3)
+    .map((word) => word[0]?.toUpperCase() ?? "")
+    .join("");
+}
 
-/** The Train tab: resume or start a workout, routines, the week plan, recent workouts. */
-export function TrainHub({
-  active,
-  routines,
-  schedule,
-  weekDates,
-  today,
-  todayKey,
-  weekSessions,
-  recent,
-  templates,
-}: TrainHubProps) {
+/** The Train tab: today's workout, the week plan, routines. */
+export function TrainHub({ active, routines, schedule, weekDates, today, todayKey, weekSessions, templates }: TrainHubProps) {
   const router = useRouter();
   const { toast } = useToast();
   const { weightUnit, timezone } = useUser();
@@ -104,8 +85,6 @@ export function TrainHub({
   const starter = useStartWorkout(active);
 
   const [busy, setBusy] = useState<string | null>(null);
-  const [menuRoutine, setMenuRoutine] = useState<RoutineSummaryDTO | null>(null);
-  const [routineToDelete, setRoutineToDelete] = useState<RoutineSummaryDTO | null>(null);
   const [isDiscardOpen, setIsDiscardOpen] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [editingDay, setEditingDay] = useState<WeekdayKey | null>(null);
@@ -118,16 +97,33 @@ export function TrainHub({
   const [isPastOpen, setIsPastOpen] = useState(false);
   const [pastStart, setPastStart] = useState("");
   const [pastRoutineId, setPastRoutineId] = useState("");
-  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   // Fresh server data replaces the optimistic copy of the week plan.
   if (plan.source !== schedule) setPlan({ source: schedule, days: schedule });
-  const days = plan.days;
 
   const isBusy = busy !== null || isNavigating || starter.isBusy;
   const startKey = starter.busyKey;
   const start = (input: StartInput, key: string) => void starter.start(input, key);
   const refresh = () => startRefresh(() => router.refresh());
+
+  // Deleting a routine is instant with Undo; the server archives it when the undo window ends.
+  const routineDelete = useUndoableDelete<RoutineSummaryDTO>({
+    getId: (routine) => routine.id,
+    commit: async (routine) => {
+      await api(`/api/routines/${routine.id}`, { method: "DELETE", keepalive: true });
+      markDashboardStale();
+      refresh();
+    },
+    message: (routine) => `"${routine.name}" deleted`,
+    onError: (_routine, error) => toast(errorMessage(error, "The routine could not be deleted."), "error"),
+  });
+
+  const visibleRoutines = routines.filter((routine) => !routineDelete.isHidden(routine.id));
+  // A deleted routine also leaves the week plan.
+  const days = plan.days.map((day) =>
+    day.routineId && routineDelete.isHidden(day.routineId) ? { ...day, routineId: null, routineName: null } : day
+  );
 
   // Drafts of workouts that are no longer running are removed from this device.
   useEffect(() => {
@@ -135,7 +131,9 @@ export function TrainHub({
   }, [active?.id]);
 
   const todayPlan = days.find((day) => day.dayOfWeek === todayKey);
-  const doneToday = weekSessions.filter((session) => session.localDate === today);
+  const todayRoutine = todayPlan?.routineId ? visibleRoutines.find((routine) => routine.id === todayPlan.routineId) : undefined;
+  // Newest first (the week comes oldest first).
+  const doneToday = weekSessions.filter((session) => session.localDate === today).reverse();
   const doneDates = new Set(weekSessions.map((session) => session.localDate));
 
   const discardSession = async (sessionId: string): Promise<boolean> => {
@@ -181,7 +179,6 @@ export function TrainHub({
   };
 
   const duplicateRoutine = async (routine: RoutineSummaryDTO) => {
-    setMenuRoutine(null);
     setBusy(`duplicate:${routine.id}`);
     try {
       await api(`/api/routines/${routine.id}/duplicate`, { method: "POST" });
@@ -189,22 +186,6 @@ export function TrainHub({
       refresh();
     } catch (err) {
       toast(errorMessage(err), "error");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const deleteRoutine = async () => {
-    if (!routineToDelete) return;
-    setBusy("delete-routine");
-    setDialogError(null);
-    try {
-      await api(`/api/routines/${routineToDelete.id}`, { method: "DELETE" });
-      setRoutineToDelete(null);
-      toast("Routine deleted", "success");
-      refresh();
-    } catch (err) {
-      setDialogError(errorMessage(err));
     } finally {
       setBusy(null);
     }
@@ -235,6 +216,12 @@ export function TrainHub({
     }
   };
 
+  const openNewRoutine = () => {
+    setNewName("");
+    setDialogError(null);
+    setIsNewOpen(true);
+  };
+
   const openPastWorkout = () => {
     setPastStart(toDateTimeLocalValue(new Date(Date.now() - 60 * 60_000)));
     setPastRoutineId("");
@@ -259,388 +246,99 @@ export function TrainHub({
   const editingDayPlan = editingDay ? days.find((day) => day.dayOfWeek === editingDay) : undefined;
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
-      <header className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-white">Train</h1>
-        <Link
-          href="/workouts/history"
-          className="inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-emerald-300 active:bg-white/5"
-        >
-          <History className="h-4 w-4" aria-hidden="true" />
-          History
-        </Link>
-      </header>
+    <div className="space-y-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-4 lg:space-y-0">
+      <div className="lg:col-span-2">
+        <TrainNav current="workouts" />
+      </div>
 
-      {/* What to do now */}
-      <section aria-label="Today">
-        {active ? (
-          <div className="rounded-3xl border border-emerald-500/40 bg-emerald-950/60 p-5">
-            <p className="text-sm font-semibold text-emerald-300">
-              {active.isPastLog ? "Unfinished workout log" : "Workout in progress"}
-            </p>
-            <h2 className="mt-1 text-xl font-bold text-white">{active.name}</h2>
-            <p className="mt-1 text-sm text-zinc-300">
-              Started {relativeDayLabel(active.localDate, today).toLowerCase()} at{" "}
-              {formatTimeInZone(active.startedAt, timezone)} · {active.totals.completedSets} of{" "}
-              {pluralize(active.totals.totalSets, "set")} logged
-            </p>
-            <div className="mt-4 flex gap-2">
-              <Button
-                size="lg"
-                className="flex-1"
-                startContent={<Play className="h-5 w-5" />}
-                isLoading={starter.isNavigating}
-                onClick={() => starter.open(active.id)}
-              >
-                Resume
-              </Button>
-              <Button
-                size="lg"
-                variant="bordered"
-                className="text-red-300 border-red-500/30"
-                onClick={() => {
-                  setDialogError(null);
-                  setIsDiscardOpen(true);
-                }}
-              >
-                Discard
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className={CARD}>
-            {doneToday.length > 0 ? (
+      <div className="space-y-3">
+        <TodayBar
+          active={active}
+          todayRoutine={todayRoutine ?? null}
+          isRestDay={Boolean(todayPlan && !todayPlan.routineId && todayPlan.isRestDay)}
+          doneToday={doneToday}
+          volumeLabel={(session) => (session.totals.volumeKg > 0 ? formatVolume(session.totals.volumeKg, weightUnit) : null)}
+          isBusy={isBusy}
+          startKey={startKey}
+          isResuming={starter.isNavigating}
+          onResume={() => active && starter.open(active.id)}
+          onDiscard={() => {
+            setDialogError(null);
+            setIsDiscardOpen(true);
+          }}
+          onStart={start}
+          onChoose={visibleRoutines.length > 0 ? () => setIsPickerOpen(true) : null}
+          onLogPast={openPastWorkout}
+        />
+
+        <WeekPlan
+          days={days}
+          weekDates={weekDates}
+          todayKey={todayKey}
+          doneDates={doneDates}
+          hasActive={Boolean(active && !active.isPastLog)}
+          onEdit={setEditingDay}
+        />
+      </div>
+
+      <section aria-labelledby="routines-title" className="space-y-2">
+        <SectionHeader id="routines-title" title="My routines" meta={visibleRoutines.length > 0 ? String(visibleRoutines.length) : undefined} />
+
+        {visibleRoutines.length === 0 ? (
+          <EmptyState
+            title="Build your first routine"
+            description="A routine is a workout you repeat, like “Push day”. Create one, or start from a template."
+            actions={
               <>
-                <p className="flex items-center gap-2 text-sm font-semibold text-emerald-300">
-                  <Check className="h-4 w-4" aria-hidden="true" />
-                  Done today
-                </p>
-                <ul className="mt-2 space-y-1">
-                  {doneToday.map((session) => (
-                    <li key={session.id}>
-                      <Link
-                        href={`/workouts/history/${session.id}`}
-                        className="flex min-h-11 items-center justify-between gap-3 rounded-xl active:bg-white/5"
-                      >
-                        <span className="min-w-0">
-                          <span className="block truncate text-base font-semibold text-white">{session.name}</span>
-                          <span className="block text-sm text-zinc-400">
-                            {formatDurationShort(session.durationSec)} · {pluralize(session.totals.completedSets, "set")}
-                            {session.totals.volumeKg > 0 ? ` · ${formatVolume(session.totals.volumeKg, weightUnit)}` : ""}
-                          </span>
-                        </span>
-                        <ChevronRight className="h-5 w-5 shrink-0 text-zinc-400" aria-hidden="true" />
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : todayPlan?.routineId ? (
-              <>
-                <p className="text-sm text-zinc-400">Planned for today</p>
-                <h2 className="mt-1 text-xl font-bold text-white">{todayPlan.routineName}</h2>
-                <Button
-                  size="lg"
-                  className="mt-4 w-full"
-                  startContent={<Play className="h-5 w-5" />}
-                  isLoading={startKey === "today"}
-                  disabled={isBusy}
-                  onClick={() => start({ routineId: todayPlan.routineId as string }, "today")}
-                >
-                  Start workout
+                <Button startContent={<Plus className="h-4 w-4" />} onClick={openNewRoutine}>
+                  Create routine
+                </Button>
+                <Button variant="secondary" isLoading={startKey === "empty"} disabled={isBusy} onClick={() => start({}, "empty")}>
+                  Start empty workout
                 </Button>
               </>
-            ) : todayPlan?.isRestDay ? (
-              <>
-                <h2 className="text-xl font-bold text-white">Rest day</h2>
-                <p className="mt-1 text-sm text-zinc-400">
-                  Nothing is planned for today. You can still start any workout below.
-                </p>
-              </>
-            ) : (
-              <>
-                <h2 className="text-xl font-bold text-white">Nothing planned today</h2>
-                <p className="mt-1 text-sm text-zinc-400">
-                  {routines.length > 0
-                    ? "Start one of your routines below, or an empty workout."
-                    : "Create your first routine, or just start an empty workout and add exercises as you go."}
-                </p>
-              </>
-            )}
-
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              <Button
-                variant={todayPlan?.routineId && doneToday.length === 0 ? "bordered" : "flat"}
-                isLoading={startKey === "empty"}
-                disabled={isBusy}
-                onClick={() => start({}, "empty")}
-              >
-                Empty workout
-              </Button>
-              <Button variant="bordered" disabled={isBusy} isLoading={startKey === "past"} onClick={openPastWorkout}>
-                Log a past workout
-              </Button>
-            </div>
-          </div>
-        )}
-      </section>
-
-      {/* Routines */}
-      <section aria-labelledby="routines-title" className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h2 id="routines-title" className={SECTION_TITLE}>
-            My routines
-          </h2>
-          <Button
-            variant="flat"
-            size="sm"
-            startContent={<Plus className="h-4 w-4" />}
-            onClick={() => {
-              setNewName("");
-              setDialogError(null);
-              setIsNewOpen(true);
-            }}
-          >
-            New
-          </Button>
-        </div>
-
-        {routines.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-line px-4 py-8 text-center">
-            <p className="text-base font-semibold text-white">No routines yet</p>
-            <p className="mt-1 text-sm text-zinc-400">
-              A routine is a workout you repeat, like &ldquo;Push day&rdquo;. Create one, or start from a template.
-            </p>
-            <Button
-              className="mt-4"
-              startContent={<Plus className="h-4 w-4" />}
-              onClick={() => {
-                setNewName("");
-                setDialogError(null);
-                setIsNewOpen(true);
-              }}
-            >
-              Create a routine
-            </Button>
-          </div>
+            }
+          />
         ) : (
-          <ul className="space-y-3">
-            {routines.map((routine) => {
-              const lastDone = relativeInstantLabel(routine.lastPerformedAt, today, timezone);
-              const groups = muscleGroupSummary(routine.muscleGroups);
-              return (
-                <li key={routine.id} className={CARD}>
-                  <div className="flex items-start gap-2">
-                    <Link href={`/workouts/routines/${routine.id}`} className="min-w-0 flex-1 rounded-lg">
-                      <h3 className="truncate text-base font-semibold text-white">{routine.name}</h3>
-                      <p className="text-sm text-zinc-400">
-                        {pluralize(routine.exerciseCount, "exercise")}
-                        {groups ? ` · ${groups}` : ""}
-                      </p>
-                      {routine.exerciseNames.length > 0 && (
-                        <p className="truncate text-sm text-zinc-400">{routine.exerciseNames.join(", ")}</p>
-                      )}
-                      <p className="mt-1 text-xs text-zinc-400">
-                        {lastDone ? `Last done ${lastDone.toLowerCase()}` : "Not done yet"}
-                      </p>
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={() => setMenuRoutine(routine)}
-                      aria-label={`More options for ${routine.name}`}
-                      aria-haspopup="dialog"
-                      className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-zinc-300 active:bg-white/10 cursor-pointer"
-                    >
-                      <MoreVertical className="h-5 w-5" aria-hidden="true" />
-                    </button>
-                  </div>
-                  {routine.exerciseCount === 0 ? (
-                    <Link
-                      href={`/workouts/routines/${routine.id}`}
-                      className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-line text-sm font-semibold text-zinc-200 active:bg-white/5"
-                    >
-                      <Plus className="h-4 w-4" aria-hidden="true" />
-                      Add exercises
-                    </Link>
-                  ) : (
-                    <Button
-                      className="mt-3 w-full"
-                      variant={todayPlan?.routineId === routine.id || !todayPlan?.routineId ? "flat" : "bordered"}
-                      startContent={<Play className="h-4 w-4" />}
-                      isLoading={startKey === `start:${routine.id}`}
-                      disabled={isBusy}
-                      onClick={() => start({ routineId: routine.id }, `start:${routine.id}`)}
-                    >
-                      Start
-                    </Button>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-
-      {/* Week plan */}
-      <section aria-labelledby="week-title" className="space-y-3">
-        <div>
-          <h2 id="week-title" className={SECTION_TITLE}>
-            Week plan
-          </h2>
-          <p className="text-sm text-zinc-400">Tap a day to choose its routine. A tick means you trained that day.</p>
-        </div>
-        <ul className={cn(CARD, "divide-y divide-line p-0")}>
-          {days.map((day, index) => {
-            const date = weekDates[index];
-            const isToday = day.dayOfWeek === todayKey;
-            const isDone = date ? doneDates.has(date) : false;
-            return (
-              <li key={day.dayOfWeek}>
-                <button
-                  type="button"
-                  onClick={() => setEditingDay(day.dayOfWeek as WeekdayKey)}
-                  aria-haspopup="dialog"
-                  className="flex min-h-14 w-full items-center gap-3 px-4 text-start active:bg-white/5 cursor-pointer"
-                >
-                  <span className={cn("w-24 shrink-0 text-sm font-semibold", isToday ? "text-emerald-300" : "text-zinc-300")}>
-                    {WEEKDAY_LABELS[day.dayOfWeek as WeekdayKey]}
-                    {isToday && <span className="block text-xs font-medium">Today</span>}
-                  </span>
-                  <span
-                    className={cn(
-                      "min-w-0 flex-1 truncate text-base",
-                      day.routineName ? "font-medium text-white" : "text-zinc-400"
-                    )}
-                  >
-                    {day.routineName || (day.isRestDay ? "Rest" : "Not planned")}
-                  </span>
-                  {isDone && (
-                    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-emerald-500 text-zinc-950">
-                      <Check className="h-4 w-4" aria-hidden="true" />
-                      <span className="sr-only">Trained</span>
-                    </span>
-                  )}
-                  <ChevronRight className="h-5 w-5 shrink-0 text-zinc-500" aria-hidden="true" />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      </section>
-
-      {/* Recent workouts */}
-      <section aria-labelledby="recent-title" className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h2 id="recent-title" className={SECTION_TITLE}>
-            Recent workouts
-          </h2>
-          {recent.length > 0 && (
-            <Link
-              href="/workouts/history"
-              className="inline-flex min-h-11 items-center rounded-xl px-2 text-sm font-semibold text-emerald-300"
-            >
-              See all
-            </Link>
-          )}
-        </div>
-        {recent.length === 0 ? (
-          <p className="rounded-3xl border border-dashed border-line px-4 py-6 text-center text-sm text-zinc-400">
-            Your finished workouts will appear here.
-          </p>
-        ) : (
-          <ul className={cn(CARD, "divide-y divide-line p-0")}>
-            {recent.map((session) => (
-              <li key={session.id}>
-                <Link
-                  href={`/workouts/history/${session.id}`}
-                  className="flex min-h-16 items-center gap-3 px-4 py-2 active:bg-white/5"
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-base font-semibold text-white">{session.name}</span>
-                    <span className="block text-sm text-zinc-400">
-                      {relativeDayLabel(session.localDate, today)} · {formatDurationShort(session.durationSec)} ·{" "}
-                      {pluralize(session.totals.completedSets, "set")}
-                    </span>
-                  </span>
-                  {session.totals.prCount > 0 && (
-                    <span className="flex shrink-0 items-center gap-1 text-sm font-semibold text-amber-300">
-                      <Trophy className="h-4 w-4" aria-hidden="true" />
-                      {session.totals.prCount}
-                      <span className="sr-only">personal records</span>
-                    </span>
-                  )}
-                  <ChevronRight className="h-5 w-5 shrink-0 text-zinc-500" aria-hidden="true" />
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section aria-label="More">
-        <Button
-          variant="bordered"
-          className="w-full"
-          startContent={<BookOpen className="h-4 w-4" />}
-          onClick={() => setIsLibraryOpen(true)}
-        >
-          Exercise library
-        </Button>
-      </section>
-
-      <ExercisePicker isOpen={isLibraryOpen} onClose={() => setIsLibraryOpen(false)} mode="browse" />
-
-      {/* Routine menu */}
-      <Drawer
-        isOpen={Boolean(menuRoutine)}
-        onClose={() => setMenuRoutine(null)}
-        title={menuRoutine?.name || "Routine"}
-        position="bottom"
-      >
-        {menuRoutine && (
-          <div className="space-y-2">
-            <Link
-              href={`/workouts/routines/${menuRoutine.id}`}
-              className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-base text-white active:bg-white/5"
-            >
-              <Pencil className="h-5 w-5 text-zinc-400" aria-hidden="true" />
-              Edit
-            </Link>
+          <>
+            <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
+              {visibleRoutines.map((routine) => (
+                <RoutineRow
+                  key={routine.id}
+                  routine={routine}
+                  isActive={Boolean(active && active.routineId === routine.id)}
+                  lastDone={relativeInstantLabel(routine.lastPerformedAt, today, timezone)}
+                  isStarting={startKey === `start:${routine.id}`}
+                  disabled={isBusy}
+                  onStart={() => start({ routineId: routine.id }, `start:${routine.id}`)}
+                  onDuplicate={() => void duplicateRoutine(routine)}
+                  onDelete={() => routineDelete.remove(routine)}
+                />
+              ))}
+            </ul>
             <button
               type="button"
-              onClick={() => void duplicateRoutine(menuRoutine)}
-              className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-base text-white active:bg-white/5 cursor-pointer"
+              onClick={openNewRoutine}
+              className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-control border border-dashed border-line-strong text-[13px] font-medium text-ink-2 transition-colors hover:text-ink hover:border-ink-3 cursor-pointer"
             >
-              <Copy className="h-5 w-5 text-zinc-400" aria-hidden="true" />
-              Duplicate
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              New routine
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                setDialogError(null);
-                setRoutineToDelete(menuRoutine);
-                setMenuRoutine(null);
-              }}
-              className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-base text-red-300 active:bg-red-500/10 cursor-pointer"
-            >
-              <Trash2 className="h-5 w-5" aria-hidden="true" />
-              Delete
-            </button>
-          </div>
+          </>
         )}
-      </Drawer>
+      </section>
 
       {/* Day plan */}
-      <Drawer
+      <Sheet
         isOpen={Boolean(editingDay)}
         onClose={() => setEditingDay(null)}
         title={editingDay ? WEEKDAY_LABELS[editingDay] : "Day"}
         description="What do you train on this day?"
-        position="bottom"
+        size="sm"
       >
         {editingDay && (
-          <div role="radiogroup" aria-label="Plan for this day" className="space-y-1">
-            {routines.map((routine) => (
+          <div role="radiogroup" aria-label="Plan for this day" className="-mx-1 space-y-0.5">
+            {visibleRoutines.map((routine) => (
               <DayOption
                 key={routine.id}
                 label={routine.name}
@@ -659,24 +357,23 @@ export function TrainHub({
               selected={!editingDayPlan?.routineId && !editingDayPlan?.isRestDay}
               onSelect={() => void setDayPlan(editingDay, { routineId: null, isRestDay: false })}
             />
-            {routines.length === 0 && (
-              <p className="px-3 pt-2 text-sm text-zinc-400">Create a routine first to plan it on a day.</p>
+            {visibleRoutines.length === 0 && (
+              <p className="px-3 pt-2 text-sm text-ink-2">Create a routine first to plan it on a day.</p>
             )}
           </div>
         )}
-      </Drawer>
+      </Sheet>
 
       {/* New routine */}
-      <Modal
+      <Sheet
         isOpen={isNewOpen}
         onClose={() => {
           if (!isBusy) setIsNewOpen(false);
         }}
         title="New routine"
-        size="md"
       >
         <form
-          className="space-y-4"
+          className="space-y-3"
           onSubmit={(event) => {
             event.preventDefault();
             const name = newName.trim();
@@ -690,96 +387,102 @@ export function TrainHub({
           <Input
             label="Name"
             value={newName}
-            onChange={(event) => setNewName(event.target.value.slice(0, 80))}
+            onChange={(event) => {
+              setNewName(event.target.value.slice(0, 80));
+              if (dialogError) setDialogError(null);
+            }}
             placeholder="Push day"
             autoComplete="off"
+            data-autofocus
+            isInvalid={Boolean(dialogError)}
+            errorMessage={dialogError ?? undefined}
           />
-          {dialogError && (
-            <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-              {dialogError}
-            </p>
-          )}
-          <Button type="submit" size="lg" className="w-full" isLoading={busy === "create"} disabled={isBusy}>
+          <Button type="submit" size="lg" fullWidth isLoading={busy === "create"} disabled={isBusy}>
             Create and add exercises
           </Button>
         </form>
 
         {templates.length > 0 && (
-          <div className="mt-6">
-            <h3 className="text-sm font-semibold text-zinc-300">Or start from a template</h3>
-            <ul className="mt-2 space-y-2">
+          <section aria-labelledby="templates-title" className="mt-5 space-y-2">
+            <SectionHeader as="h3" id="templates-title" title="Or start from a template" />
+            <ul className="divide-y divide-line overflow-hidden rounded-control border border-line">
               {templates.map((template) => (
                 <li key={template.id}>
                   <button
                     type="button"
                     disabled={isBusy}
                     onClick={() => void createRoutine({ name: template.name, templateId: template.id }, `template:${template.id}`)}
-                    className="flex min-h-14 w-full items-center gap-3 rounded-2xl border border-line px-3 py-2 text-start active:bg-white/5 disabled:opacity-50 cursor-pointer"
+                    className="flex min-h-14 w-full items-center gap-3 px-3.5 py-2.5 text-start transition-colors hover:bg-elevated/60 disabled:opacity-50 cursor-pointer"
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="block text-base font-semibold text-white">{template.name}</span>
-                      <span className="block text-sm text-zinc-400">
+                      <span className="block text-sm font-medium text-ink">{template.name}</span>
+                      <span className="mt-0.5 block text-xs text-ink-3">
                         {pluralize(template.exerciseCount, "exercise")} · {template.description}
                       </span>
                     </span>
-                    <span className="shrink-0 text-sm font-semibold text-emerald-300">
+                    <span className="shrink-0 text-[13px] font-medium text-ink-2">
                       {busy === `template:${template.id}` ? "Adding…" : "Use"}
                     </span>
                   </button>
                 </li>
               ))}
             </ul>
-          </div>
+          </section>
         )}
-      </Modal>
+      </Sheet>
 
       {/* Past workout */}
-      <Modal
+      <Sheet
         isOpen={isPastOpen}
         onClose={() => setIsPastOpen(false)}
         title="Log a past workout"
-        description="For a workout you already did. You will enter the exercises and sets next."
-        size="md"
+        description="For a workout you already did. You enter the exercises and sets next."
         footer={
-          <>
-            <Button variant="bordered" onClick={() => setIsPastOpen(false)}>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="secondary" onClick={() => setIsPastOpen(false)}>
               Cancel
             </Button>
             <Button onClick={startPastWorkout}>Continue</Button>
-          </>
+          </div>
         }
       >
-        <div className="space-y-4">
+        <div className="space-y-3">
           <Input
-            label={
-              <span className="flex items-center gap-2">
-                <CalendarDays className="h-4 w-4" aria-hidden="true" />
-                When did it start?
-              </span>
-            }
+            label="When did it start?"
             type="datetime-local"
             value={pastStart}
             max={toDateTimeLocalValue(new Date())}
-            onChange={(event) => setPastStart(event.target.value)}
+            onChange={(event) => {
+              setPastStart(event.target.value);
+              if (dialogError) setDialogError(null);
+            }}
+            isInvalid={Boolean(dialogError)}
+            errorMessage={dialogError ?? undefined}
           />
-          {routines.length > 0 && (
+          {visibleRoutines.length > 0 && (
             <Select<string>
               label="Routine (optional)"
               options={[
                 { value: "", label: "No routine: I will add the exercises" },
-                ...routines.map((routine) => ({ value: routine.id, label: routine.name })),
+                ...visibleRoutines.map((routine) => ({ value: routine.id, label: routine.name })),
               ]}
               value={pastRoutineId}
               onChange={(value) => setPastRoutineId(value)}
             />
           )}
-          {dialogError && (
-            <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-              {dialogError}
-            </p>
-          )}
         </div>
-      </Modal>
+      </Sheet>
+
+      {!active && (
+        <StartWorkoutSheet
+          isOpen={isPickerOpen}
+          onClose={() => setIsPickerOpen(false)}
+          routines={visibleRoutines}
+          plannedRoutineId={todayRoutine?.id ?? null}
+          today={today}
+          starter={starter}
+        />
+      )}
 
       {starter.dialog}
 
@@ -802,19 +505,364 @@ export function TrainHub({
         isWorking={busy === "discard"}
         error={dialogError}
       />
-
-      <ConfirmDialog
-        isOpen={Boolean(routineToDelete)}
-        onCancel={() => setRoutineToDelete(null)}
-        onConfirm={deleteRoutine}
-        title={`Delete "${routineToDelete?.name || "routine"}"?`}
-        message="The routine is removed from your list and from your week plan. Workouts you already logged with it stay in your history."
-        confirmLabel="Delete routine"
-        destructive
-        isWorking={busy === "delete-routine"}
-        error={dialogError}
-      />
     </div>
+  );
+}
+
+interface TodayBarProps {
+  active: SessionSummaryDTO | null;
+  todayRoutine: RoutineSummaryDTO | null;
+  isRestDay: boolean;
+  /** Workouts finished today, newest first. */
+  doneToday: SessionSummaryDTO[];
+  volumeLabel: (session: SessionSummaryDTO) => string | null;
+  isBusy: boolean;
+  startKey: string | null;
+  isResuming: boolean;
+  onResume: () => void;
+  onDiscard: () => void;
+  onStart: (input: StartInput, key: string) => void;
+  /** Opens the routine picker; null when there are no routines to choose from. */
+  onChoose: (() => void) | null;
+  onLogPast: () => void;
+}
+
+/** What to do now: resume, start today's routine, or start any other one. */
+function TodayBar({
+  active,
+  todayRoutine,
+  isRestDay,
+  doneToday,
+  volumeLabel,
+  isBusy,
+  startKey,
+  isResuming,
+  onResume,
+  onDiscard,
+  onStart,
+  onChoose,
+  onLogPast,
+}: TodayBarProps) {
+  const elapsed = useElapsed(active && !active.isPastLog ? active.startedAt : null);
+
+  if (active) {
+    return (
+      <Surface as="section" aria-label="Workout in progress" className="flex items-center gap-3 border-s-[3px] border-s-accent">
+        <div className="min-w-0 flex-1">
+          <p className="mb-0.5 inline-flex items-center gap-1.5 text-xs font-medium text-accent">
+            <span className="h-[7px] w-[7px] rounded-full bg-accent animate-live" aria-hidden="true" />
+            {active.isPastLog ? (
+              "Unfinished workout log"
+            ) : (
+              <>
+                In progress ·{" "}
+                <span className="font-mono tabular-nums" suppressHydrationWarning>
+                  {formatDuration(elapsed)}
+                </span>
+              </>
+            )}
+          </p>
+          <h2 className="truncate text-[15px] font-semibold text-ink">{active.name}</h2>
+          <p className="mt-0.5 text-xs text-ink-3">
+            <span className="font-mono tabular-nums">
+              {active.totals.completedSets} / {active.totals.totalSets}
+            </span>{" "}
+            sets
+          </p>
+        </div>
+        <Button size="sm" startContent={<Play className="h-3.5 w-3.5" />} isLoading={isResuming} onClick={onResume}>
+          Resume
+        </Button>
+        <Popover
+          role="menu"
+          label="Workout options"
+          align="end"
+          className="w-56"
+          triggerLabel="Workout options"
+          triggerClassName="-me-2 grid h-11 w-9 shrink-0 place-items-center rounded-control text-ink-2 transition-colors hover:bg-elevated hover:text-ink"
+          trigger={<MoreHorizontal className="h-5 w-5" aria-hidden="true" />}
+        >
+          {({ close }) => (
+            <MenuItem
+              tone="danger"
+              icon={<Trash2 className="h-4 w-4" />}
+              onSelect={() => {
+                close();
+                onDiscard();
+              }}
+            >
+              Discard workout
+            </MenuItem>
+          )}
+        </Popover>
+      </Surface>
+    );
+  }
+
+  const done = doneToday[0] ?? null;
+  let heading: React.ReactNode;
+  let primary: React.ReactNode = null;
+
+  if (done) {
+    const volume = volumeLabel(done);
+    heading = (
+      <>
+        <p className="mb-0.5 inline-flex items-center gap-1.5 text-xs font-medium text-ink-2">
+          <Check className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden="true" />
+          Done today
+        </p>
+        <h2 className="truncate text-[15px] font-semibold text-ink">{done.name}</h2>
+        <p className="mt-0.5 truncate text-xs text-ink-3">
+          {formatDurationShort(done.durationSec)} · {pluralize(done.totals.completedSets, "set")}
+          {volume ? ` · ${volume}` : ""}
+          {done.totals.prCount > 0 && <span className="text-warn"> · {pluralize(done.totals.prCount, "new record")}</span>}
+        </p>
+      </>
+    );
+    primary = (
+      <Link href={`/workouts/history/${done.id}`} className={buttonClasses({ variant: "secondary", size: "sm" })}>
+        View
+      </Link>
+    );
+  } else if (todayRoutine) {
+    heading = (
+      <>
+        <p className="mb-0.5 text-xs font-medium text-ink-3">Planned for today</p>
+        <h2 className="truncate text-[15px] font-semibold text-ink">{todayRoutine.name}</h2>
+        <p className="mt-0.5 text-xs text-ink-3">{pluralize(todayRoutine.exerciseCount, "exercise")}</p>
+      </>
+    );
+    primary =
+      todayRoutine.exerciseCount > 0 ? (
+        <Button
+          size="sm"
+          startContent={<Play className="h-3.5 w-3.5" />}
+          isLoading={startKey === "today"}
+          disabled={isBusy}
+          onClick={() => onStart({ routineId: todayRoutine.id }, "today")}
+        >
+          Start workout
+        </Button>
+      ) : (
+        <Link href={`/workouts/routines/${todayRoutine.id}`} className={buttonClasses({ variant: "secondary", size: "sm" })}>
+          Add exercises
+        </Link>
+      );
+  } else if (isRestDay) {
+    heading = (
+      <>
+        <h2 className="text-[15px] font-semibold text-ink">Rest day</h2>
+        <p className="mt-0.5 text-xs text-ink-3">Recovery is part of training. You can still start a workout.</p>
+      </>
+    );
+  } else {
+    heading = (
+      <>
+        <h2 className="text-[15px] font-semibold text-ink">Nothing planned today</h2>
+        <p className="mt-0.5 text-xs text-ink-3">Start any routine, or an empty workout and add exercises as you go.</p>
+      </>
+    );
+  }
+
+  return (
+    <Surface as="section" aria-label="Today" padded={false}>
+      <div className="flex items-center gap-3 p-3.5">
+        <div className="min-w-0 flex-1">{heading}</div>
+        {primary}
+      </div>
+      {onChoose && (
+        <button
+          type="button"
+          disabled={isBusy}
+          aria-haspopup="dialog"
+          onClick={onChoose}
+          className="flex min-h-11 w-full items-center gap-2 border-t border-line px-3.5 text-start text-[13px] font-medium text-ink transition-colors hover:bg-elevated/60 disabled:opacity-50 cursor-pointer"
+        >
+          <ListChecks className="h-4 w-4 shrink-0 text-ink-2" aria-hidden="true" />
+          <span className="flex-1">
+            {done ? "Start another workout" : todayRoutine ? "Start a different workout" : "Choose a routine"}
+          </span>
+          <ChevronRight className="h-4 w-4 shrink-0 text-ink-3" aria-hidden="true" />
+        </button>
+      )}
+      <div className="grid grid-cols-2 border-t border-line">
+        <button
+          type="button"
+          disabled={isBusy}
+          onClick={() => onStart({}, "empty")}
+          className="flex min-h-11 items-center justify-center gap-1.5 text-[13px] font-medium text-ink-2 transition-colors hover:bg-elevated/60 hover:text-ink disabled:opacity-50 cursor-pointer"
+        >
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          {startKey === "empty" ? "Starting…" : "Empty workout"}
+        </button>
+        <button
+          type="button"
+          disabled={isBusy}
+          onClick={onLogPast}
+          className="flex min-h-11 items-center justify-center gap-1.5 border-s border-line text-[13px] font-medium text-ink-2 transition-colors hover:bg-elevated/60 hover:text-ink disabled:opacity-50 cursor-pointer"
+        >
+          <History className="h-4 w-4" aria-hidden="true" />
+          {startKey === "past" ? "Opening…" : "Log a past workout"}
+        </button>
+      </div>
+    </Surface>
+  );
+}
+
+interface WeekPlanProps {
+  days: WeeklyScheduleDayDTO[];
+  weekDates: string[];
+  todayKey: WeekdayKey;
+  doneDates: ReadonlySet<string>;
+  hasActive: boolean;
+  onEdit: (day: WeekdayKey) => void;
+}
+
+/** The week as seven cells: routine or rest, a bar when trained; tap a day to change it. */
+function WeekPlan({ days, weekDates, todayKey, doneDates, hasActive, onEdit }: WeekPlanProps) {
+  return (
+    <Surface as="section" aria-labelledby="week-title" className="p-3.5">
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="week-title" className="text-[13px] font-semibold text-ink-2">
+          Week plan
+        </h2>
+        <span className="text-xs font-medium text-ink-3">Tap a day to assign</span>
+      </div>
+      <ol className="mt-2.5 grid grid-cols-7 gap-[5px]">
+        {days.map((day, index) => {
+          const key = day.dayOfWeek as WeekdayKey;
+          const date = weekDates[index];
+          const isToday = key === todayKey;
+          const trained = date ? doneDates.has(date) : false;
+          const isOpen = !day.routineId && !day.isRestDay;
+          const name = WEEKDAY_LABELS[key];
+          const status = day.routineName ?? (day.isRestDay ? "Rest day" : "Not planned");
+          return (
+            <li key={key}>
+              <button
+                type="button"
+                onClick={() => onEdit(key)}
+                aria-haspopup="dialog"
+                aria-label={`${name}${isToday ? ", today" : ""}: ${status}${trained ? ", trained" : ""}. Change`}
+                title={date ? `${formatDateString(date, { weekday: "long", month: "short", day: "numeric" })} · ${status}` : status}
+                className={cn(
+                  "flex min-h-[62px] w-full flex-col items-center justify-between gap-1 rounded-chip border px-0.5 py-[7px] transition-colors cursor-pointer",
+                  isToday
+                    ? "border-accent bg-accent-soft"
+                    : isOpen
+                      ? "border-dashed border-line-strong bg-transparent hover:bg-elevated/60"
+                      : "border-line bg-elevated hover:border-line-strong"
+                )}
+              >
+                <span aria-hidden="true" className={cn("text-xs", isToday ? "font-semibold text-accent" : "text-ink-3")}>
+                  {name.slice(0, 1)}
+                </span>
+                {/* No side padding: a five-letter name ("Lower") has to fit a 375px phone. */}
+                <span aria-hidden="true" className="flex h-4 w-full items-center justify-center">
+                  {day.routineName ? (
+                    <span className="truncate text-xs font-semibold text-ink">{routineTag(day.routineName)}</span>
+                  ) : day.isRestDay ? (
+                    <span className="text-xs text-ink-3">Rest</span>
+                  ) : (
+                    <Plus className="h-3 w-3 text-ink-3" />
+                  )}
+                </span>
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "h-[3px] w-3 rounded-[2px]",
+                    trained ? "bg-ink" : isToday && hasActive ? "bg-accent" : isOpen ? "bg-transparent" : "bg-line-strong"
+                  )}
+                />
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </Surface>
+  );
+}
+
+interface RoutineRowProps {
+  routine: RoutineSummaryDTO;
+  isActive: boolean;
+  lastDone: string | null;
+  isStarting: boolean;
+  disabled: boolean;
+  onStart: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+}
+
+/** One routine: the text opens the editor; Start and a menu on the right. */
+function RoutineRow({ routine, isActive, lastDone, isStarting, disabled, onStart, onDuplicate, onDelete }: RoutineRowProps) {
+  const href = `/workouts/routines/${routine.id}`;
+  return (
+    <li className="flex items-center gap-1 pe-1.5">
+      <Link
+        href={href}
+        className="min-w-0 flex-1 self-stretch px-3.5 py-3 transition-colors hover:bg-elevated/60 active:bg-elevated"
+      >
+        <span className="block truncate text-[15px] font-semibold text-ink">{routine.name}</span>
+        <span className="mt-0.5 block truncate text-xs text-ink-3">
+          <span className="font-mono tabular-nums">{routine.exerciseCount}</span>{" "}
+          {routine.exerciseCount === 1 ? "exercise" : "exercises"} ·{" "}
+          {isActive ? (
+            <span className="text-accent">In progress</span>
+          ) : lastDone ? (
+            `Last done ${lastDone.toLowerCase()}`
+          ) : (
+            "Not done yet"
+          )}
+        </span>
+      </Link>
+      {routine.exerciseCount === 0 ? (
+        <Link href={href} className={cn(buttonClasses({ variant: "secondary", size: "sm" }), "ms-2")}>
+          Add exercises
+        </Link>
+      ) : (
+        <Button variant="secondary" size="sm" className="ms-2" isLoading={isStarting} disabled={disabled} onClick={onStart}>
+          Start
+        </Button>
+      )}
+      <Popover
+        role="menu"
+        label={`${routine.name} options`}
+        align="end"
+        className="w-52"
+        triggerLabel={`More options for ${routine.name}`}
+        triggerClassName="grid h-11 w-9 shrink-0 place-items-center rounded-control text-ink-3 transition-colors hover:bg-elevated hover:text-ink"
+        trigger={<MoreHorizontal className="h-5 w-5" aria-hidden="true" />}
+      >
+        {({ close }) => (
+          <>
+            <MenuItem icon={<Pencil className="h-4 w-4" />} href={href} onSelect={close}>
+              Edit
+            </MenuItem>
+            <MenuItem
+              icon={<Copy className="h-4 w-4" />}
+              onSelect={() => {
+                close();
+                onDuplicate();
+              }}
+            >
+              Duplicate
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem
+              tone="danger"
+              icon={<Trash2 className="h-4 w-4" />}
+              onSelect={() => {
+                close();
+                onDelete();
+              }}
+            >
+              Delete
+            </MenuItem>
+          </>
+        )}
+      </Popover>
+    </li>
   );
 }
 
@@ -836,22 +884,22 @@ function DayOption({
       aria-checked={selected}
       onClick={onSelect}
       className={cn(
-        "flex min-h-14 w-full items-center gap-3 rounded-xl px-3 text-start cursor-pointer",
-        selected ? "bg-emerald-500/15" : "active:bg-white/5"
+        "flex min-h-12 w-full items-center gap-3 rounded-control px-3 py-2 text-start transition-colors cursor-pointer",
+        selected ? "bg-elevated" : "hover:bg-elevated/60"
       )}
     >
       <span
         aria-hidden="true"
         className={cn(
-          "grid h-6 w-6 shrink-0 place-items-center rounded-full border",
-          selected ? "border-emerald-500 bg-emerald-500 text-zinc-950" : "border-zinc-500"
+          "grid h-5 w-5 shrink-0 place-items-center rounded-full border",
+          selected ? "border-ink bg-ink text-ink-inverse" : "border-line-strong"
         )}
       >
-        {selected && <Check className="h-4 w-4" />}
+        {selected && <Check className="h-3.5 w-3.5" strokeWidth={2.5} />}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-base font-medium text-white">{label}</span>
-        {detail && <span className="block text-sm text-zinc-400">{detail}</span>}
+        <span className="block truncate text-sm font-medium text-ink">{label}</span>
+        {detail && <span className="block text-xs text-ink-3">{detail}</span>}
       </span>
     </button>
   );

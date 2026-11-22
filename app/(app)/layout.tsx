@@ -3,11 +3,15 @@ import { redirect } from "next/navigation";
 import { getClientUser, LOGIN_REDIRECT } from "@/lib/auth/session";
 import { getActiveSession } from "@/lib/workouts/sessions";
 import { UserProvider } from "@/context/UserContext";
-import { Sidebar } from "@/components/shared/Sidebar";
-import { BottomNav } from "@/components/shared/BottomNav";
+import { NavRail } from "@/components/shared/NavRail";
+import { TabBar } from "@/components/shared/TabBar";
+import { AppHeader } from "@/components/shared/AppHeader";
+import { AppContent } from "@/components/shared/AppContent";
+import { HeaderSlotProvider } from "@/components/shared/HeaderSlot";
 import { AppLifecycle } from "@/components/shared/AppLifecycle";
 import { ActiveSessionBar } from "@/components/workout/ActiveSessionBar";
 import { InstallPwaBanner } from "@/components/pwa/InstallPwaBanner";
+import { ScreenSkeleton } from "@/components/ui/Skeleton";
 import type { IUser } from "@/lib/db/models/User";
 import type { SessionSummaryDTO } from "@/lib/workouts/types";
 
@@ -34,19 +38,20 @@ async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
     <UserProvider initialUser={user as unknown as IUser}>
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[90] focus:rounded-xl focus:bg-emerald-500 focus:px-4 focus:py-3 focus:text-sm focus:font-bold focus:text-zinc-950"
+        className="sr-only focus:not-sr-only focus:fixed focus:start-3 focus:top-3 focus:z-[90] focus:rounded-control focus:bg-ink focus:px-4 focus:py-3 focus:text-sm focus:font-semibold focus:text-ink-inverse"
       >
         Skip to content
       </a>
-      <div className="flex min-h-dvh bg-app text-ink">
-        <Sidebar />
+      <div className="flex min-h-dvh bg-canvas text-ink">
+        <NavRail />
         <main id="main" tabIndex={-1} className="flex min-w-0 flex-1 flex-col pb-nav outline-none">
-          <div className="mx-auto w-full max-w-[1400px] px-4 pt-[max(1rem,env(safe-area-inset-top))] sm:px-6 sm:pt-6 lg:px-8">
-            {children}
-          </div>
+          <HeaderSlotProvider>
+            <AppHeader />
+            <AppContent>{children}</AppContent>
+          </HeaderSlotProvider>
         </main>
       </div>
-      <BottomNav />
+      <TabBar />
       <ActiveSessionBar initial={active} />
       <InstallPwaBanner />
       <AppLifecycle />
@@ -56,12 +61,11 @@ async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
 
 function ShellSkeleton() {
   return (
-    <div className="flex min-h-dvh bg-app text-ink" aria-busy="true" aria-label="Loading">
-      <div className="hidden h-dvh w-60 border-e border-line md:block" />
-      <main className="flex-1 p-4 sm:p-6 lg:p-8">
-        <div className="skeleton h-8 w-48" />
-        <div className="skeleton mt-6 h-40 rounded-3xl" />
-        <div className="skeleton mt-4 h-40 rounded-3xl" />
+    <div className="flex min-h-dvh bg-canvas text-ink" aria-busy="true" aria-label="Loading">
+      <div className="hidden h-dvh w-(--rail-width) shrink-0 border-e border-line md:block" />
+      <main className="mx-auto w-full max-w-[1120px] px-4 pt-[max(1rem,env(safe-area-inset-top))] sm:px-6">
+        <div className="skeleton mb-4 h-7 w-40" />
+        <ScreenSkeleton />
       </main>
     </div>
   );

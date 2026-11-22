@@ -1,28 +1,41 @@
 <resources>
-    <color name="primary">#10B981</color>
-    <color name="primary_dark">#059669</color>
-    <color name="primary_light">#34D399</color>
-    <color name="accent">#3B82F6</color>
-    <color name="accent_orange">#F97316</color>
-    <color name="accent_cyan">#06B6D4</color>
-    <color name="background_dark">#09090B</color>
+    <!-- "Calibrated Matte" tokens (app/globals.css). The app window follows the
+         system theme: light values here, dark ones in values-night/colors.xml. -->
+    <color name="window_background">#F5F4F0</color>
+    <color name="screen_text_primary">#171715</color>
+    <color name="screen_text_secondary">#57564F</color>
+
+    <!-- Brand mark (the same in both themes). -->
+    <color name="brand_carbon">#0E1014</color>
+    <color name="brand_steel">#F2F4F7</color>
+    <color name="brand_graphite">#7C8594</color>
+    <color name="brand_track">#242830</color>
+    <color name="brand_accent">#4C82FB</color>
+
+    <color name="primary">#4C82FB</color>
+    <color name="primary_dark">#2563EB</color>
+    <color name="primary_light">#7FA6FC</color>
+    <color name="accent">#4C82FB</color>
+    <!-- Old metric colours: one accent per view now, so calories and water use the secondary ink. -->
+    <color name="accent_orange">#9CA3AF</color>
+    <color name="accent_cyan">#9CA3AF</color>
+    <color name="background_dark">#0C0D0F</color>
     <color name="white">#FFFFFF</color>
 
-    <!-- Glassmorphic Widget Color Tokens -->
-    <color name="widget_glass_bg">#CC121215</color>
-    <color name="widget_glass_border">#33FFFFFF</color>
-    <color name="widget_glass_surface">#26FFFFFF</color>
-    <color name="widget_glass_card">#1AFFFFFF</color>
-    <color name="widget_glass_emerald">#2610B981</color>
-    <color name="widget_glass_emerald_border">#6610B981</color>
-    <color name="widget_glass_orange">#26F97316</color>
-    <color name="widget_glass_orange_border">#66F97316</color>
-    <color name="widget_glass_cyan">#2606B6D4</color>
-    <color name="widget_glass_cyan_border">#6606B6D4</color>
+    <!-- Home-screen widgets stay dark (they sit on any wallpaper): dark tokens. -->
+    <color name="widget_glass_bg">#E6141619</color>
+    <color name="widget_glass_border">#1FFFFFFF</color>
+    <color name="widget_glass_surface">#FF1C1F24</color>
+    <color name="widget_glass_card">#14FFFFFF</color>
+    <color name="widget_glass_emerald">#264C82FB</color>
+    <color name="widget_glass_emerald_border">#664C82FB</color>
+    <color name="widget_glass_orange">#14FFFFFF</color>
+    <color name="widget_glass_orange_border">#33FFFFFF</color>
+    <color name="widget_glass_cyan">#14FFFFFF</color>
+    <color name="widget_glass_cyan_border">#33FFFFFF</color>
 
-    <!-- Widget Text & Status Tokens -->
-    <color name="widget_text_primary">#F4F4F5</color>
-    <color name="widget_text_secondary">#A1A1AA</color>
-    <color name="widget_text_muted">#71717A</color>
-    <color name="widget_progress_track">#222227</color>
+    <color name="widget_text_primary">#F2F4F7</color>
+    <color name="widget_text_secondary">#9CA3AF</color>
+    <color name="widget_text_muted">#7F8897</color>
+    <color name="widget_progress_track">#242830</color>
 </resources>

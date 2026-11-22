@@ -1,11 +1,11 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { AUTH_LINK_CLASS, AuthCard, FormError } from "@/components/auth/AuthCard";
+import { AUTH_LINK_CLASS, AuthCard, EMAIL_PATTERN, EMAIL_PROBLEM, FormError, focusFirstInvalid } from "@/components/auth/AuthCard";
 import { PasswordField } from "@/components/auth/PasswordField";
 import { api, errorMessage } from "@/lib/client/api";
 import { notifyNativeLogout } from "@/services/webview-bridge";
@@ -20,6 +20,8 @@ export function LoginForm() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
+  const formRef = useRef<HTMLFormElement>(null);
 
   // Nobody is signed in here (signed-in users never see this page): the Android
   // app forgets the previous account's steps, reminders and widgets, so none of
@@ -32,6 +34,15 @@ export function LoginForm() {
     event.preventDefault();
     if (isLoading) return;
     setError(null);
+    const problems = {
+      email: EMAIL_PATTERN.test(email.trim()) ? undefined : EMAIL_PROBLEM,
+      password: password ? undefined : "Enter your password.",
+    };
+    setFieldErrors(problems);
+    if (problems.email || problems.password) {
+      focusFirstInvalid(formRef.current);
+      return;
+    }
     setIsLoading(true);
     try {
       const data = await api<LoginResponse>("/api/auth/login", {
@@ -39,7 +50,7 @@ export function LoginForm() {
         body: { email: email.trim(), password },
       });
       // replace(): Back must not return to the sign-in form.
-      router.replace(data.user?.isProfileComplete ? "/" : "/onboarding");
+      router.replace(data.user?.isProfileComplete ? "/dashboard" : "/onboarding");
       router.refresh();
     } catch (err) {
       // The 401 here means wrong details, not an expired session.
@@ -62,7 +73,7 @@ export function LoginForm() {
         </>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-4">
         <FormError message={error} />
 
         <Input
@@ -71,15 +82,29 @@ export function LoginForm() {
           type="email"
           inputMode="email"
           value={email}
-          onChange={(event) => setEmail(event.target.value)}
+          onChange={(event) => {
+            setEmail(event.target.value);
+            setFieldErrors((prev) => ({ ...prev, email: undefined }));
+          }}
           autoComplete="email"
           autoCapitalize="none"
           spellCheck={false}
           required
           maxLength={254}
+          isInvalid={Boolean(fieldErrors.email)}
+          errorMessage={fieldErrors.email}
         />
 
-        <PasswordField label="Password" value={password} onChange={setPassword} autoComplete="current-password" />
+        <PasswordField
+          label="Password"
+          value={password}
+          onChange={(value) => {
+            setPassword(value);
+            setFieldErrors((prev) => ({ ...prev, password: undefined }));
+          }}
+          autoComplete="current-password"
+          error={fieldErrors.password}
+        />
 
         <Button type="submit" size="lg" className="w-full" isLoading={isLoading}>
           Sign in

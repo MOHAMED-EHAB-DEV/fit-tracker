@@ -3,8 +3,9 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ListPlus, Pencil, Repeat, Trash2, Trophy } from "lucide-react";
+import { ArrowLeft, ChevronRight, ListPlus, Pencil, Repeat, Trash2, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { buttonClasses } from "@/components/ui/button-styles";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import { ExerciseDetailSheet } from "@/components/workout/ExerciseDetailSheet";
@@ -15,8 +16,9 @@ import { markDashboardStale } from "@/lib/dashboard/stale";
 import { formatVolume } from "@/lib/fitness/units";
 import { formatDateString, formatTimeInZone } from "@/lib/time";
 import { formatDurationShort } from "@/lib/workouts/calc";
-import { PR_KIND_LABELS, describeSet, setOrdinals } from "@/lib/workouts/format";
+import { PR_KIND_LABELS, describeSet, pluralize, setOrdinals } from "@/lib/workouts/format";
 import { SET_TYPE_LABELS } from "@/lib/workouts/taxonomy";
+import { cn } from "@/lib/utils";
 import type { RoutineDTO, SessionDTO } from "@/lib/workouts/types";
 
 interface SessionDetailProps {
@@ -24,8 +26,6 @@ interface SessionDetailProps {
   /** The workout currently open, if any (repeating this one asks first). */
   active: { id: string; name: string } | null;
 }
-
-const PR_LABELS = PR_KIND_LABELS;
 
 /** One finished workout: what was done, with repeat, edit, save as routine and delete. */
 export function SessionDetail({ session, active }: SessionDetailProps) {
@@ -71,25 +71,25 @@ export function SessionDetail({ session, active }: SessionDetailProps) {
   };
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <header className="flex items-start gap-2">
+    <div className="mx-auto max-w-[680px] space-y-4">
+      <header className="flex items-start gap-1">
         <Link
           href="/workouts/history"
           aria-label="Back to history"
-          className="grid h-11 w-11 -ms-2 shrink-0 place-items-center rounded-full text-zinc-300 active:bg-white/10"
+          className="-ms-2.5 grid h-11 w-11 shrink-0 place-items-center rounded-control text-ink-2 transition-colors hover:bg-elevated hover:text-ink"
         >
           <ArrowLeft className="h-5 w-5" aria-hidden="true" />
         </Link>
-        <div className="min-w-0 flex-1 pt-1">
-          <h1 className="text-2xl font-bold text-white break-words">{session.name}</h1>
-          <p className="text-sm text-zinc-400">
+        <div className="min-w-0 flex-1 pt-1.5">
+          <h2 className="break-words text-title font-semibold text-ink">{session.name}</h2>
+          <p className="mt-0.5 text-[13px] text-ink-2">
             {formatDateString(session.localDate, { weekday: "long", month: "long", day: "numeric", year: "numeric" })} ·{" "}
-            {formatTimeInZone(session.startedAt, timezone)}
+            <span className="font-mono tabular-nums">{formatTimeInZone(session.startedAt, timezone)}</span>
           </p>
         </div>
       </header>
 
-      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <dl className="grid grid-cols-2 overflow-hidden rounded-card border border-line bg-surface sm:grid-cols-4 [&>div]:border-line max-sm:[&>div:nth-child(2n)]:border-s max-sm:[&>div:nth-child(n+3)]:border-t sm:[&>div+div]:border-s">
         <Stat label="Time" value={formatDurationShort(session.durationSec)} />
         <Stat label="Sets" value={String(session.totals.completedSets)} />
         <Stat label="Volume" value={formatVolume(session.totals.volumeKg, weightUnit)} />
@@ -97,16 +97,14 @@ export function SessionDetail({ session, active }: SessionDetailProps) {
       </dl>
 
       {session.totals.prCount > 0 && (
-        <p className="flex items-center gap-2 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm font-semibold text-amber-200">
+        <p className="flex items-center gap-2 rounded-control border border-line bg-surface px-3.5 py-2.5 text-[13px] font-medium text-warn">
           <Trophy className="h-4 w-4 shrink-0" aria-hidden="true" />
-          {session.totals.prCount === 1
-            ? "1 personal record in this workout"
-            : `${session.totals.prCount} personal records in this workout`}
+          {pluralize(session.totals.prCount, "personal record")} in this workout
         </p>
       )}
 
       {session.notes && (
-        <p className="whitespace-pre-wrap rounded-2xl border border-line bg-surface px-4 py-3 text-sm text-zinc-300">
+        <p className="whitespace-pre-wrap rounded-control border border-line bg-surface px-3.5 py-2.5 text-sm leading-5 text-ink-2">
           {session.notes}
         </p>
       )}
@@ -115,38 +113,45 @@ export function SessionDetail({ session, active }: SessionDetailProps) {
         {session.exercises.map((exercise, index) => {
           const ordinals = setOrdinals(exercise.sets);
           return (
-            <article key={exercise.id} className="rounded-3xl border border-line bg-surface p-4">
+            <article key={exercise.id} className="overflow-hidden rounded-card border border-line bg-surface">
               <button
                 type="button"
                 onClick={() => setDetailExerciseId(exercise.exerciseId)}
-                className="block w-full text-start rounded-lg cursor-pointer"
+                aria-haspopup="dialog"
+                className="flex w-full items-center gap-3 px-3.5 py-3 text-start transition-colors hover:bg-elevated/60 cursor-pointer"
               >
-                <h2 className="text-base font-semibold text-white">
-                  <span className="text-zinc-400 tabular-nums">{index + 1}. </span>
-                  {exercise.name}
-                </h2>
-                <p className="text-sm text-zinc-400">{exercise.primaryMuscle}</p>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[15px] font-semibold text-ink">
+                    <span className="font-mono tabular-nums text-ink-3">{index + 1}. </span>
+                    {exercise.name}
+                  </span>
+                  <span className="mt-0.5 block text-xs capitalize text-ink-3">{exercise.primaryMuscle}</span>
+                </span>
+                <ChevronRight className="h-4 w-4 shrink-0 text-ink-3" aria-hidden="true" />
               </button>
-              {exercise.notes && <p className="mt-1 text-sm text-amber-200/90">{exercise.notes}</p>}
-              <ol className="mt-3 space-y-1.5">
+              {exercise.notes && <p className="px-3.5 pb-2 text-[13px] leading-5 text-ink-2">{exercise.notes}</p>}
+              <ol className="divide-y divide-line border-t border-line">
                 {exercise.sets.map((set, setIndex) => {
                   const ordinal = ordinals[setIndex];
                   const label = SET_TYPE_LABELS[set.type];
                   return (
-                    <li key={set.id} className="flex items-center gap-3 text-base">
+                    <li key={set.id} className="flex min-h-11 items-center gap-3 px-3.5 py-2">
                       <span
-                        className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-sm font-bold text-zinc-300"
+                        className={cn(
+                          "grid h-7 w-7 shrink-0 place-items-center rounded-chip border border-line bg-elevated font-mono text-xs font-semibold tabular-nums",
+                          set.type === "working" ? "text-ink-2" : "text-ink-3"
+                        )}
                         title={label.label}
                       >
                         {set.type === "working" ? ordinal : label.short}
                         <span className="sr-only"> {label.label}</span>
                       </span>
-                      <span className="font-semibold text-white tabular-nums">{describeSet(set, exercise.unit)}</span>
-                      {set.rpe != null && <span className="text-sm text-zinc-400 tabular-nums">RPE {set.rpe}</span>}
+                      <span className="font-mono text-sm font-medium tabular-nums text-ink">{describeSet(set, exercise.unit)}</span>
+                      {set.rpe != null && <span className="font-mono text-xs tabular-nums text-ink-3">RPE {set.rpe}</span>}
                       {set.prKinds.length > 0 && (
-                        <span className="ms-auto flex items-center gap-1 text-sm font-medium text-amber-300">
-                          <Trophy className="h-4 w-4 shrink-0" aria-hidden="true" />
-                          {set.prKinds.map((kind) => PR_LABELS[kind]).join(", ")}
+                        <span className="ms-auto flex min-w-0 items-center gap-1 text-xs font-medium text-warn">
+                          <Trophy className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                          <span className="truncate">{set.prKinds.map((kind) => PR_KIND_LABELS[kind]).join(", ")}</span>
                         </span>
                       )}
                     </li>
@@ -162,39 +167,36 @@ export function SessionDetail({ session, active }: SessionDetailProps) {
         <Button
           className="col-span-2"
           size="lg"
-          startContent={<Repeat className="h-5 w-5" />}
+          startContent={<Repeat className="h-4 w-4" />}
           isLoading={starter.busyKey === "repeat" || starter.isNavigating}
           disabled={starter.isBusy}
           onClick={() => void starter.start({ repeatSessionId: session.id }, "repeat")}
         >
-          Do this workout again
+          Do again
         </Button>
-        <Link
-          href={`/workouts/session/${session.id}`}
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/15 px-4 text-sm font-medium text-zinc-200 active:bg-white/5"
-        >
+        <Link href={`/workouts/session/${session.id}`} className={buttonClasses({ variant: "secondary" })}>
           <Pencil className="h-4 w-4" aria-hidden="true" />
           Edit
         </Link>
         <Button
-          variant="bordered"
+          variant="secondary"
           startContent={<ListPlus className="h-4 w-4" />}
           isLoading={isSavingRoutine}
           onClick={() => void saveAsRoutine()}
         >
           Save as routine
         </Button>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          className="col-span-2 text-danger hover:text-danger"
+          startContent={<Trash2 className="h-4 w-4" />}
           onClick={() => {
             setDeleteError(null);
             setIsDeleteOpen(true);
           }}
-          className="col-span-2 flex min-h-11 items-center justify-center gap-2 rounded-xl text-sm font-medium text-red-300 active:bg-red-500/10 cursor-pointer"
         >
-          <Trash2 className="h-4 w-4" aria-hidden="true" />
           Delete workout
-        </button>
+        </Button>
       </section>
 
       <ExerciseDetailSheet exerciseId={detailExerciseId} onClose={() => setDetailExerciseId(null)} />
@@ -218,9 +220,9 @@ export function SessionDetail({ session, active }: SessionDetailProps) {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface px-3 py-2.5">
-      <dt className="text-xs text-zinc-400">{label}</dt>
-      <dd className="text-base font-semibold text-white tabular-nums">{value}</dd>
+    <div className="min-w-0 px-3.5 py-2.5">
+      <dt className="text-xs text-ink-3">{label}</dt>
+      <dd className="truncate font-mono text-lg font-semibold tabular-nums text-ink">{value}</dd>
     </div>
   );
 }

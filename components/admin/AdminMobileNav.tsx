@@ -2,112 +2,58 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { ShieldCheck, Menu, X, LogOut, ArrowLeft } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { ADMIN_NAV_ITEMS } from "@/constants/navigation";
+import { usePathname } from "next/navigation";
+import { ArrowLeft, LogOut } from "lucide-react";
+import { Wordmark } from "@/components/shared/BrandMark";
+import { AdminTag } from "@/components/admin/AdminSidebar";
+import { IconButton } from "@/components/ui/IconButton";
+import { SegmentedNav } from "@/components/ui/SegmentedControl";
+import { ADMIN_NAV_ITEMS, HOME_PATH, isNavItemActive } from "@/constants/navigation";
+import { logout } from "@/lib/client/logout";
 
 interface AdminMobileNavProps {
   adminName: string;
   adminEmail: string;
 }
 
+/**
+ * Admin navigation on phones: a glass top bar (back to the app · wordmark ·
+ * sign out) with the four admin sections as a segmented row under it.
+ */
 export function AdminMobileNav({ adminName, adminEmail }: AdminMobileNavProps) {
-  const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
-  const router = useRouter();
-
-  const handleLogout = async () => {
-    try {
-      await fetch("/api/auth/logout", { method: "POST" });
-      router.push("/login");
-      router.refresh();
-    } catch (err) {
-      console.error("Logout failed:", err);
-    }
-  };
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   return (
-    <header className="md:hidden sticky top-0 z-40 bg-zinc-950/95 border-b border-violet-900/30 backdrop-blur-md px-4 py-3">
-      <div className="flex items-center justify-between">
-        {/* Brand */}
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-linear-to-tr from-violet-600 to-purple-500 p-0.5 shadow-md shadow-violet-500/20 flex items-center justify-center">
-            <div className="w-full h-full bg-zinc-950 rounded-md flex items-center justify-center">
-              <ShieldCheck className="w-4 h-4 text-violet-400" aria-hidden="true" />
-            </div>
-          </div>
-          <span className="font-extrabold text-sm text-white">
-            Fit<span className="text-violet-400">Admin</span>
-          </span>
-        </div>
-
-        {/* Menu toggle button */}
-        <div className="flex items-center gap-2">
-          <Link
-            href="/"
-            aria-label="Back to app"
-            className="p-2 rounded-xl text-zinc-400 hover:text-zinc-200 bg-zinc-900/80 border border-zinc-800 text-xs flex items-center gap-1"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
-            <span>App</span>
-          </Link>
-
-          <button
-            type="button"
-            onClick={() => setIsOpen((prev) => !prev)}
-            aria-label={isOpen ? "Close admin menu" : "Open admin menu"}
-            aria-expanded={isOpen}
-            className="p-2 min-h-10 min-w-10 rounded-xl bg-violet-500/15 border border-violet-500/30 text-violet-300 flex items-center justify-center"
-          >
-            {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
-        </div>
+    <header className="glass-chrome-top sticky top-0 z-40 border-b border-line px-4 pt-[max(0.5rem,env(safe-area-inset-top))] pb-2.5 md:hidden">
+      <div className="flex min-h-11 items-center gap-2">
+        <Link
+          href={HOME_PATH}
+          aria-label="Back to the app"
+          className="-ms-2 grid h-11 w-11 shrink-0 place-items-center rounded-control text-ink-2 transition-colors hover:bg-elevated hover:text-ink"
+        >
+          <ArrowLeft className="h-5 w-5" aria-hidden="true" />
+        </Link>
+        <span className="flex min-w-0 flex-1 items-center gap-2">
+          <Wordmark size={24} />
+          <AdminTag />
+        </span>
+        <IconButton
+          label={`Sign out ${adminName}${adminEmail ? ` (${adminEmail})` : ""}`}
+          icon={<LogOut className="h-[18px] w-[18px]" />}
+          disabled={isSigningOut}
+          onClick={() => {
+            setIsSigningOut(true);
+            void logout();
+          }}
+          className="-me-2"
+        />
       </div>
-
-      {/* Dropdown Drawer */}
-      {isOpen && (
-        <div className="pt-4 pb-2 space-y-3 animate-in fade-in slide-in-from-top-2 duration-150">
-          <nav aria-label="Admin mobile navigation" className="space-y-1">
-            {ADMIN_NAV_ITEMS.map((item) => {
-              const Icon = item.icon;
-              const isActive = pathname.startsWith(item.href);
-
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setIsOpen(false)}
-                  aria-current={isActive ? "page" : undefined}
-                  className={cn(
-                    "flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-medium text-sm transition-colors",
-                    isActive
-                      ? "bg-violet-500/15 text-violet-300 font-semibold border border-violet-500/30"
-                      : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900"
-                  )}
-                >
-                  <Icon className={cn("w-4 h-4", isActive ? "text-violet-400" : "text-zinc-400")} aria-hidden="true" />
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
-          </nav>
-
-          <div className="pt-3 border-t border-violet-900/30 flex items-center justify-between px-2">
-            <div className="truncate">
-              <p className="text-xs font-semibold text-zinc-200 truncate">{adminName}</p>
-              <p className="text-[10px] text-violet-400/70 truncate">{adminEmail}</p>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="p-2 text-zinc-400 hover:text-red-400 rounded-lg hover:bg-red-500/10 transition"
-              aria-label="Log out"
-            >
-              <LogOut className="w-4 h-4" aria-hidden="true" />
-            </button>
-          </div>
-        </div>
-      )}
+      <SegmentedNav
+        label="Admin sections"
+        className="mt-2 w-full grid-cols-4"
+        items={ADMIN_NAV_ITEMS.map((item) => ({ href: item.href, label: item.label, active: isNavItemActive(pathname, item) }))}
+      />
     </header>
   );
 }

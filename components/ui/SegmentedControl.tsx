@@ -1,7 +1,14 @@
 "use client";
 
 import React, { useRef } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
+
+const GROUP = "grid auto-cols-fr grid-flow-col gap-0.5 rounded-control border border-line bg-surface p-[3px]";
+const OPTION =
+  "flex min-h-8 items-center justify-center rounded-chip border border-transparent px-3 text-[13px] leading-tight transition-colors cursor-pointer select-none disabled:opacity-50 disabled:cursor-not-allowed";
+const OPTION_SELECTED = "border-line bg-elevated font-semibold text-ink";
+const OPTION_IDLE = "font-medium text-ink-2 hover:text-ink";
 
 export interface SegmentedControlProps<T extends string> {
   /** Accessible name of the group, e.g. "Weight unit". */
@@ -14,8 +21,8 @@ export interface SegmentedControlProps<T extends string> {
 }
 
 /**
- * A small either/or choice (kg / lbs, cm / in). Behaves like a radio group:
- * one tab stop, arrow keys move the selection.
+ * A small either/or choice (kg / lbs, 30d / 90d, System / Light / Dark).
+ * Behaves like a radio group: one tab stop, arrow keys move the selection.
  */
 export function SegmentedControl<T extends string>({
   label,
@@ -40,11 +47,7 @@ export function SegmentedControl<T extends string>({
   };
 
   return (
-    <div
-      role="radiogroup"
-      aria-label={label}
-      className={cn("inline-flex rounded-xl border border-line bg-surface-2 p-1", className)}
-    >
+    <div role="radiogroup" aria-label={label} className={cn("inline-grid", GROUP, className)}>
       {options.map((option, index) => {
         const selected = option.value === value;
         return (
@@ -60,16 +63,41 @@ export function SegmentedControl<T extends string>({
             disabled={disabled}
             onClick={() => onChange(option.value)}
             onKeyDown={(event) => move(event, index)}
-            className={cn(
-              "min-h-10 flex-1 rounded-lg px-2 py-1.5 text-sm font-semibold leading-tight transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
-              selected ? "bg-emerald-500 text-zinc-950" : "text-zinc-300 hover:text-white"
-            )}
+            className={cn(OPTION, selected ? OPTION_SELECTED : OPTION_IDLE)}
           >
             {option.label}
           </button>
         );
       })}
     </div>
+  );
+}
+
+export interface SegmentedNavProps {
+  /** Accessible name, e.g. "Train sections". */
+  label: string;
+  items: ReadonlyArray<{ href: string; label: string; active: boolean }>;
+  className?: string;
+}
+
+/**
+ * The same control for sections that are separate pages (Workouts | History,
+ * Schedule | Habits): each segment is a link, the current one is marked.
+ */
+export function SegmentedNav({ label, items, className }: SegmentedNavProps) {
+  return (
+    <nav aria-label={label} className={cn("grid", GROUP, className)}>
+      {items.map((item) => (
+        <Link
+          key={item.href}
+          href={item.href}
+          aria-current={item.active ? "page" : undefined}
+          className={cn(OPTION, item.active ? OPTION_SELECTED : OPTION_IDLE)}
+        >
+          {item.label}
+        </Link>
+      ))}
+    </nav>
   );
 }
 

@@ -3,12 +3,15 @@
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronRight } from "lucide-react";
+import { ChevronUp } from "lucide-react";
+import { ClientOnly } from "@/components/shared/ClientOnly";
 import { api } from "@/lib/client/api";
 import { formatDuration } from "@/lib/workouts/calc";
+import { isFocusModePath } from "@/constants/navigation";
 import type { SessionSummaryDTO } from "@/lib/workouts/types";
 
-const BAR_HEIGHT = "4rem";
+/** Hairline + 2px progress line + 52px row. */
+const BAR_HEIGHT = "55px";
 const CHANGED_EVENT = "ft:active-session-changed";
 
 /** Call after starting, finishing or discarding a workout without leaving the page. */
@@ -16,10 +19,24 @@ export function announceActiveSessionChange(): void {
   if (typeof window !== "undefined") window.dispatchEvent(new Event(CHANGED_EVENT));
 }
 
+/** Seconds left on the rest timer the session screen keeps in storage (ft:rest:<id>), or null. */
+function restSecondsLeft(sessionId: string, now: number): number | null {
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(`ft:rest:${sessionId}`) || "null") as {
+      endsAt?: number;
+    } | null;
+    if (!stored || typeof stored.endsAt !== "number") return null;
+    const left = Math.ceil((stored.endsAt - now) / 1000);
+    return left > 0 ? left : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * "Workout in progress" bar, shown on every screen except the workout itself,
- * so a running workout is always one tap away and is never lost by
- * navigating around the app.
+ * The minimised workout: a glass bar docked above the tab bar on every screen
+ * except the workout itself ("Upper body A · 24:10 · 5 / 18 sets", the rest
+ * countdown, expand), so a running workout is always one tap away.
  */
 export function ActiveSessionBar({ initial }: { initial: SessionSummaryDTO | null }) {
   const pathname = usePathname();
@@ -34,8 +51,7 @@ export function ActiveSessionBar({ initial }: { initial: SessionSummaryDTO | nul
     setActive(initial);
   }
 
-  const onSessionScreen = pathname.startsWith("/workouts/session/");
-  const isVisible = Boolean(active) && !onSessionScreen;
+  const isVisible = Boolean(active) && !isFocusModePath(pathname);
   const showClock = Boolean(active) && !active?.isPastLog;
 
   // The answer can change on any screen (started, finished, discarded, or
@@ -86,33 +102,44 @@ export function ActiveSessionBar({ initial }: { initial: SessionSummaryDTO | nul
   if (!active || !isVisible) return null;
 
   const elapsedSec = Math.max(0, Math.floor((now - new Date(active.startedAt).getTime()) / 1000));
+  const { completedSets, totalSets } = active.totals;
+  const progress = totalSets > 0 ? Math.min(1, completedSets / totalSets) : 0;
+  const rest = showClock ? restSecondsLeft(active.id, now) : null;
 
   return (
-    <div className="session-bar fixed inset-x-0 z-30 px-3 pointer-events-none md:inset-x-auto md:end-6 md:px-0">
+    <div className="session-bar fixed inset-x-0 z-30 md:start-(--rail-width)">
       <Link
         href={`/workouts/session/${active.id}`}
-        className="pointer-events-auto mx-auto flex min-h-14 max-w-md items-center gap-3 rounded-2xl border border-emerald-500/40 bg-emerald-950 px-4 shadow-xl shadow-black/50 md:min-w-80"
+        aria-label={`Resume ${active.name}${active.isPastLog ? " (unfinished workout log)" : ""}`}
+        className="glass-chrome glass-live block"
       >
-        <span className="relative flex h-2.5 w-2.5 shrink-0" aria-hidden="true">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-xs text-emerald-300">
-            {active.isPastLog ? "Unfinished workout log" : "Workout in progress"}
-          </span>
-          <span className="block truncate text-sm font-semibold text-white">{active.name}</span>
-        </span>
-        {showClock && (
-          // The server and the browser read the clock a moment apart.
-          <span className="text-sm font-semibold tabular-nums text-white" aria-hidden="true" suppressHydrationWarning>
-            {formatDuration(elapsedSec)}
-          </span>
-        )}
-        <span className="flex items-center text-sm font-semibold text-emerald-300">
-          Resume
-          <ChevronRight className="h-4 w-4" aria-hidden="true" />
-        </span>
+        <div className="h-0.5 w-full bg-elevated" aria-hidden="true">
+          <div className="h-full bg-accent transition-[width] duration-300" style={{ width: `${progress * 100}%` }} />
+        </div>
+        <div className="mx-auto flex h-[52px] max-w-[1120px] items-center justify-between gap-2.5 px-3.5 sm:px-6">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="h-[7px] w-[7px] shrink-0 rounded-full bg-accent animate-live" aria-hidden="true" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-ink">{active.name}</p>
+              <p className="truncate font-mono text-xs tabular-nums text-ink-2" suppressHydrationWarning>
+                {active.isPastLog ? "Unfinished log" : formatDuration(elapsedSec)} · {completedSets} / {totalSets} sets
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {/* The rest timer lives in this device's storage, which the server cannot
+                see: rendering it in the browser only keeps the first render identical. */}
+            {rest !== null && (
+              <ClientOnly>
+                <span className="inline-flex h-[26px] items-center rounded-chip bg-accent-soft px-2 font-mono text-xs font-semibold tabular-nums text-accent">
+                  <span className="sr-only">Rest </span>
+                  {formatDuration(rest)}
+                </span>
+              </ClientOnly>
+            )}
+            <ChevronUp className="h-4 w-4 text-ink-2" aria-hidden="true" />
+          </div>
+        </div>
       </Link>
     </div>
   );

@@ -14,7 +14,7 @@ function renderInline(nodes: InlineNode[], keyPrefix: string): React.ReactNode[]
         return <React.Fragment key={key}>{node.value}</React.Fragment>;
       case "strong":
         return (
-          <strong key={key} className="font-semibold text-emerald-300">
+          <strong key={key} className="font-semibold text-ink">
             {renderInline(node.children, key)}
           </strong>
         );
@@ -26,7 +26,7 @@ function renderInline(nodes: InlineNode[], keyPrefix: string): React.ReactNode[]
         );
       case "code":
         return (
-          <code key={key} className="px-1.5 py-0.5 rounded bg-zinc-800 text-emerald-300 font-mono text-[0.85em] break-words">
+          <code key={key} className="px-1.5 py-0.5 rounded bg-elevated text-ink font-mono text-[0.85em] break-words">
             {node.value}
           </code>
         );
@@ -42,10 +42,10 @@ function renderLines(lines: InlineNode[][], key: string): React.ReactNode[] {
 }
 
 const HEADING_CLASS: Record<number, string> = {
-  1: "text-lg font-bold text-white pt-2",
-  2: "text-base font-bold text-white pt-2",
-  3: "text-sm font-bold text-emerald-400 pt-2",
-  4: "text-sm font-semibold text-zinc-100 pt-1",
+  1: "text-lg font-semibold text-ink pt-2",
+  2: "text-base font-semibold text-ink pt-2",
+  3: "text-sm font-semibold text-ink pt-2",
+  4: "text-sm font-semibold text-ink pt-1",
 };
 
 function renderBlock(block: BlockNode, index: number): React.ReactNode {
@@ -67,16 +67,16 @@ function renderBlock(block: BlockNode, index: number): React.ReactNode {
       );
     case "quote":
       return (
-        <blockquote key={key} className="border-s-2 border-emerald-500/50 ps-3 text-zinc-300">
+        <blockquote key={key} className="border-s-2 border-line ps-3 text-ink-2">
           {renderLines(block.lines, key)}
         </blockquote>
       );
     case "rule":
-      return <hr key={key} className="border-zinc-800" />;
+      return <hr key={key} className="border-line" />;
     case "code":
       return (
-        <pre key={key} className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 overflow-x-auto text-xs leading-relaxed">
-          <code className="font-mono text-zinc-200">{block.value}</code>
+        <pre key={key} className="p-3 rounded-control bg-canvas border border-line overflow-x-auto text-xs leading-relaxed">
+          <code className="font-mono text-ink">{block.value}</code>
         </pre>
       );
     case "list": {
@@ -85,7 +85,7 @@ function renderBlock(block: BlockNode, index: number): React.ReactNode {
         <ListTag
           key={key}
           start={block.ordered && block.start !== 1 ? block.start : undefined}
-          className={`${block.ordered ? "list-decimal" : "list-disc"} ps-5 space-y-1 marker:text-emerald-400`}
+          className={`${block.ordered ? "list-decimal" : "list-disc"} ps-5 space-y-1 marker:text-ink-3`}
         >
           {block.items.map((item, itemIndex) => (
             <li key={`${key}-${itemIndex}`} style={item.depth ? { marginInlineStart: `${item.depth * 1}rem` } : undefined}>
@@ -97,15 +97,15 @@ function renderBlock(block: BlockNode, index: number): React.ReactNode {
     }
     case "table":
       return (
-        <div key={key} className="overflow-x-auto rounded-xl border border-zinc-800">
+        <div key={key} className="overflow-x-auto rounded-control border border-line">
           <table className="min-w-full text-xs">
-            <thead className="bg-zinc-900">
+            <thead className="bg-surface">
               <tr>
                 {block.header.map((cell, cellIndex) => (
                   <th
                     key={cellIndex}
                     scope="col"
-                    className="px-3 py-2 font-semibold text-zinc-100 border-b border-zinc-800"
+                    className="px-3 py-2 font-semibold text-ink border-b border-line"
                     style={{ textAlign: block.align[cellIndex] || "start" }}
                   >
                     {renderInline(cell, `${key}-h${cellIndex}`)}
@@ -115,9 +115,9 @@ function renderBlock(block: BlockNode, index: number): React.ReactNode {
             </thead>
             <tbody>
               {block.rows.map((row, rowIndex) => (
-                <tr key={rowIndex} className="border-t border-zinc-800/70">
+                <tr key={rowIndex} className="border-t border-line">
                   {row.map((cell, cellIndex) => (
-                    <td key={cellIndex} className="px-3 py-2 text-zinc-300" style={{ textAlign: block.align[cellIndex] || "start" }}>
+                    <td key={cellIndex} className="px-3 py-2 text-ink-2" style={{ textAlign: block.align[cellIndex] || "start" }}>
                       {renderInline(cell, `${key}-r${rowIndex}-${cellIndex}`)}
                     </td>
                   ))}

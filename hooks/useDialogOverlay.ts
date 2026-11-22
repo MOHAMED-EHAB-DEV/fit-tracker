@@ -68,9 +68,14 @@ export function useDialogOverlay({
     return () => clearTimeout(timeoutId);
   }, [isOpen, durationMs, shouldRender]);
 
-  // Top-layer bookkeeping: Escape, Back, scroll lock, inert background.
+  // Top-layer bookkeeping: Escape, Back, scroll lock, inert background, and
+  // focus back to the trigger on close.
   useEffect(() => {
     if (!isOpen) return;
+
+    // Remember the trigger before the background turns inert: an inert
+    // ancestor blurs it, and focus would otherwise come back to <body>.
+    const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
     const releaseOverlay = closeOnEscape ? registerOverlay(() => onCloseRef.current()) : () => undefined;
     const releaseScroll = lockScroll ? lockBodyScroll() : () => undefined;
@@ -82,13 +87,17 @@ export function useDialogOverlay({
       releaseInert();
       releaseScroll();
       releaseOverlay();
+      // Only after the background is interactive again can it take focus.
+      if (trigger && trigger !== document.body && document.contains(trigger)) {
+        trigger.focus({ preventScroll: true });
+      }
     };
   }, [isOpen, lockScroll, closeOnEscape]);
 
-  // Focus: into the dialog on open, back to the trigger on close.
+  // Focus moves into the dialog on open, once the panel is actually rendered
+  // (the presence flag can turn on a render after isOpen does).
   useEffect(() => {
-    if (!isOpen || !isMounted) return;
-    const previouslyFocused = document.activeElement as HTMLElement | null;
+    if (!isOpen || !isMounted || !shouldRender) return;
 
     const frame = requestAnimationFrame(() => {
       const dialog = dialogRef?.current;
@@ -98,13 +107,8 @@ export function useDialogOverlay({
       target.focus({ preventScroll: true });
     });
 
-    return () => {
-      cancelAnimationFrame(frame);
-      if (previouslyFocused && document.contains(previouslyFocused)) {
-        previouslyFocused.focus({ preventScroll: true });
-      }
-    };
-  }, [isOpen, isMounted, dialogRef]);
+    return () => cancelAnimationFrame(frame);
+  }, [isOpen, isMounted, shouldRender, dialogRef]);
 
   return { isMounted, shouldRender, isAnimatingOut };
 }

@@ -24,12 +24,18 @@ export function loadExerciseCatalog(force: boolean = false): Promise<ExerciseDTO
   return catalogPromise;
 }
 
-/** Adds a just-created custom exercise without refetching the whole list. */
+/** Adds a just-created (or replaces a just-edited) custom exercise without refetching the whole list. */
 export function addToExerciseCatalog(exercise: ExerciseDTO): void {
   if (!catalogPromise) return;
   catalogPromise = catalogPromise.then((list) =>
     [...list.filter((item) => item.id !== exercise.id), exercise].sort(byName)
   );
+}
+
+/** Drops a deleted custom exercise from the list in the browser. */
+export function removeFromExerciseCatalog(exerciseId: string): void {
+  if (!catalogPromise) return;
+  catalogPromise = catalogPromise.then((list) => list.filter((item) => item.id !== exerciseId));
 }
 
 export interface ExerciseFilter {
