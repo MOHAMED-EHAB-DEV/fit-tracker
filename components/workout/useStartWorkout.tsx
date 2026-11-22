@@ -18,6 +18,9 @@ export interface StartInput {
   name?: string;
 }
 
+/** What a call to `start` did: navigation began, the open-workout sheet is showing, it failed (a toast says why), or it was ignored. */
+export type StartResult = "started" | "conflict" | "error" | "busy";
+
 interface Conflict {
   pending: StartInput;
   sessionId: string;
@@ -55,16 +58,17 @@ export function useStartWorkout(active: { id: string; name: string } | null) {
 
   const isBusy = busyKey !== null || isNavigating;
 
-  const start = async (input: StartInput, key: string = "start"): Promise<void> => {
-    if (isBusy) return;
+  const start = async (input: StartInput, key: string = "start"): Promise<StartResult> => {
+    if (isBusy) return "busy";
     setError(null);
     if (active) {
       setConflict({ pending: input, sessionId: active.id, sessionName: active.name });
-      return;
+      return "conflict";
     }
     setBusyKey(key);
     try {
       await create(input);
+      return "started";
     } catch (err) {
       if (err instanceof ApiError && err.status === 409 && typeof err.details?.sessionId === "string") {
         setConflict({
@@ -72,9 +76,10 @@ export function useStartWorkout(active: { id: string; name: string } | null) {
           sessionId: err.details.sessionId,
           sessionName: typeof err.details.sessionName === "string" ? err.details.sessionName : "Workout",
         });
-      } else {
-        toast(errorMessage(err), "error");
+        return "conflict";
       }
+      toast(errorMessage(err), "error");
+      return "error";
     } finally {
       setBusyKey(null);
     }

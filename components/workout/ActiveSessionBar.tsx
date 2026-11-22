@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronUp } from "lucide-react";
+import { ClientOnly } from "@/components/shared/ClientOnly";
 import { api } from "@/lib/client/api";
 import { formatDuration } from "@/lib/workouts/calc";
 import { isFocusModePath } from "@/constants/navigation";
@@ -126,14 +127,15 @@ export function ActiveSessionBar({ initial }: { initial: SessionSummaryDTO | nul
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            {/* The rest timer lives in this device's storage, which the server cannot
+                see: rendering it in the browser only keeps the first render identical. */}
             {rest !== null && (
-              <span
-                className="inline-flex h-[26px] items-center rounded-chip bg-accent-soft px-2 font-mono text-xs font-semibold tabular-nums text-accent"
-                suppressHydrationWarning
-              >
-                <span className="sr-only">Rest </span>
-                {formatDuration(rest)}
-              </span>
+              <ClientOnly>
+                <span className="inline-flex h-[26px] items-center rounded-chip bg-accent-soft px-2 font-mono text-xs font-semibold tabular-nums text-accent">
+                  <span className="sr-only">Rest </span>
+                  {formatDuration(rest)}
+                </span>
+              </ClientOnly>
             )}
             <ChevronUp className="h-4 w-4 text-ink-2" aria-hidden="true" />
           </div>

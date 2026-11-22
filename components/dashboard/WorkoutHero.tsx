@@ -1,11 +1,12 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
-import { Check, Play } from "lucide-react";
+import { Check, ListChecks, Play } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { buttonClasses } from "@/components/ui/button-styles";
 import { Surface } from "@/components/ui/Surface";
+import { StartWorkoutSheet, type PickerRoutine } from "@/components/workout/StartWorkoutSheet";
 import { useStartWorkout } from "@/components/workout/useStartWorkout";
 import { useElapsed } from "@/hooks/useElapsed";
 import { formatDuration, formatDurationShort } from "@/lib/workouts/calc";
@@ -33,6 +34,10 @@ export interface WorkoutHeroProps {
   /** Workouts finished today, newest first. */
   doneToday: SessionSummaryDTO[];
   week: TrainingWeekDay[];
+  /** Every routine, so any of them can be started today whatever the plan says. */
+  routines: PickerRoutine[];
+  /** Today in the user's zone ("YYYY-MM-DD"). */
+  today: string;
 }
 
 function WeekStrip({ week }: { week: TrainingWeekDay[] }) {
@@ -65,9 +70,12 @@ function WeekStrip({ week }: { week: TrainingWeekDay[] }) {
 /**
  * Today's training, adapted to the day: in progress (Resume), planned (Start
  * workout), done (summary), rest day, or nothing planned (Plan your week).
+ * Except while a workout is open, any routine can be started from the picker.
  */
-export function WorkoutHero({ active, todayRoutine, isRestDay, doneToday, week }: WorkoutHeroProps) {
+export function WorkoutHero({ active, todayRoutine, isRestDay, doneToday, week, routines, today }: WorkoutHeroProps) {
   const starter = useStartWorkout(active);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const openPicker = () => setIsPickerOpen(true);
   const elapsed = useElapsed(active && !active.isPastLog ? active.startedAt : null);
   const done = doneToday[0] ?? null;
 
@@ -121,9 +129,14 @@ export function WorkoutHero({ active, todayRoutine, isRestDay, doneToday, week }
           )}
           {doneToday.length > 1 && <span className="text-ink-3"> · {doneToday.length} workouts today</span>}
         </p>
-        <Link href={`/workouts/history/${done.id}`} className={buttonClasses({ variant: "secondary", fullWidth: true })}>
-          View summary
-        </Link>
+        <div className="grid grid-cols-2 gap-2">
+          <Link href={`/workouts/history/${done.id}`} className={buttonClasses({ variant: "secondary" })}>
+            View summary
+          </Link>
+          <Button variant="ghost" aria-haspopup="dialog" disabled={starter.isBusy} onClick={openPicker}>
+            Start another
+          </Button>
+        </div>
       </>
     );
   } else if (todayRoutine) {
@@ -142,11 +155,22 @@ export function WorkoutHero({ active, todayRoutine, isRestDay, doneToday, week }
           size="lg"
           fullWidth
           startContent={<Play className="h-4 w-4" />}
-          isLoading={starter.busyKey === "today" || starter.isNavigating}
+          isLoading={starter.busyKey === "today" || (starter.isNavigating && !isPickerOpen)}
           disabled={starter.isBusy}
           onClick={() => void starter.start({ routineId: todayRoutine.id }, "today")}
         >
           Start workout
+        </Button>
+        <Button
+          variant="ghost"
+          fullWidth
+          className="mt-1.5"
+          aria-haspopup="dialog"
+          startContent={<ListChecks className="h-4 w-4" />}
+          disabled={starter.isBusy}
+          onClick={openPicker}
+        >
+          Start a different workout
         </Button>
       </>
     );
@@ -154,35 +178,34 @@ export function WorkoutHero({ active, todayRoutine, isRestDay, doneToday, week }
     body = (
       <>
         <h2 className="text-lg font-semibold tracking-[-0.015em] text-ink">Rest day</h2>
-        <p className="mb-3 text-[13px] text-ink-2">Recovery is part of training.</p>
-        <Button
-          variant="ghost"
-          fullWidth
-          isLoading={starter.busyKey === "empty" || starter.isNavigating}
-          disabled={starter.isBusy}
-          onClick={() => void starter.start({}, "empty")}
-        >
-          Start empty workout
-        </Button>
+        <p className="mb-3 text-[13px] text-ink-2">Recovery is part of training. You can still start a workout.</p>
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant="secondary" aria-haspopup="dialog" disabled={starter.isBusy} onClick={openPicker}>
+            Start a workout
+          </Button>
+          <Button
+            variant="ghost"
+            isLoading={starter.busyKey === "empty" || (starter.isNavigating && !isPickerOpen)}
+            disabled={starter.isBusy}
+            onClick={() => void starter.start({}, "empty")}
+          >
+            Empty workout
+          </Button>
+        </div>
       </>
     );
   } else {
     body = (
       <>
         <h2 className="text-lg font-semibold tracking-[-0.015em] text-ink">Nothing planned today</h2>
-        <p className="mb-3 text-[13px] text-ink-2">Give each day of the week a routine or a rest day.</p>
-        <div className="grid grid-cols-[1fr_auto] gap-2">
-          <Link href="/workouts" className={buttonClasses({ variant: "secondary" })}>
+        <p className="mb-3 text-[13px] text-ink-2">Start any routine, or give each day of the week a routine or a rest day.</p>
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant="secondary" aria-haspopup="dialog" disabled={starter.isBusy} onClick={openPicker}>
+            Start a workout
+          </Button>
+          <Link href="/workouts" className={buttonClasses({ variant: "ghost" })}>
             Plan your week
           </Link>
-          <Button
-            variant="ghost"
-            isLoading={starter.busyKey === "empty" || starter.isNavigating}
-            disabled={starter.isBusy}
-            onClick={() => void starter.start({}, "empty")}
-          >
-            Start empty workout
-          </Button>
         </div>
       </>
     );
@@ -192,6 +215,16 @@ export function WorkoutHero({ active, todayRoutine, isRestDay, doneToday, week }
     <Surface as="section" aria-label="Today's workout">
       <WeekStrip week={week} />
       {body}
+      {!active && (
+        <StartWorkoutSheet
+          isOpen={isPickerOpen}
+          onClose={() => setIsPickerOpen(false)}
+          routines={routines}
+          plannedRoutineId={todayRoutine?.id ?? null}
+          today={today}
+          starter={starter}
+        />
+      )}
       {starter.dialog}
     </Surface>
   );

@@ -10,7 +10,7 @@ import { getTodayHabitsData } from "@/lib/habits/service";
 import { listMealsForDay } from "@/lib/nutrition/meals";
 import { listEventsForDate } from "@/lib/planner/service";
 import { ensureWorkoutsMigrated } from "@/lib/workouts/migrate";
-import { getRoutine } from "@/lib/workouts/routines";
+import { listRoutines } from "@/lib/workouts/routines";
 import { getWeeklySchedule } from "@/lib/workouts/schedule";
 import { getActiveSession, getWeekOverview, listTrainingDates } from "@/lib/workouts/sessions";
 
@@ -63,7 +63,7 @@ export default async function TodayPage() {
   // Older accounts are converted once, before anything is read.
   await ensureWorkoutsMigrated(userId);
 
-  const [logs, meals, habitsData, plannedEvents, activeSession, schedule, weekOverview, trainingDates] =
+  const [logs, meals, habitsData, plannedEvents, activeSession, schedule, weekOverview, trainingDates, routineList] =
     await Promise.all([
       DailyLog.find({ userId, dateString: { $gte: streakFrom, $lte: today } })
         .select("dateString caloriesIn macros waterMl completedHabitIds workoutEntries workoutIds steps stepsSource")
@@ -75,6 +75,8 @@ export default async function TodayPage() {
       getWeeklySchedule(userId, session.weekStartDay),
       getWeekOverview(userId, weekDates),
       listTrainingDates(userId, streakFrom, today),
+      // For "Start a different workout": any routine can be started on any day.
+      listRoutines(userId),
     ]);
 
   // Targets: the user's own values win; otherwise the ones calculated from the profile.
@@ -113,17 +115,24 @@ export default async function TodayPage() {
 
   // Training: today's plan, what was done, and the week at a glance.
   const todayPlan = schedule.find((day) => day.dayOfWeek === weekdayOfDateString(today));
-  let todayRoutine: { id: string; name: string; exerciseCount: number | null; setCount: number | null } | null = null;
-  if (todayPlan?.routineId && todayPlan.routineName) {
-    todayRoutine = { id: todayPlan.routineId, name: todayPlan.routineName, exerciseCount: null, setCount: null };
-    try {
-      const routine = await getRoutine(userId, todayPlan.routineId);
-      todayRoutine.exerciseCount = routine.exercises.length;
-      todayRoutine.setCount = routine.exercises.reduce((sum, exercise) => sum + exercise.sets.length, 0);
-    } catch {
-      // The size line is a detail; the hero still offers Start workout.
-    }
-  }
+  const plannedRoutine = todayPlan?.routineId
+    ? routineList.find((routine) => routine.id === todayPlan.routineId)
+    : undefined;
+  const todayRoutine =
+    todayPlan?.routineId && todayPlan.routineName
+      ? {
+          id: todayPlan.routineId,
+          name: plannedRoutine?.name ?? todayPlan.routineName,
+          exerciseCount: plannedRoutine?.exerciseCount ?? null,
+          setCount: plannedRoutine?.setCount ?? null,
+        }
+      : null;
+  const routines = routineList.map((routine) => ({
+    id: routine.id,
+    name: routine.name,
+    exerciseCount: routine.exerciseCount,
+    lastPerformedAt: routine.lastPerformedAt,
+  }));
   const trainedDates = new Set(weekOverview.sessions.map((item) => item.localDate));
   const week: TrainingWeekDay[] = weekDates.map((date) => {
     const plan = schedule.find((day) => day.dayOfWeek === weekdayOfDateString(date));
@@ -180,6 +189,8 @@ export default async function TodayPage() {
           isRestDay={Boolean(todayPlan?.isRestDay)}
           doneToday={doneToday}
           week={week}
+          routines={routines}
+          today={today}
         />
         <FuelLedger
           caloriesIn={stats.caloriesIn}

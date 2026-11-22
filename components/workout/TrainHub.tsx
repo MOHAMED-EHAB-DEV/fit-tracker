@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, Copy, History, MoreHorizontal, Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { Check, ChevronRight, Copy, History, ListChecks, MoreHorizontal, Pencil, Play, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { buttonClasses } from "@/components/ui/button-styles";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -16,6 +16,7 @@ import { Sheet } from "@/components/ui/Sheet";
 import { Surface } from "@/components/ui/Surface";
 import { useToast } from "@/components/ui/Toast";
 import { announceActiveSessionChange } from "@/components/workout/ActiveSessionBar";
+import { StartWorkoutSheet } from "@/components/workout/StartWorkoutSheet";
 import { TrainNav } from "@/components/workout/TrainNav";
 import { useStartWorkout, type StartInput } from "@/components/workout/useStartWorkout";
 import { useUser } from "@/context/UserContext";
@@ -96,6 +97,7 @@ export function TrainHub({ active, routines, schedule, weekDates, today, todayKe
   const [isPastOpen, setIsPastOpen] = useState(false);
   const [pastStart, setPastStart] = useState("");
   const [pastRoutineId, setPastRoutineId] = useState("");
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   // Fresh server data replaces the optimistic copy of the week plan.
   if (plan.source !== schedule) setPlan({ source: schedule, days: schedule });
@@ -265,6 +267,7 @@ export function TrainHub({ active, routines, schedule, weekDates, today, todayKe
             setIsDiscardOpen(true);
           }}
           onStart={start}
+          onChoose={visibleRoutines.length > 0 ? () => setIsPickerOpen(true) : null}
           onLogPast={openPastWorkout}
         />
 
@@ -470,6 +473,17 @@ export function TrainHub({ active, routines, schedule, weekDates, today, todayKe
         </div>
       </Sheet>
 
+      {!active && (
+        <StartWorkoutSheet
+          isOpen={isPickerOpen}
+          onClose={() => setIsPickerOpen(false)}
+          routines={visibleRoutines}
+          plannedRoutineId={todayRoutine?.id ?? null}
+          today={today}
+          starter={starter}
+        />
+      )}
+
       {starter.dialog}
 
       <ConfirmDialog
@@ -508,10 +522,12 @@ interface TodayBarProps {
   onResume: () => void;
   onDiscard: () => void;
   onStart: (input: StartInput, key: string) => void;
+  /** Opens the routine picker; null when there are no routines to choose from. */
+  onChoose: (() => void) | null;
   onLogPast: () => void;
 }
 
-/** What to do now: resume, start today's routine, or start something else. */
+/** What to do now: resume, start today's routine, or start any other one. */
 function TodayBar({
   active,
   todayRoutine,
@@ -524,6 +540,7 @@ function TodayBar({
   onResume,
   onDiscard,
   onStart,
+  onChoose,
   onLogPast,
 }: TodayBarProps) {
   const elapsed = useElapsed(active && !active.isPastLog ? active.startedAt : null);
@@ -642,7 +659,7 @@ function TodayBar({
     heading = (
       <>
         <h2 className="text-[15px] font-semibold text-ink">Nothing planned today</h2>
-        <p className="mt-0.5 text-xs text-ink-3">Start a routine below, or an empty workout and add exercises as you go.</p>
+        <p className="mt-0.5 text-xs text-ink-3">Start any routine, or an empty workout and add exercises as you go.</p>
       </>
     );
   }
@@ -653,6 +670,21 @@ function TodayBar({
         <div className="min-w-0 flex-1">{heading}</div>
         {primary}
       </div>
+      {onChoose && (
+        <button
+          type="button"
+          disabled={isBusy}
+          aria-haspopup="dialog"
+          onClick={onChoose}
+          className="flex min-h-11 w-full items-center gap-2 border-t border-line px-3.5 text-start text-[13px] font-medium text-ink transition-colors hover:bg-elevated/60 disabled:opacity-50 cursor-pointer"
+        >
+          <ListChecks className="h-4 w-4 shrink-0 text-ink-2" aria-hidden="true" />
+          <span className="flex-1">
+            {done ? "Start another workout" : todayRoutine ? "Start a different workout" : "Choose a routine"}
+          </span>
+          <ChevronRight className="h-4 w-4 shrink-0 text-ink-3" aria-hidden="true" />
+        </button>
+      )}
       <div className="grid grid-cols-2 border-t border-line">
         <button
           type="button"
@@ -725,7 +757,8 @@ function WeekPlan({ days, weekDates, todayKey, doneDates, hasActive, onEdit }: W
                 <span aria-hidden="true" className={cn("text-xs", isToday ? "font-semibold text-accent" : "text-ink-3")}>
                   {name.slice(0, 1)}
                 </span>
-                <span aria-hidden="true" className="flex h-4 w-full items-center justify-center px-0.5">
+                {/* No side padding: a five-letter name ("Lower") has to fit a 375px phone. */}
+                <span aria-hidden="true" className="flex h-4 w-full items-center justify-center">
                   {day.routineName ? (
                     <span className="truncate text-xs font-semibold text-ink">{routineTag(day.routineName)}</span>
                   ) : day.isRestDay ? (
